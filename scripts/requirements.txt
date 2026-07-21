@@ -1,0 +1,4 @@
+# Dependencies for the repo's scripts and tests.
+pytest        # modules/pricing/tests
+jsonschema    # scripts/smoke_test.py (schema validation)
+requests      # scripts/deploy_workflows.py (n8n REST API)
