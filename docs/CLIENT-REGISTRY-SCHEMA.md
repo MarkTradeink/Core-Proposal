@@ -66,10 +66,12 @@ notification_chat_id       → notification_chat_id
 (rate card config file)    → rate_card
 ```
 
-## DDL to apply
+## DDL applied
 
-Applied via the Notion MCP `update-data-source` tool against data source
-`2d7fe158-febb-8189-8ca1-000b610efd7d`:
+> ✅ **Applied** on 2026-07-21 via the Notion MCP `update-data-source` tool against data source
+> `2d7fe158-febb-8189-8ca1-000b610efd7d`, and the `demo_client` row was seeded
+> (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`). The statements below are recorded for
+> reproducibility / disaster recovery.
 
 ```sql
 RENAME COLUMN "Name" TO "Client Name";
@@ -92,7 +94,10 @@ ADD COLUMN "notes" RICH_TEXT;
 
 ## Seed row — `demo_client`
 
-Seeded from the legacy demo's hardcoded ids:
+> ✅ **Created** (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`). Seeded from the legacy demo's
+> hardcoded ids. `commercial_contact_email` currently holds a clearly-fake placeholder
+> (`reseller@demo-client.example`) and `reference_docs_folder_id`/`template_id_es` are empty —
+> all flagged as TODO in the row's `notes` until real values are provided.
 
 | Property | Value |
 |----------|-------|
