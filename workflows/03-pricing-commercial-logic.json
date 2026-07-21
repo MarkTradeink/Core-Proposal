@@ -1,0 +1,93 @@
+{
+  "name": "03-pricing-commercial-logic",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "description": "Module 3 — Pricing & commercial logic. Prices an RFQ estimate using the client's rate card. The Compute Pricing node embeds modules/pricing/pricing_engine.py (Pyodide), kept in sync by scripts/check_pricing_sync.py. Schema: schemas/pricing.schema.json."
+  },
+  "nodes": [
+    {
+      "id": "b3000000-0000-4000-8000-000000000001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -260,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000002",
+      "name": "Resolve Rate Card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Resolve the client's rate card. Prefer client_config.rate_card passed by the\n// orchestrator; otherwise fall back to the demo map (mirrors example_client_config.json).\n// Production loads the client's signed-off rate card by client_id.\nconst trig = $('Execute Workflow Trigger').first().json;\nconst cfg = trig.client_config || {};\nconst DEMO_RATE_CARDS = {\n  demo_client: {\n    rate_by_category: { engineering: 85, assembly: 55, commissioning: 70, project_management: 95 },\n    margin_pct: 0.20, risk_pct: 0.08, discount_pct: 0.0,\n    payment_terms: '30% advance / 40% on delivery / 30% on commissioning', currency: 'EUR'\n  }\n};\nconst rate_card = cfg.rate_card || DEMO_RATE_CARDS[trig.client_id];\nif (!rate_card) throw new Error(`No rate card available for client_id='${trig.client_id}'. Provide client_config.rate_card or add it to the demo map.`);\nreturn [{ json: { client_id: trig.client_id, client_config: cfg, data: trig.data, rate_card } }];"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000003",
+      "name": "Compute Pricing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# Cifral pricing logic — SOURCE OF TRUTH: modules/pricing/pricing_engine.py\n# The region between the PRICING CORE markers below is kept byte-identical to that\n# file by scripts/check_pricing_sync.py. Do not edit it here; edit the .py and re-run\n# the generator. Tests live in modules/pricing/tests/test_pricing_engine.py.\n# === PRICING CORE START ===\ndef compute_pricing(\n    materials_cost,\n    hours_by_category,\n    rate_by_category,\n    margin_pct,\n    risk_pct,\n    discount_pct,\n    payment_terms,\n    currency=None,\n):\n    \"\"\"Compute a phase-1 parametric quote.\n\n    subtotal = materials_cost + sum(hours_by_category[c] * rate_by_category[c])\n    total    = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    Percentages are fractions (0.15 == 15%). Money is rounded to 2 decimals.\n    Raises ValueError on negative or out-of-range inputs (fail loud, never silently\n    produce a wrong quote).\n    \"\"\"\n    hours_by_category = hours_by_category or {}\n    rate_by_category = rate_by_category or {}\n\n    if not _is_number(materials_cost) or materials_cost < 0:\n        raise ValueError(\"materials_cost must be a number >= 0\")\n    if not _is_number(margin_pct) or margin_pct < 0:\n        raise ValueError(\"margin_pct must be a number >= 0\")\n    if not _is_number(risk_pct) or risk_pct < 0:\n        raise ValueError(\"risk_pct must be a number >= 0\")\n    if not _is_number(discount_pct) or discount_pct < 0 or discount_pct > 1:\n        raise ValueError(\"discount_pct must be a number between 0 and 1\")\n\n    labor = 0.0\n    for category, hours in hours_by_category.items():\n        if not _is_number(hours) or hours < 0:\n            raise ValueError(\"hours for '%s' must be a number >= 0\" % category)\n        if category not in rate_by_category:\n            raise ValueError(\"no rate configured for category '%s'\" % category)\n        rate = rate_by_category[category]\n        if not _is_number(rate) or rate < 0:\n            raise ValueError(\"rate for '%s' must be a number >= 0\" % category)\n        labor += hours * rate\n\n    subtotal = float(materials_cost) + labor\n    total = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    result = {\n        \"subtotal\": round(subtotal, 2),\n        \"margin_pct\": margin_pct,\n        \"risk_pct\": risk_pct,\n        \"discount_pct\": discount_pct,\n        \"total\": round(total, 2),\n        \"payment_terms\": payment_terms,\n    }\n    if currency:\n        result[\"currency\"] = currency\n    return result\n\n\ndef _is_number(x):\n    return isinstance(x, (int, float)) and not isinstance(x, bool)\n# === PRICING CORE END ===\n\n# --- n8n wrapper (not part of the synced core) ---\n# Reads the resolved envelope, prices it, and returns the shared output envelope.\nout = []\nfor _item in _input.all():\n    src = _item.json.to_py() if hasattr(_item.json, \"to_py\") else dict(_item.json)\n    data = src.get(\"data\") or {}\n    rc = src.get(\"rate_card\") or {}\n    result = compute_pricing(\n        materials_cost=data.get(\"materials_cost\", 0),\n        hours_by_category=data.get(\"hours_by_category\", {}),\n        rate_by_category=rc.get(\"rate_by_category\", {}),\n        margin_pct=rc.get(\"margin_pct\", 0),\n        risk_pct=rc.get(\"risk_pct\", 0),\n        discount_pct=rc.get(\"discount_pct\", 0),\n        payment_terms=rc.get(\"payment_terms\", \"\"),\n        currency=rc.get(\"currency\"),\n    )\n    out.append({\"json\": {\n        \"client_id\": src.get(\"client_id\"),\n        \"client_config\": src.get(\"client_config\"),\n        \"status\": \"ok\",\n        \"errors\": [],\n        \"data\": result,\n    }})\nreturn out\n"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-0000000000f1",
+      "name": "Note — Module 3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -280,
+        -260
+      ],
+      "parameters": {
+        "width": 720,
+        "height": 220,
+        "content": "## Module 3 — Pricing & commercial logic\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ materials_cost, hours_by_category } }`.\n\n**Compute Pricing** runs the tested Python pricing engine via Pyodide. The function body is kept byte-identical to `modules/pricing/pricing_engine.py` by `scripts/check_pricing_sync.py` (fixes legacy gap G5: business logic is tested + versioned, not untracked n8n expressions).\n\nFormula: `total = (materials_cost + Σ hours·rate) · (1+risk) · (1+margin) · (1-discount)`.\nNegative / out-of-range inputs raise — never a silent wrong quote."
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Resolve Rate Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Rate Card": {
+      "main": [
+        [
+          {
+            "node": "Compute Pricing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
