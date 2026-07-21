@@ -1,0 +1,226 @@
+{
+  "name": "04-proposal-assembly",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "meta": {
+    "description": "Module 4 — Proposal assembly (pure module). Entry: Execute Workflow Trigger receiving { client_id, client_config?, data:{ rfq, content, pricing } }. Fills the client's Google Docs template (selected by language), exports a PDF, creates a Gmail draft to the client's OWN commercial contact (never the extracted end customer), and sends a Telegram alert. Source of truth: repo workflows/04-proposal-assembly.json. Schema: schemas/proposal-assembly.schema.json."
+  },
+  "nodes": [
+    {
+      "id": "d4000000-0000-4000-8000-000000000001",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-260, 0],
+      "parameters": { "inputSource": "passthrough" }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000002",
+      "name": "Config Provided?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-40, 0],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-config-present",
+              "leftValue": "={{ !!$json.client_config }}",
+              "rightValue": "",
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000003",
+      "name": "Load Client Registry",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [180, 180],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2d7fe158-febb-8189-8ca1-000b610efd7d",
+          "mode": "id",
+          "cachedResultName": "Projects (Client Registry)"
+        },
+        "returnAll": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000004",
+      "name": "Map Client Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 180],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: prop(match,'Client Status'),\n  plan_tier: prop(match,'plan_tier'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000005",
+      "name": "Compute Proposal Fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Deterministic proposal assembly logic (replaces the legacy Set node).\n// Fixes:\n//  - B2 deterministic proposal number (no Math.random): PROP-YYYYMMDD-<hash of client+rfq>.\n//  - G2 template chosen by detected language with EN fallback (kills the dead 'language' field).\n//  - G1 draft recipient = client's own commercial contact, never the extracted end-customer email.\n//  - B1 requirements list reads 'quantity' (the key the extractor actually emits).\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst project = rfq.project || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst lang = (rfq.language === 'es' || rfq.language === 'en') ? rfq.language : 'en';\n\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\n\nconst templates = cfg.templates || {};\nconst template_id = templates[lang] || templates.en;\nif(!template_id) throw new Error(`No Google Docs template configured for client '${$json.client_id}' (language '${lang}', no EN fallback).`);\n\nconst recipient_email = cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`client_config.commercial_contact_email is not set for '${$json.client_id}'. Refusing to send the draft to the extracted end customer (legacy gap G1).`);\n\nconst requisitos_lista = reqs.map(r => '- ' + (r.item||'') + (r.quantity ? ' (x' + r.quantity + ')' : '') + (r.spec ? ': ' + r.spec : '')).join('\\n');\nconst content = data.content || {};\nconst pricing = data.pricing || null;\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: lang,\n  proposal_number,\n  fecha: $now.toFormat('dd/MM/yyyy'),\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  notification_chat_id: cfg.notification_chat_id,\n  doc_name: `Proposal ${proposal_number} - ${client.company || 'Client'}`,\n  fields: {\n    cliente_empresa: client.company || '',\n    cliente_contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' '),\n    cliente_email_end_customer: client.email || '',\n    proyecto_tipo: project.type || '',\n    proyecto_ubicacion: project.location || '',\n    proyecto_plazo: project.desired_deadline || '',\n    requisitos_lista,\n    alcance_tecnico: content.alcance_tecnico || '',\n    plan_implantacion: content.plan_implantacion || '',\n    resumen_comercial: content.resumen_comercial || ''\n  },\n  pricing\n} }];"
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000006",
+      "name": "Copy Template",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [880, 0],
+      "parameters": {
+        "operation": "copy",
+        "fileId": { "__rl": true, "value": "={{ $json.template_id }}", "mode": "id" },
+        "name": "={{ $json.doc_name }}",
+        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
+        "folderId": { "__rl": true, "value": "={{ $json.proposals_folder_id }}", "mode": "id" },
+        "options": {}
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000007",
+      "name": "Fill RFQ Placeholders",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [1120, 0],
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $('Copy Template').item.json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            { "action": "replaceAll", "text": "{{NUMERO_PROPUESTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.proposal_number }}" },
+            { "action": "replaceAll", "text": "{{FECHA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fecha }}" },
+            { "action": "replaceAll", "text": "{{CLIENTE_EMPRESA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}" },
+            { "action": "replaceAll", "text": "{{CLIENTE_CONTACTO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.cliente_contacto }}" },
+            { "action": "replaceAll", "text": "{{PROYECTO_TIPO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}" },
+            { "action": "replaceAll", "text": "{{PROYECTO_UBICACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_ubicacion }}" },
+            { "action": "replaceAll", "text": "{{PROYECTO_PLAZO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_plazo }}" },
+            { "action": "replaceAll", "text": "{{REQUISITOS_LISTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.requisitos_lista }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000008",
+      "name": "Fill Generated Content",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [1360, 0],
+      "parameters": {
+        "operation": "update",
+        "documentURL": "={{ $('Copy Template').item.json.id }}",
+        "actionsUi": {
+          "actionFields": [
+            { "action": "replaceAll", "text": "{{ALCANCE_TECNICO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.alcance_tecnico }}" },
+            { "action": "replaceAll", "text": "{{PLAN_IMPLANTACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.plan_implantacion }}" },
+            { "action": "replaceAll", "text": "{{RESUMEN_COMERCIAL}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.resumen_comercial }}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000009",
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [1600, 0],
+      "parameters": {
+        "operation": "download",
+        "fileId": { "__rl": true, "value": "={{ $('Copy Template').item.json.id }}", "mode": "id" },
+        "options": {
+          "googleFileConversion": { "conversion": { "docsToFormat": "application/pdf" } },
+          "fileName": "={{ $('Copy Template').item.json.name }}.pdf"
+        }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000010",
+      "name": "Create Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [1840, 0],
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Proposal {{ $('Compute Proposal Fields').item.json.proposal_number }} — {{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}",
+        "emailType": "html",
+        "message": "=<p>Hi,</p>\n<p>The proposal draft for <b>{{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}</b> ({{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}) is attached for your review before it goes to the customer.</p>\n<p>Proposal number: {{ $('Compute Proposal Fields').item.json.proposal_number }}</p>",
+        "options": {
+          "sendTo": "={{ $('Compute Proposal Fields').item.json.recipient_email }}",
+          "attachmentsUi": { "attachmentsBinary": [{ "property": "data" }] }
+        }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000011",
+      "name": "Telegram Notify",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [2080, 0],
+      "parameters": {
+        "chatId": "={{ $('Compute Proposal Fields').item.json.notification_chat_id }}",
+        "text": "=🆕 New RFQ processed\n\n📍 Customer: {{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}\n📋 Project: {{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}\n📄 Proposal {{ $('Compute Proposal Fields').item.json.proposal_number }}\n\nDraft ready for your review (sent to your commercial inbox, not the customer).",
+        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000012",
+      "name": "Build Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2320, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst copied = $('Copy Template').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: copied.id,\n    pdf_file_name: `${copied.name}.pdf`,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id\n  }\n} }];"
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-0000000000f1",
+      "name": "Note — Module 4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [620, -300],
+      "parameters": {
+        "width": 900,
+        "height": 240,
+        "content": "## Module 4 — Proposal assembly (pure module)\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ rfq, content, pricing } }`.\n\n**Compute Proposal Fields** applies the deliberate fixes from the legacy demo:\n- **G1 recipient** → draft goes to `client_config.commercial_contact_email` (the reseller), **never** the extracted end-customer email. It throws rather than fall back to the customer.\n- **G2 language** → template chosen from `client_config.templates[language]` with EN fallback.\n- **B2 numbering** → deterministic `PROP-YYYYMMDD-<hash>` (no `Math.random`).\n- **B1 quantity** → requirements list reads the `quantity` key the extractor emits.\n\nBehaves identically whether called standalone or by the orchestrator (resolve-once passthrough)."
+      }
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Config Provided?", "type": "main", "index": 0 }]] },
+    "Config Provided?": {
+      "main": [
+        [{ "node": "Compute Proposal Fields", "type": "main", "index": 0 }],
+        [{ "node": "Load Client Registry", "type": "main", "index": 0 }]
+      ]
+    },
+    "Load Client Registry": { "main": [[{ "node": "Map Client Config", "type": "main", "index": 0 }]] },
+    "Map Client Config": { "main": [[{ "node": "Compute Proposal Fields", "type": "main", "index": 0 }]] },
+    "Compute Proposal Fields": { "main": [[{ "node": "Copy Template", "type": "main", "index": 0 }]] },
+    "Copy Template": { "main": [[{ "node": "Fill RFQ Placeholders", "type": "main", "index": 0 }]] },
+    "Fill RFQ Placeholders": { "main": [[{ "node": "Fill Generated Content", "type": "main", "index": 0 }]] },
+    "Fill Generated Content": { "main": [[{ "node": "Convert to PDF", "type": "main", "index": 0 }]] },
+    "Convert to PDF": { "main": [[{ "node": "Create Draft", "type": "main", "index": 0 }]] },
+    "Create Draft": { "main": [[{ "node": "Telegram Notify", "type": "main", "index": 0 }]] },
+    "Telegram Notify": { "main": [[{ "node": "Build Output", "type": "main", "index": 0 }]] }
+  }
+}
