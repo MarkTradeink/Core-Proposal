@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/data-collection.schema.json",
+  "title": "Module 1 — Data collection & validation output",
+  "description": "Output envelope of 01-data-collection-validation. The `data` payload is the validated, structured RFQ. `status` is `incomplete` when required fields are missing (see missing_fields).",
+  "type": "object",
+  "required": ["client_id", "data", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "client_id": { "type": "string", "minLength": 1 },
+    "client_config": {
+      "type": ["object", "null"],
+      "description": "Optional. Passed through by the orchestrator so this module can skip its own Notion lookup. Absent when run standalone."
+    },
+    "status": { "type": "string", "enum": ["ok", "incomplete", "error"] },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "data": {
+      "type": "object",
+      "required": ["client", "project", "technical_requirements", "language", "status", "missing_fields"],
+      "additionalProperties": true,
+      "properties": {
+        "client": {
+          "type": "object",
+          "required": ["company", "contact_name", "contact_last_name", "email"],
+          "properties": {
+            "company": { "type": ["string", "null"] },
+            "contact_name": { "type": ["string", "null"] },
+            "contact_last_name": { "type": ["string", "null"] },
+            "email": { "type": ["string", "null"] }
+          }
+        },
+        "project": {
+          "type": "object",
+          "required": ["type", "location", "desired_deadline"],
+          "properties": {
+            "type": { "type": ["string", "null"] },
+            "location": { "type": ["string", "null"] },
+            "desired_deadline": { "type": ["string", "null"] }
+          }
+        },
+        "technical_requirements": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["item"],
+            "properties": {
+              "item": { "type": "string" },
+              "quantity": { "type": ["string", "null"] },
+              "spec": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "notes": { "type": ["string", "null"] },
+        "language": { "type": "string", "enum": ["es", "en"] },
+        "status": { "type": "string", "enum": ["complete", "incomplete"] },
+        "missing_fields": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

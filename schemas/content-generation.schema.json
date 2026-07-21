@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/content-generation.schema.json",
+  "title": "Module 2 — Technical content generation output",
+  "description": "Output envelope of 02-technical-content-generation. The three narrative sections are grounded in the client's reference docs.",
+  "type": "object",
+  "required": ["client_id", "data", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "client_id": { "type": "string", "minLength": 1 },
+    "client_config": { "type": ["object", "null"] },
+    "status": { "type": "string", "enum": ["ok", "incomplete", "error"] },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "data": {
+      "type": "object",
+      "required": ["alcance_tecnico", "plan_implantacion", "resumen_comercial"],
+      "additionalProperties": true,
+      "properties": {
+        "alcance_tecnico": { "type": "string", "minLength": 1 },
+        "plan_implantacion": { "type": "string", "minLength": 1 },
+        "resumen_comercial": { "type": "string", "minLength": 1 },
+        "grounded_on": {
+          "type": "array",
+          "description": "Optional list of reference-doc identifiers used to ground the generation (traceability).",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

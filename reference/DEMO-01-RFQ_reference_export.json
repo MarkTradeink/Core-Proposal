@@ -1,0 +1,171 @@
+{
+  "_note": "Reference export for study purposes only, retrieved via n8n MCP get_workflow_details. Node positions and some n8n-internal metadata may be incomplete compared to a UI export. Re-export from the n8n UI (Download) if a fully clean re-importable file is needed.",
+  "name": "DEMO-01-RFQ",
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": "OKIZQXKaYLlsdZaV",
+    "timeSavedPerExecution": 60
+  },
+  "connections": {
+    "Gmail Trigger": { "main": [[{ "node": "Information Extractor", "type": "main", "index": 0 }]] },
+    "Anthropic Chat Model": { "ai_languageModel": [[{ "node": "Information Extractor", "type": "ai_languageModel", "index": 0 }]] },
+    "Information Extractor": { "main": [[{ "node": "Set Format", "type": "main", "index": 0 }]] },
+    "Anthropic Chat Model1": { "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]] },
+    "AI Agent": { "main": [[{ "node": "Update Generated Text", "type": "main", "index": 0 }]] },
+    "Update RFQ Data": { "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]] },
+    "Update Generated Text": { "main": [[{ "node": "Convert to PDF", "type": "main", "index": 0 }]] },
+    "Set Format": { "main": [[{ "node": "Google Drive Copy", "type": "main", "index": 0 }]] },
+    "Google Drive Copy": { "main": [[{ "node": "Update RFQ Data", "type": "main", "index": 0 }]] },
+    "Create a draft": { "main": [[{ "node": "Send a text message", "type": "main", "index": 0 }]] },
+    "Structured Output Parser": { "ai_outputParser": [[{ "node": "AI Agent", "type": "ai_outputParser", "index": 0 }]] },
+    "Convert to PDF": { "main": [[{ "node": "Create a draft", "type": "main", "index": 0 }]] },
+    "When chat message received": { "main": [[{ "node": "Information Extractor", "type": "main", "index": 0 }]] }
+  },
+  "nodes": [
+    {
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.3,
+      "parameters": { "pollTimes": { "item": [{ "mode": "everyMinute" }] }, "simple": false, "filters": { "q": "subject:RFQ" }, "options": {} }
+    },
+    {
+      "name": "Information Extractor",
+      "type": "@n8n/n8n-nodes-langchain.informationExtractor",
+      "typeVersion": 1.2,
+      "parameters": {
+        "text": "={{ $json.subject }}\n\n{{ $json.text }}",
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\n  \"client\": {\n    \"company\": \"company name\",\n    \"contact name\": \"person name\",\n    \"contact last name\":\"person last name\",\n    \"email\": \"source email\"\n  },\n  \"project\": {\n    \"type\": \"type of system requested\",\n    \"location\": \"plant/city if mentioned\",\n    \"desired_deadline\": \"date or timeframe if mentioned\"\n  },\n  \"technical_requirements\": [\n    {\"item\": \"component or requirement\", \"quantity\": \"if applicable\", \"spec\": \"relevant technical spec\"}\n  ],\n  \"notes\": \"any important observations that do not fit above\",\n  \"language\":\"detect language of incoming data, return 'es' or 'en'\"\n}",
+        "options": { "systemPromptTemplate": "=You are an industrial RFQ data extractor. You receive the body of a client's email requesting a quote.\nExtract the following data in strict JSON format. If a data point is missing, return null (never hallucinate).\n\nReturn ONLY the JSON, nothing else. No markdown, no ```json.\n\n" }
+      },
+      "_known_gap": "Extracts a 'language' field but nothing downstream ever reads it; the Google Doc template used later is hardcoded to English regardless. Also performs no validation/flagging of missing required fields, despite the website copy promising 'flag missing information before anyone starts writing'."
+    },
+    {
+      "name": "Anthropic Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "parameters": { "model": { "value": "claude-haiku-4-5-20251001" }, "options": { "maxTokensToSample": 800, "temperature": 0.1 } }
+    },
+    {
+      "name": "Set Format",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "name": "numero_propuesta", "value": "=Nº-{{ $now.format('yyyyMMdd') }}-{{ Math.floor(Math.random()*900)+100 }}", "type": "string" },
+            { "name": "fecha", "value": "={{ $now.format('dd/MM/yyyy') }}", "type": "string" },
+            { "name": "cliente_empresa", "value": "={{ $json.output.client.company }}", "type": "string" },
+            { "name": "cliente_contacto", "value": "={{ $json.output.client['contact name'] }} {{ $json.output.client['contact last name'] }} ", "type": "string" },
+            { "name": "cliente_email", "value": "={{ $json.output.client.email }}", "type": "string" },
+            { "name": "proyecto_tipo", "value": "={{ $json.output.project.type }}", "type": "string" },
+            { "name": "proyecto_ubicacion", "value": "={{ $json.output.project.location }}", "type": "string" },
+            { "name": "proyecto_plazo", "value": "={{ $json.output.project.desired_deadline }}", "type": "string" },
+            { "name": "requisitos_lista", "value": "={{ $json.output.technical_requirements.map(r => '- ' + r.item + (r.cantidad ? ' (x' + r.cantidad + ')' : '') + (r.spec ? ': ' + r.spec : '')).join('\\n') }}", "type": "string" },
+            { "name": "notas", "value": "={{ $json.output.notes }}", "type": "string" },
+            { "name": "rfq_raw", "value": "={{ JSON.stringify($json)}}", "type": "string" },
+            { "name": "output.language", "value": "={{ $json.output.language }}", "type": "string" }
+          ]
+        }
+      },
+      "_known_gap": "All field-mapping and proposal numbering logic lives as n8n expression strings inside a Set node. Untested, unversioned business logic. Note also the silent bug: requisitos_lista reads r.cantidad but the extractor emits 'quantity', so quantities never render."
+    },
+    {
+      "name": "Google Drive Copy",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "parameters": {
+        "operation": "copy",
+        "fileId": { "value": "1szdkO1MVKVsIXizYQd_x-6WJMP8OPK50oSif4Uw5LQA", "cachedResultName": "Template_QuoteFast_Cifral_EN" },
+        "name": "=Proposal {{ $json.numero_propuesta }} - {{ $json.cliente_empresa }}",
+        "folderId": { "value": "1vmm_AQf8FGtc7E_ujJsetwNpuzzVXCxc", "cachedResultName": "Generated Proposals" }
+      },
+      "_known_gap": "Single hardcoded template ID, single hardcoded destination folder. No client_id parameterization at all."
+    },
+    {
+      "name": "Update RFQ Data",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "parameters": { "operation": "update", "documentURL": "={{ $json.id }}", "actionsUi": { "actionFields": [
+        { "action": "replaceAll", "text": "{{NUMERO_PROPUESTA}}", "replaceText": "={{ $('Set Format').item.json.numero_propuesta }}" },
+        { "action": "replaceAll", "text": "{{FECHA}}", "replaceText": "={{ $('Set Format').item.json.fecha }}" },
+        { "action": "replaceAll", "text": "{{CLIENTE_EMPRESA}}", "replaceText": "={{ $('Set Format').item.json.cliente_empresa }}" },
+        { "action": "replaceAll", "text": "{{CLIENTE_CONTACTO}}", "replaceText": "={{ $('Set Format').item.json.cliente_contacto }}" },
+        { "action": "replaceAll", "text": "{{PROYECTO_TIPO}}", "replaceText": "={{ $('Set Format').item.json.proyecto_tipo }}" },
+        { "action": "replaceAll", "text": "{{PROYECTO_UBICACION}}", "replaceText": "={{ $('Set Format').item.json.proyecto_ubicacion }}" },
+        { "action": "replaceAll", "text": "{{PROYECTO_PLAZO}}", "replaceText": "={{ $('Set Format').item.json.proyecto_plazo }}" },
+        { "action": "replaceAll", "text": "{{REQUISITOS_LISTA}}", "replaceText": "={{ $('Set Format').item.json.requisitos_lista }}" }
+      ] } }
+    },
+    {
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "parameters": {
+        "promptType": "define",
+        "text": "=RFQ Data:\n{{ $('Set Format').item.json.rfq_raw }}\nGenerate the 3 sections for proposal {{ $('Set Format').item.json.numero_propuesta }}.",
+        "hasOutputParser": true,
+        "options": { "systemMessage": "You are an experienced Sales Engineer specializing in intralogistics and industrial automation. You write narrative sections of technical proposals in English. Generate exactly 3 sections in JSON: alcance_tecnico, plan_implantacion, resumen_comercial. Rules: do not invent concrete prices or specific equipment brands. Return ONLY the JSON." }
+      },
+      "_known_gap": "No pricing calculation exists anywhere in this workflow; the system prompt explicitly forbids inventing prices. Also generates content from a generic prompt with zero grounding in any actual client reference documents or past proposals."
+    },
+    {
+      "name": "Anthropic Chat Model1",
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "parameters": { "model": { "value": "claude-sonnet-4-6" }, "options": { "maxTokensToSample": 2048, "temperature": 0.3 } }
+    },
+    {
+      "name": "Structured Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "parameters": { "jsonSchemaExample": "{\n  \"alcance_tecnico\": \"...\",\n  \"plan_implantacion\": \"...\",\n  \"resumen_comercial\": \"...\"\n}" }
+    },
+    {
+      "name": "Update Generated Text",
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "parameters": { "operation": "update", "documentURL": "={{ $('Google Drive Copy').item.json.id }}", "actionsUi": { "actionFields": [
+        { "action": "replaceAll", "text": "{{ALCANCE_TECNICO}}", "replaceText": "={{ $json.output.alcance_tecnico }}" },
+        { "action": "replaceAll", "text": "{{PLAN_IMPLANTACION}}", "replaceText": "={{ $json.output.plan_implantacion }}" },
+        { "action": "replaceAll", "text": "{{RESUMEN_COMERCIAL}}", "replaceText": "={{ $json.output.resumen_comercial }}" }
+      ] } }
+    },
+    {
+      "name": "Convert to PDF",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "parameters": { "operation": "download", "fileId": { "value": "={{ $('Google Drive Copy').item.json.id }}" }, "options": { "googleFileConversion": { "conversion": { "docsToFormat": "application/pdf" } }, "fileName": "={{ $('Google Drive Copy').item.json.name }}.pdf" } }
+    },
+    {
+      "name": "Create a draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "parameters": {
+        "resource": "draft",
+        "subject": "=Proposal {{ $('Set Format').item.json.numero_propuesta }} — {{ $('Set Format').item.json.cliente_empresa }}",
+        "emailType": "html",
+        "message": "<p>Hi {{ $('Set Format').item.json.cliente_contacto }},</p><p>Thanks for your interest. Attached is the initial proposal draft...</p>",
+        "options": { "sendTo": "={{ $('Set Format').item.json.cliente_email }}" }
+      },
+      "_known_gap": "CRITICAL: sends the draft directly to the extracted client contact email, i.e. the end customer of Cifral's client. The agreed service model requires this to go back to the reseller/commercial contact who forwarded the RFQ, never to their end customer."
+    },
+    {
+      "name": "Send a text message",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "parameters": { "chatId": "1748634056", "text": "New RFQ processed. Draft ready for review in your Email.", "additionalFields": { "parse_mode": "HTML" } },
+      "_known_gap": "Hardcoded single chat ID, single-tenant."
+    },
+    {
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "parameters": {},
+      "_note": "Manual chat trigger used for testing the workflow outside of Gmail polling."
+    }
+  ]
+}

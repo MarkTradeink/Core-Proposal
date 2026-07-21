@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Env / secrets — never commit n8n or API credentials
+.env
+*.local
+
+# OS
+.DS_Store

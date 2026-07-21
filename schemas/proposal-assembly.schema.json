@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/proposal-assembly.schema.json",
+  "title": "Module 4 — Proposal assembly output",
+  "description": "Output envelope of 04-proposal-assembly. Records the artifacts produced: the generated Google Doc / PDF, the Gmail draft (addressed to the client's own commercial contact, NOT the extracted end customer), and the Telegram notification.",
+  "type": "object",
+  "required": ["client_id", "data", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "client_id": { "type": "string", "minLength": 1 },
+    "client_config": { "type": ["object", "null"] },
+    "status": { "type": "string", "enum": ["ok", "incomplete", "error"] },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "data": {
+      "type": "object",
+      "required": ["proposal_number", "document_id", "pdf_file_name", "draft_id", "draft_recipient", "language"],
+      "additionalProperties": true,
+      "properties": {
+        "proposal_number": { "type": "string", "minLength": 1, "description": "Deterministic: PROP-YYYYMMDD-<hash>." },
+        "document_id": { "type": "string", "description": "Google Doc id of the assembled proposal." },
+        "pdf_file_name": { "type": "string" },
+        "draft_id": { "type": "string", "description": "Gmail draft id." },
+        "draft_recipient": {
+          "type": "string",
+          "format": "email",
+          "description": "MUST be the client's commercial contact (client_config.commercial_contact_email), never the extracted end-customer email."
+        },
+        "language": { "type": "string", "enum": ["es", "en"] },
+        "template_id_used": { "type": "string" },
+        "notified_chat_id": { "type": "string" }
+      }
+    }
+  }
+}
