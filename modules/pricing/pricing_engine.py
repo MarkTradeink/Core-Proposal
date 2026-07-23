@@ -1,19 +1,23 @@
-"""Cifral pricing engine (Module 3).
+"""Cifral pricing engine (Module 3) — reference implementation of the pricing formula.
 
-Phase-1 *parametric* pricing — intentionally simple. This module is the SOURCE OF TRUTH
-for the pricing logic that is embedded (via Pyodide) in the n8n workflow
-``workflows/03-pricing-commercial-logic.json`` ("Compute Pricing" Code node).
+Phase-1 *parametric* pricing — intentionally simple. This module is the human-readable
+SOURCE OF TRUTH for the pricing math that is embedded (via Pyodide) in the n8n workflow
+``workflows/03-pricing-commercial-logic.json`` ("Compute Pricing" Code node). The region
+between the ``PRICING CORE START`` / ``PRICING CORE END`` markers below is what that node runs.
+If you change the formula, change it in both places.
 
-The region between the ``PRICING CORE START`` / ``PRICING CORE END`` markers below is copied
-verbatim into that node. ``scripts/check_pricing_sync.py`` fails if the two ever drift, so the
-tested logic here and the deployed logic stay identical. Do not edit the core in only one place.
+The pricing *data* (rate-per-category, margins, terms) is NOT in this repo — it lives in each
+client's pricing Google Sheet in their Drive folder (see ``docs/PRICING-SHEET-TEMPLATE.md``).
+This file only owns the *computation*, so it can be read and reasoned about without opening n8n.
 
 Non-goals (do NOT add): historical-hours estimation, pricing benchmarking, multi-tenant config.
+
+Run ``python modules/pricing/pricing_engine.py`` for a quick manual sanity check against an
+inline sample rate card.
 """
 from __future__ import annotations
 
 import json
-import os
 
 # === PRICING CORE START ===
 def compute_pricing(
@@ -98,17 +102,26 @@ def price_from_config(inputs, client_config):
     )
 
 
-def _load_example_config():
-    path = os.path.join(os.path.dirname(__file__), "example_client_config.json")
-    with open(path, "r", encoding="utf-8") as fh:
-        return json.load(fh)
-
-
 if __name__ == "__main__":
-    # Local demo: price a sample RFQ against the demo_client rate card.
-    cfg = _load_example_config()
+    # Manual sanity check: price a sample RFQ against an inline sample rate card.
+    # (In production the rate card comes from the client's pricing Google Sheet, not from here.)
+    sample_rate_card = {
+        "rate_card": {
+            "rate_by_category": {
+                "engineering": 85,
+                "assembly": 55,
+                "commissioning": 70,
+                "project_management": 95,
+            },
+            "margin_pct": 0.20,
+            "risk_pct": 0.08,
+            "discount_pct": 0.0,
+            "payment_terms": "30% advance / 40% on delivery / 30% on commissioning",
+            "currency": "EUR",
+        }
+    }
     sample_inputs = {
         "materials_cost": 1000,
         "hours_by_category": {"engineering": 10, "assembly": 20},
     }
-    print(json.dumps(price_from_config(sample_inputs, cfg), indent=2))
+    print(json.dumps(price_from_config(sample_inputs, sample_rate_card), indent=2))

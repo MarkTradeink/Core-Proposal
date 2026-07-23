@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/scope-catalog.json",
+  "title": "Cifral — Scope-of-Supply catalog",
+  "description": "The canonical, versioned list of scope-of-supply items a proposal can contain. Scope is decided PER REQUEST (not per client): the same reseller may send a full-scope modernization RFQ today and a materials-and-engineering-only RFQ tomorrow. Module 1 extracts a `scope_of_supply` map (item key -> boolean) against these keys; that one map then drives pricing lines (Module 3), narrative sections (Module 2), and template blocks (Module 4). To add or rename a scope item, edit THIS file, then update the LLM extraction hints in Module 1, the section prompts in Module 2, and the template block markers documented in docs/TEMPLATE-GUIDE.md.",
+  "version": 1,
+  "items": [
+    {
+      "key": "materials",
+      "label_en": "Materials & Equipment Supply",
+      "label_es": "Suministro de materiales y equipos",
+      "cost_category": "materials",
+      "narrative_section": "alcance_tecnico",
+      "template_block": "MATERIALS",
+      "default_included": true,
+      "description": "Physical goods / equipment supplied. Priced via materials_cost (not an hourly category)."
+    },
+    {
+      "key": "engineering",
+      "label_en": "Engineering & Design",
+      "label_es": "Ingeniería y diseño",
+      "cost_category": "engineering",
+      "narrative_section": "alcance_tecnico",
+      "template_block": "ENGINEERING",
+      "default_included": true,
+      "description": "Design/engineering hours."
+    },
+    {
+      "key": "installation",
+      "label_en": "Installation / Assembly",
+      "label_es": "Instalación / Montaje",
+      "cost_category": "assembly",
+      "narrative_section": "plan_implantacion",
+      "template_block": "INSTALLATION",
+      "default_included": false,
+      "description": "On-site assembly/installation labour. Often excluded when the end customer installs themselves."
+    },
+    {
+      "key": "commissioning",
+      "label_en": "Commissioning & Start-up",
+      "label_es": "Puesta en marcha",
+      "cost_category": "commissioning",
+      "narrative_section": "plan_implantacion",
+      "template_block": "COMMISSIONING",
+      "default_included": false,
+      "description": "Commissioning / start-up labour."
+    },
+    {
+      "key": "project_management",
+      "label_en": "Project Management",
+      "label_es": "Gestión de proyecto",
+      "cost_category": "project_management",
+      "narrative_section": "plan_implantacion",
+      "template_block": "PROJECT_MANAGEMENT",
+      "default_included": false,
+      "description": "PM / coordination hours."
+    },
+    {
+      "key": "spare_parts",
+      "label_en": "Spare Parts",
+      "label_es": "Repuestos",
+      "cost_category": "materials",
+      "narrative_section": "repuestos",
+      "template_block": "SPARE_PARTS",
+      "default_included": false,
+      "description": "Recommended spare-parts package. Its cost, if any, is folded into materials_cost."
+    },
+    {
+      "key": "shipping",
+      "label_en": "Shipping & Logistics",
+      "label_es": "Transporte y logística",
+      "cost_category": "materials",
+      "narrative_section": "transporte",
+      "template_block": "SHIPPING",
+      "default_included": false,
+      "description": "Transport to site. Cost, if any, folded into materials_cost."
+    },
+    {
+      "key": "training",
+      "label_en": "Training",
+      "label_es": "Formación",
+      "cost_category": "commissioning",
+      "narrative_section": "formacion",
+      "template_block": "TRAINING",
+      "default_included": false,
+      "description": "Operator/maintenance training hours."
+    },
+    {
+      "key": "warranty",
+      "label_en": "Warranty",
+      "label_es": "Garantía",
+      "cost_category": null,
+      "narrative_section": "garantia",
+      "template_block": "WARRANTY",
+      "default_included": true,
+      "description": "Warranty clause. Narrative-only; no direct cost line."
+    }
+  ]
+}

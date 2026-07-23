@@ -4,6 +4,27 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 7 — Service tiers, per-request scope, Sheets pricing, manual testing (2026-07-23)
+Reworked the demo after review, without changing the module boundaries:
+- **Three service tiers instead of four module checkboxes.** Notion registry: added `service_tier`
+  (`pricing_only` / `proposal_only` / `full_pipeline`) and `pricing_sheet_id`; dropped the four
+  `module_*` checkboxes and `plan_tier`. The orchestrator now **routes per request**: Module 1
+  extracts `request_type`, and the orchestrator branches (pricing_only → M3 + quote draft;
+  proposal_only → M2+M4, no pricing; full_pipeline → M2 ∥ M3 → M4), falling back to `service_tier`.
+- **Per-request scope of supply.** New `schemas/scope-catalog.json` defines the canonical scope
+  items. Module 1 extracts a `scope_of_supply` map; it drives pricing lines (M3), narrative sections
+  (M2) and template blocks (M4) together. Module 4 renders in-scope `{{SECCION_*}}` tokens and removes
+  out-of-scope ones; it also prints a visible Scope-of-Supply block for the reviewing reseller.
+- **Pricing data moved to Google Sheets.** Module 3 reads the rate card at runtime from the client's
+  pricing Google Sheet (`pricing_sheet_id`); removed `example_client_config.json`.
+  `modules/pricing/pricing_engine.py` stays as the versioned, self-contained reference formula.
+- **Manual testing replaces the Python test suite.** Removed `scripts/` (`deploy_workflows.py`,
+  `smoke_test.py`, `check_pricing_sync.py`, `requirements.txt`) and `modules/pricing/tests/`. Added
+  `docs/TESTING-MANUAL.md`.
+- **New docs:** `PRICING-SHEET-TEMPLATE.md`, `TEMPLATE-GUIDE.md` (master template with conditional
+  section tokens), `RESELLER-EMAIL-GUIDE.md` (request instructions + email templates). Updated
+  README, ARCHITECTURE, DEPLOYMENT, ONBOARDING, CLIENT-REGISTRY-SCHEMA.
+
 ### Phase 6 — Smoke test + deploy script (2026-07-21)
 - `scripts/smoke_test.py`: runs a demo_client RFQ fixture through all four contract stages,
   validating each against `schemas/*.json`, executing the pricing engine for real, and asserting

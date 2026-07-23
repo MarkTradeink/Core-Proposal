@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Module 3 — Pricing & commercial logic. Prices an RFQ estimate using the client's rate card. The Compute Pricing node embeds modules/pricing/pricing_engine.py (Pyodide), kept in sync by scripts/check_pricing_sync.py. Schema: schemas/pricing.schema.json."
+    "description": "Module 3 — Pricing & commercial logic. Prices an RFQ estimate using the client's rate card, which is read at runtime from the client's pricing Google Sheet (id = client_config.pricing_sheet_id). The Compute Pricing node runs the tested formula from modules/pricing/pricing_engine.py (Pyodide). Schema: schemas/pricing.schema.json. Sheet layout: docs/PRICING-SHEET-TEMPLATE.md."
   },
   "nodes": [
     {
@@ -13,41 +13,97 @@
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [
-        -260,
-        0
-      ],
-      "parameters": {
-        "inputSource": "passthrough"
-      }
+      "position": [-360, 0],
+      "parameters": { "inputSource": "passthrough" }
     },
     {
       "id": "b3000000-0000-4000-8000-000000000002",
-      "name": "Resolve Rate Card",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        -20,
-        0
-      ],
+      "name": "Config Provided?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-140, 0],
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Resolve the client's rate card. Prefer client_config.rate_card passed by the\n// orchestrator; otherwise fall back to the demo map (mirrors example_client_config.json).\n// Production loads the client's signed-off rate card by client_id.\nconst trig = $('Execute Workflow Trigger').first().json;\nconst cfg = trig.client_config || {};\nconst DEMO_RATE_CARDS = {\n  demo_client: {\n    rate_by_category: { engineering: 85, assembly: 55, commissioning: 70, project_management: 95 },\n    margin_pct: 0.20, risk_pct: 0.08, discount_pct: 0.0,\n    payment_terms: '30% advance / 40% on delivery / 30% on commissioning', currency: 'EUR'\n  }\n};\nconst rate_card = cfg.rate_card || DEMO_RATE_CARDS[trig.client_id];\nif (!rate_card) throw new Error(`No rate card available for client_id='${trig.client_id}'. Provide client_config.rate_card or add it to the demo map.`);\nreturn [{ json: { client_id: trig.client_id, client_config: cfg, data: trig.data, rate_card } }];"
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            { "id": "cond-config-present", "leftValue": "={{ !!$json.client_config }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
       }
     },
     {
       "id": "b3000000-0000-4000-8000-000000000003",
+      "name": "Load Client Registry",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [80, 180],
+      "parameters": {
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": { "__rl": true, "value": "2d7fe158-febb-8189-8ca1-000b610efd7d", "mode": "id", "cachedResultName": "Projects (Client Registry)" },
+        "returnAll": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000004",
+      "name": "Map Client Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [300, 180],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Standalone fallback: resolve the pricing-relevant client_config from Notion by client_id.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000005",
+      "name": "Resolve Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Single merge point for both branches (config passed in vs looked up standalone).\n// Emits a uniform { client_id, client_config, data } that downstream nodes reference by name.\nconst j = $json;\nconst client_config = j.client_config || {};\nif (!client_config.pricing_sheet_id && !client_config.rate_card) {\n  throw new Error(`No pricing source for client '${j.client_id}': set 'pricing_sheet_id' in the Notion registry (the client's pricing Google Sheet) or pass client_config.rate_card. See docs/PRICING-SHEET-TEMPLATE.md.`);\n}\nreturn [{ json: { client_id: j.client_id, client_config, data: j.data || {} } }];"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000006",
+      "name": "Read Pricing Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [800, 0],
+      "parameters": {
+        "operation": "read",
+        "documentId": { "__rl": true, "value": "={{ $json.client_config.pricing_sheet_id }}", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "gid=0", "mode": "list", "cachedResultName": "Pricing (first tab)" },
+        "options": {}
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000007",
+      "name": "Build Rate Card",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1040, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Assemble the rate_card object from the client's pricing sheet rows.\n// Expected sheet columns (first tab): type | key | value  (see docs/PRICING-SHEET-TEMPLATE.md).\n//   type='rate'  -> key is a labour category, value is its hourly rate.\n//   type='param' -> key is one of margin_pct, risk_pct, discount_pct, payment_terms, currency.\n// An inline client_config.rate_card (if provided) overrides the sheet entirely.\nconst env = $('Resolve Config').first().json;\nconst cfg = env.client_config || {};\n\nlet rate_card;\nif (cfg.rate_card) {\n  rate_card = cfg.rate_card;\n} else {\n  const rows = $('Read Pricing Sheet').all().map(i => i.json);\n  const rate_by_category = {};\n  let margin_pct = 0, risk_pct = 0, discount_pct = 0, payment_terms = '', currency = null;\n  for (const r of rows) {\n    const type = String(r.type ?? '').trim().toLowerCase();\n    const key = String(r.key ?? '').trim();\n    const val = r.value;\n    if (!key) continue;\n    if (type === 'rate') { rate_by_category[key] = Number(val); }\n    else if (type === 'param') {\n      if (key === 'margin_pct') margin_pct = Number(val);\n      else if (key === 'risk_pct') risk_pct = Number(val);\n      else if (key === 'discount_pct') discount_pct = Number(val);\n      else if (key === 'payment_terms') payment_terms = String(val);\n      else if (key === 'currency') currency = String(val);\n    }\n  }\n  if (Object.keys(rate_by_category).length === 0) {\n    throw new Error(`Pricing sheet for '${env.client_id}' produced no rate rows. Check the tab has columns type|key|value and at least one type='rate' row. See docs/PRICING-SHEET-TEMPLATE.md.`);\n  }\n  rate_card = { rate_by_category, margin_pct, risk_pct, discount_pct, payment_terms, currency };\n}\nreturn [{ json: { client_id: env.client_id, client_config: cfg, data: env.data, rate_card } }];"
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000008",
       "name": "Compute Pricing",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [
-        240,
-        0
-      ],
+      "position": [1280, 0],
       "parameters": {
         "language": "python",
-        "pythonCode": "# Cifral pricing logic — SOURCE OF TRUTH: modules/pricing/pricing_engine.py\n# The region between the PRICING CORE markers below is kept byte-identical to that\n# file by scripts/check_pricing_sync.py. Do not edit it here; edit the .py and re-run\n# the generator. Tests live in modules/pricing/tests/test_pricing_engine.py.\n# === PRICING CORE START ===\ndef compute_pricing(\n    materials_cost,\n    hours_by_category,\n    rate_by_category,\n    margin_pct,\n    risk_pct,\n    discount_pct,\n    payment_terms,\n    currency=None,\n):\n    \"\"\"Compute a phase-1 parametric quote.\n\n    subtotal = materials_cost + sum(hours_by_category[c] * rate_by_category[c])\n    total    = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    Percentages are fractions (0.15 == 15%). Money is rounded to 2 decimals.\n    Raises ValueError on negative or out-of-range inputs (fail loud, never silently\n    produce a wrong quote).\n    \"\"\"\n    hours_by_category = hours_by_category or {}\n    rate_by_category = rate_by_category or {}\n\n    if not _is_number(materials_cost) or materials_cost < 0:\n        raise ValueError(\"materials_cost must be a number >= 0\")\n    if not _is_number(margin_pct) or margin_pct < 0:\n        raise ValueError(\"margin_pct must be a number >= 0\")\n    if not _is_number(risk_pct) or risk_pct < 0:\n        raise ValueError(\"risk_pct must be a number >= 0\")\n    if not _is_number(discount_pct) or discount_pct < 0 or discount_pct > 1:\n        raise ValueError(\"discount_pct must be a number between 0 and 1\")\n\n    labor = 0.0\n    for category, hours in hours_by_category.items():\n        if not _is_number(hours) or hours < 0:\n            raise ValueError(\"hours for '%s' must be a number >= 0\" % category)\n        if category not in rate_by_category:\n            raise ValueError(\"no rate configured for category '%s'\" % category)\n        rate = rate_by_category[category]\n        if not _is_number(rate) or rate < 0:\n            raise ValueError(\"rate for '%s' must be a number >= 0\" % category)\n        labor += hours * rate\n\n    subtotal = float(materials_cost) + labor\n    total = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    result = {\n        \"subtotal\": round(subtotal, 2),\n        \"margin_pct\": margin_pct,\n        \"risk_pct\": risk_pct,\n        \"discount_pct\": discount_pct,\n        \"total\": round(total, 2),\n        \"payment_terms\": payment_terms,\n    }\n    if currency:\n        result[\"currency\"] = currency\n    return result\n\n\ndef _is_number(x):\n    return isinstance(x, (int, float)) and not isinstance(x, bool)\n# === PRICING CORE END ===\n\n# --- n8n wrapper (not part of the synced core) ---\n# Reads the resolved envelope, prices it, and returns the shared output envelope.\nout = []\nfor _item in _input.all():\n    src = _item.json.to_py() if hasattr(_item.json, \"to_py\") else dict(_item.json)\n    data = src.get(\"data\") or {}\n    rc = src.get(\"rate_card\") or {}\n    result = compute_pricing(\n        materials_cost=data.get(\"materials_cost\", 0),\n        hours_by_category=data.get(\"hours_by_category\", {}),\n        rate_by_category=rc.get(\"rate_by_category\", {}),\n        margin_pct=rc.get(\"margin_pct\", 0),\n        risk_pct=rc.get(\"risk_pct\", 0),\n        discount_pct=rc.get(\"discount_pct\", 0),\n        payment_terms=rc.get(\"payment_terms\", \"\"),\n        currency=rc.get(\"currency\"),\n    )\n    out.append({\"json\": {\n        \"client_id\": src.get(\"client_id\"),\n        \"client_config\": src.get(\"client_config\"),\n        \"status\": \"ok\",\n        \"errors\": [],\n        \"data\": result,\n    }})\nreturn out\n"
+        "pythonCode": "# Cifral pricing logic — SOURCE OF TRUTH: modules/pricing/pricing_engine.py\n# The region between the PRICING CORE markers is the same formula as that file.\n# If you change the math, change it in both places. Tests/notes live in that module.\n# Pricing DATA (rates/margins) comes from the client's Google Sheet, not from here.\n# === PRICING CORE START ===\ndef compute_pricing(\n    materials_cost,\n    hours_by_category,\n    rate_by_category,\n    margin_pct,\n    risk_pct,\n    discount_pct,\n    payment_terms,\n    currency=None,\n):\n    \"\"\"Compute a phase-1 parametric quote.\n\n    subtotal = materials_cost + sum(hours_by_category[c] * rate_by_category[c])\n    total    = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    Percentages are fractions (0.15 == 15%). Money is rounded to 2 decimals.\n    Raises ValueError on negative or out-of-range inputs (fail loud, never silently\n    produce a wrong quote).\n    \"\"\"\n    hours_by_category = hours_by_category or {}\n    rate_by_category = rate_by_category or {}\n\n    if not _is_number(materials_cost) or materials_cost < 0:\n        raise ValueError(\"materials_cost must be a number >= 0\")\n    if not _is_number(margin_pct) or margin_pct < 0:\n        raise ValueError(\"margin_pct must be a number >= 0\")\n    if not _is_number(risk_pct) or risk_pct < 0:\n        raise ValueError(\"risk_pct must be a number >= 0\")\n    if not _is_number(discount_pct) or discount_pct < 0 or discount_pct > 1:\n        raise ValueError(\"discount_pct must be a number between 0 and 1\")\n\n    labor = 0.0\n    for category, hours in hours_by_category.items():\n        if not _is_number(hours) or hours < 0:\n            raise ValueError(\"hours for '%s' must be a number >= 0\" % category)\n        if category not in rate_by_category:\n            raise ValueError(\"no rate configured for category '%s'\" % category)\n        rate = rate_by_category[category]\n        if not _is_number(rate) or rate < 0:\n            raise ValueError(\"rate for '%s' must be a number >= 0\" % category)\n        labor += hours * rate\n\n    subtotal = float(materials_cost) + labor\n    total = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)\n\n    result = {\n        \"subtotal\": round(subtotal, 2),\n        \"margin_pct\": margin_pct,\n        \"risk_pct\": risk_pct,\n        \"discount_pct\": discount_pct,\n        \"total\": round(total, 2),\n        \"payment_terms\": payment_terms,\n    }\n    if currency:\n        result[\"currency\"] = currency\n    return result\n\n\ndef _is_number(x):\n    return isinstance(x, (int, float)) and not isinstance(x, bool)\n# === PRICING CORE END ===\n\n# --- n8n wrapper (not part of the shared core) ---\n# Reads the resolved envelope, prices only the labour categories present in hours_by_category\n# (the orchestrator has already filtered these to the request's scope_of_supply), and returns\n# the shared output envelope. priced_categories records what actually made it into the quote.\nout = []\nfor _item in _input.all():\n    src = _item.json.to_py() if hasattr(_item.json, \"to_py\") else dict(_item.json)\n    data = src.get(\"data\") or {}\n    rc = src.get(\"rate_card\") or {}\n    hours = data.get(\"hours_by_category\", {}) or {}\n    result = compute_pricing(\n        materials_cost=data.get(\"materials_cost\", 0),\n        hours_by_category=hours,\n        rate_by_category=rc.get(\"rate_by_category\", {}),\n        margin_pct=rc.get(\"margin_pct\", 0),\n        risk_pct=rc.get(\"risk_pct\", 0),\n        discount_pct=rc.get(\"discount_pct\", 0),\n        payment_terms=rc.get(\"payment_terms\", \"\"),\n        currency=rc.get(\"currency\"),\n    )\n    result[\"priced_categories\"] = list(hours.keys())\n    out.append({\"json\": {\n        \"client_id\": src.get(\"client_id\"),\n        \"client_config\": src.get(\"client_config\"),\n        \"status\": \"ok\",\n        \"errors\": [],\n        \"data\": result,\n    }})\nreturn out\n"
       }
     },
     {
@@ -55,39 +111,26 @@
       "name": "Note — Module 3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [
-        -280,
-        -260
-      ],
+      "position": [-380, -300],
       "parameters": {
-        "width": 720,
-        "height": 220,
-        "content": "## Module 3 — Pricing & commercial logic\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ materials_cost, hours_by_category } }`.\n\n**Compute Pricing** runs the tested Python pricing engine via Pyodide. The function body is kept byte-identical to `modules/pricing/pricing_engine.py` by `scripts/check_pricing_sync.py` (fixes legacy gap G5: business logic is tested + versioned, not untracked n8n expressions).\n\nFormula: `total = (materials_cost + Σ hours·rate) · (1+risk) · (1+margin) · (1-discount)`.\nNegative / out-of-range inputs raise — never a silent wrong quote."
+        "width": 900,
+        "height": 260,
+        "content": "## Module 3 — Pricing & commercial logic\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ materials_cost, hours_by_category } }`.\n\n**Read Pricing Sheet** loads the client's rate card at runtime from their **pricing Google Sheet** (`client_config.pricing_sheet_id`) — pricing data is no longer stored in the repo, it lives in each client's Drive folder. Sheet layout (`type | key | value`) is documented in `docs/PRICING-SHEET-TEMPLATE.md`. **Build Rate Card** turns the rows into the rate_card object (an inline `client_config.rate_card` overrides the sheet).\n\n**Compute Pricing** runs the tested Python formula from `modules/pricing/pricing_engine.py` via Pyodide. It prices only the categories in `hours_by_category` (already filtered to the request's scope by the orchestrator). Negative / out-of-range inputs raise — never a silent wrong quote.\n\n⚠️ After import: open **Read Pricing Sheet**, link the Google Sheets credential and confirm the tab selection (the demo reads the first tab, gid=0)."
       }
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": {
+    "Execute Workflow Trigger": { "main": [[{ "node": "Config Provided?", "type": "main", "index": 0 }]] },
+    "Config Provided?": {
       "main": [
-        [
-          {
-            "node": "Resolve Rate Card",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Resolve Config", "type": "main", "index": 0 }],
+        [{ "node": "Load Client Registry", "type": "main", "index": 0 }]
       ]
     },
-    "Resolve Rate Card": {
-      "main": [
-        [
-          {
-            "node": "Compute Pricing",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    }
+    "Load Client Registry": { "main": [[{ "node": "Map Client Config", "type": "main", "index": 0 }]] },
+    "Map Client Config": { "main": [[{ "node": "Resolve Config", "type": "main", "index": 0 }]] },
+    "Resolve Config": { "main": [[{ "node": "Read Pricing Sheet", "type": "main", "index": 0 }]] },
+    "Read Pricing Sheet": { "main": [[{ "node": "Build Rate Card", "type": "main", "index": 0 }]] },
+    "Build Rate Card": { "main": [[{ "node": "Compute Pricing", "type": "main", "index": 0 }]] }
   }
 }

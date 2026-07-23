@@ -27,7 +27,12 @@
         },
         "language": { "type": "string", "enum": ["es", "en"] },
         "template_id_used": { "type": "string" },
-        "notified_chat_id": { "type": "string" }
+        "notified_chat_id": { "type": "string" },
+        "sections_rendered": {
+          "type": "array",
+          "description": "Optional. Scope-item keys whose template blocks were kept in the final document (excluded blocks were deleted).",
+          "items": { "type": "string" }
+        }
       }
     }
   }

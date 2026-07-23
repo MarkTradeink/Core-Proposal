@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Full end-to-end pipeline orchestrator. Resolves the client config ONCE from the Notion registry, then composes Module 1 -> (Module 2 || Module 3) -> Module 4 via Execute Workflow nodes, passing client_config through so sub-workflows skip their own lookup. Branches to a Telegram review alert when Module 1 flags the RFQ incomplete (no proposal is assembled). NOTE: after first deploy, repoint each 'Call Module N' Execute Workflow node to the deployed sub-workflow id (deploy_workflows.py --relink does this by name)."
+    "description": "Orchestrator. Resolves client config ONCE from Notion, runs Module 1, then ROUTES on the request type (pricing_only | proposal_only | full_pipeline): a price-only request runs Module 3 and drafts a quote; a proposal-only request runs Modules 2+4 (no pricing); a full request runs Modules 2 ∥ 3 then Module 4. Effective route = the request's own request_type, falling back to the client's default service_tier. Incomplete RFQs branch to a Telegram review alert. NOTE: after import, repoint each 'Call Module N' Execute Workflow node to the deployed sub-workflow (by name) and link credentials."
   },
   "nodes": [
     {
@@ -13,15 +13,15 @@
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.3,
-      "position": [-640, -120],
-      "parameters": { "pollTimes": { "item": [{ "mode": "everyMinute" }] }, "simple": false, "filters": { "q": "subject:RFQ" }, "options": {} }
+      "position": [-900, 0],
+      "parameters": { "pollTimes": { "item": [{ "mode": "everyMinute" }] }, "simple": false, "filters": { "q": "subject:(RFQ OR presupuesto OR proposal OR quote OR estimate)" }, "options": {} }
     },
     {
       "id": "00000000-0000-4000-8000-000000000002",
       "name": "When chat message received",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
-      "position": [-640, 120],
+      "position": [-900, 220],
       "parameters": { "options": {} },
       "webhookId": "orch-chat-trigger-0001"
     },
@@ -30,7 +30,7 @@
       "name": "Build Envelope",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-400, 0],
+      "position": [-680, 100],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -42,7 +42,7 @@
       "name": "Load Client Registry",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
-      "position": [-160, 0],
+      "position": [-460, 100],
       "parameters": {
         "resource": "databasePage",
         "operation": "getAll",
@@ -56,11 +56,11 @@
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [80, 0],
+      "position": [-240, 100],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Resolve client_config ONCE from the registry. Passed through to every module so they\n// skip their own Notion lookup (resolve-once). Also checks the client is active.\nconst env = $('Build Envelope').first().json;\nconst wantId = env.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: prop(match,'Client Status'),\n  plan_tier: prop(match,'plan_tier'),\n  modules: {\n    data_collection: !!prop(match,'module_data_collection'),\n    content_generation: !!prop(match,'module_content_generation'),\n    pricing: !!prop(match,'module_pricing'),\n    proposal_assembly: !!prop(match,'module_proposal_assembly')\n  },\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: env.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Resolve client_config ONCE from the registry. Passed through to every module so they\n// skip their own Notion lookup (resolve-once). Also checks the client is active.\nconst env = $('Build Envelope').first().json;\nconst wantId = env.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: prop(match,'Client Status'),\n  service_tier: prop(match,'service_tier'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: env.data, status: 'ok', errors: [] } }];"
       }
     },
     {
@@ -68,7 +68,7 @@
       "name": "Call Module 1",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [320, 0],
+      "position": [-20, 100],
       "parameters": {
         "source": "database",
         "workflowId": { "__rl": true, "value": "REPOINT_01_data_collection_validation", "mode": "id", "cachedResultName": "01-data-collection-validation" },
@@ -80,7 +80,7 @@
       "name": "RFQ Complete?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [560, 0],
+      "position": [200, 100],
       "parameters": {
         "conditions": {
           "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
@@ -92,47 +92,90 @@
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000008",
-      "name": "Prep Module 2 Input",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [820, -160],
+      "id": "00000000-0000-4000-8000-000000000015",
+      "name": "RFQ Needs Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [420, 320],
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Module 2 receives the Module 1 output data + the resolved client_config (passthrough).\nreturn [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
+        "chatId": "={{ $json.client_config.notification_chat_id }}",
+        "text": "=⚠️ RFQ needs human review — required information is missing.\n\nClient: {{ $json.data.client.company || 'unknown' }}\nRequested: {{ $json.data.request_type }}\nMissing: {{ (($json.data.missing_fields)||[]).join(', ') }}\n\nNothing was produced. Fill the gaps and re-send.",
+        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000009",
+      "id": "00000000-0000-4000-8000-000000000020",
+      "name": "Resolve Route",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 60],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Decide what to produce. The request's own request_type wins; if the reseller didn't\n// specify ('unspecified'), fall back to the client's default service_tier from the registry.\nconst j = $json;\nconst rt = j.data && j.data.request_type;\nconst tier = (j.client_config && j.client_config.service_tier) || 'full_pipeline';\nlet route = (rt && rt !== 'unspecified') ? rt : tier;\nif (!['pricing_only', 'proposal_only', 'full_pipeline'].includes(route)) route = 'full_pipeline';\nreturn [{ json: { ...j, route } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000021",
+      "name": "Route by Request Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [640, 60],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "pricing_only", "operator": { "type": "string", "operation": "equals" } } ]
+              },
+              "renameOutput": true,
+              "outputKey": "pricing_only"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "proposal_only", "operator": { "type": "string", "operation": "equals" } } ]
+              },
+              "renameOutput": true,
+              "outputKey": "proposal_only"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "combinator": "and",
+                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "full_pipeline", "operator": { "type": "string", "operation": "equals" } } ]
+              },
+              "renameOutput": true,
+              "outputKey": "full_pipeline"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+
+    {
+      "id": "00000000-0000-4000-8000-000000000030",
       "name": "Prep Pricing Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [820, 60],
+      "position": [880, -260],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Manual pricing estimate. Phase 1 has NO automatic hours-estimation engine (explicit\n// non-goal): in production a human enters materials_cost + hours per category per RFQ.\n// The demo injects a representative estimate so the pipeline runs end-to-end.\nreturn [{ json: {\n  client_id: $json.client_id,\n  client_config: $json.client_config,\n  data: { materials_cost: 5000, hours_by_category: { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 } }\n} }];"
+        "jsCode": "// Manual pricing estimate (phase 1 has NO auto hours-estimation engine — explicit non-goal).\n// The representative estimate is FILTERED by the request's scope_of_supply: out-of-scope\n// categories are dropped so the quote only prices what we're actually supplying.\n// scope->cost-category mapping mirrors schemas/scope-catalog.json.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000010",
-      "name": "Call Module 2",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [1060, -160],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_02_technical_content_generation", "mode": "id", "cachedResultName": "02-technical-content-generation" },
-        "options": { "waitForSubWorkflow": true }
-      }
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000011",
+      "id": "00000000-0000-4000-8000-000000000031",
       "name": "Call Module 3",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1060, 60],
+      "position": [1100, -260],
       "parameters": {
         "source": "database",
         "workflowId": { "__rl": true, "value": "REPOINT_03_pricing_commercial_logic", "mode": "id", "cachedResultName": "03-pricing-commercial-logic" },
@@ -140,55 +183,180 @@
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000012",
-      "name": "Merge M2 + M3",
-      "type": "n8n-nodes-base.merge",
-      "typeVersion": 3,
-      "position": [1320, -50],
-      "parameters": { "mode": "append", "numberInputs": 2 }
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000013",
-      "name": "Build Module 4 Input",
+      "id": "00000000-0000-4000-8000-000000000032",
+      "name": "Build Quote Draft",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, -50],
+      "position": [1320, -260],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Compose the Module 4 (assembly) input from the three module outputs.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nconst m3 = $('Call Module 3').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
+        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\nconst cfg = j.client_config || {};\nconst p = j.data || {};\nconst recipient = cfg.commercial_contact_email;\nif (!recipient) throw new Error(`commercial_contact_email not set for '${j.client_id}'. Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\nconst subject = `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, subject, html, company, total: p.total, currency: cur } }];"
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000014",
+      "id": "00000000-0000-4000-8000-000000000033",
+      "name": "Create Quote Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [1540, -260],
+      "parameters": {
+        "resource": "draft",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": { "sendTo": "={{ $json.recipient }}" }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000034",
+      "name": "Quote Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1760, -260],
+      "parameters": {
+        "chatId": "={{ $('Build Quote Draft').item.json.notification_chat_id }}",
+        "text": "=💶 Price estimate ready\n\n📍 Customer: {{ $('Build Quote Draft').item.json.company }}\n💰 Total: {{ $('Build Quote Draft').item.json.total }} {{ $('Build Quote Draft').item.json.currency }}\n\nDraft in your commercial inbox for review (not sent to the customer).",
+        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+      }
+    },
+
+    {
+      "id": "00000000-0000-4000-8000-000000000040",
+      "name": "Prep Module 2 Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -20],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Module 2 receives the Module 1 output data (incl. scope_of_supply) + client_config (passthrough).\nreturn [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000041",
+      "name": "Call Module 2",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1100, -20],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "REPOINT_02_technical_content_generation", "mode": "id", "cachedResultName": "02-technical-content-generation" },
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000042",
+      "name": "Build Module 4 Input (proposal)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -20],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000043",
       "name": "Call Module 4",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1800, -50],
+      "position": [1540, -20],
       "parameters": {
         "source": "database",
         "workflowId": { "__rl": true, "value": "REPOINT_04_proposal_assembly", "mode": "id", "cachedResultName": "04-proposal-assembly" },
         "options": { "waitForSubWorkflow": true }
       }
     },
+
     {
-      "id": "00000000-0000-4000-8000-000000000015",
-      "name": "RFQ Needs Review",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [820, 240],
+      "id": "00000000-0000-4000-8000-000000000050",
+      "name": "Prep Module 2 Input (full)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 200],
       "parameters": {
-        "chatId": "={{ $json.client_config.notification_chat_id }}",
-        "text": "=⚠️ RFQ needs human review — required information is missing.\n\nClient: {{ $json.data.client.company || 'unknown' }}\nMissing: {{ (($json.data.missing_fields)||[]).join(', ') }}\n\nNo proposal was assembled. Fill the gaps and re-send.",
-        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000016",
+      "id": "00000000-0000-4000-8000-000000000051",
+      "name": "Call Module 2 (full)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1100, 200],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "REPOINT_02_technical_content_generation", "mode": "id", "cachedResultName": "02-technical-content-generation" },
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000052",
+      "name": "Prep Pricing Input (full)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, 420],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Same scope-filtered manual estimate as the pricing_only branch.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000053",
+      "name": "Call Module 3 (full)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1100, 420],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "REPOINT_03_pricing_commercial_logic", "mode": "id", "cachedResultName": "03-pricing-commercial-logic" },
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000054",
+      "name": "Merge M2 + M3",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 300],
+      "parameters": { "mode": "append", "numberInputs": 2 }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000055",
+      "name": "Build Module 4 Input (full)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 300],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000056",
+      "name": "Call Module 4 (full)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1780, 300],
+      "parameters": {
+        "source": "database",
+        "workflowId": { "__rl": true, "value": "REPOINT_04_proposal_assembly", "mode": "id", "cachedResultName": "04-proposal-assembly" },
+        "options": { "waitForSubWorkflow": true }
+      }
+    },
+
+    {
+      "id": "00000000-0000-4000-8000-000000000060",
       "name": "Pipeline Complete",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2040, -50],
+      "position": [2040, 60],
       "parameters": {}
     },
     {
@@ -196,11 +364,11 @@
       "name": "Note — Orchestrator",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-420, -320],
+      "position": [-700, -320],
       "parameters": {
-        "width": 1000,
-        "height": 240,
-        "content": "## 00 — End-to-end orchestrator (thin composer)\n**Load Client Registry → Map Client Config** resolves `client_config` ONCE and passes it through every module (resolve-once; sub-workflows skip their own Notion lookup).\n\n**Call Module 1 → RFQ Complete?** branches: if Module 1 flags the RFQ `incomplete`, it sends **RFQ Needs Review** (Telegram) and stops — no proposal is assembled (delivers the website's Module-1 promise). If complete, **Module 2 ∥ Module 3** run in parallel, merge, then **Module 4** assembles.\n\n⚠️ After first deploy, repoint each **Call Module N** node to the deployed sub-workflow id — `scripts/deploy_workflows.py --relink` maps them by name automatically.\n\nPricing inputs are entered manually (**Prep Pricing Input**) — phase 1 has no auto hours-estimation engine (explicit non-goal)."
+        "width": 1200,
+        "height": 260,
+        "content": "## 00 — Orchestrator (resolve-once + request routing)\n**Load Client Registry → Map Client Config** resolves `client_config` ONCE (resolve-once) — including `service_tier` and `pricing_sheet_id` — and passes it through every module.\n\n**Call Module 1 → RFQ Complete?**: if Module 1 flags the RFQ `incomplete`, **RFQ Needs Review** (Telegram) fires and it stops. Otherwise **Resolve Route** picks the effective route — the request's own `request_type`, falling back to the client's `service_tier` — and **Route by Request Type** (Switch) branches:\n- **pricing_only** → Module 3 → **Build Quote Draft** → Gmail draft + Telegram (a price estimate, no document).\n- **proposal_only** → Module 2 → Module 4 (document with NO pricing block).\n- **full_pipeline** → Module 2 ∥ Module 3 → merge → Module 4 (full document).\n\nPricing inputs are entered manually and **filtered by the request's scope of supply** (phase 1 has no auto hours-estimation engine). ⚠️ After import, repoint each **Call Module N** node to the deployed sub-workflow (by name) and link Gmail/Google/Anthropic/Telegram/Notion credentials."
       }
     }
   ],
@@ -213,21 +381,39 @@
     "Call Module 1": { "main": [[{ "node": "RFQ Complete?", "type": "main", "index": 0 }]] },
     "RFQ Complete?": {
       "main": [
+        [{ "node": "Resolve Route", "type": "main", "index": 0 }],
+        [{ "node": "RFQ Needs Review", "type": "main", "index": 0 }]
+      ]
+    },
+    "Resolve Route": { "main": [[{ "node": "Route by Request Type", "type": "main", "index": 0 }]] },
+    "Route by Request Type": {
+      "main": [
+        [{ "node": "Prep Pricing Input", "type": "main", "index": 0 }],
+        [{ "node": "Prep Module 2 Input", "type": "main", "index": 0 }],
         [
-          { "node": "Prep Module 2 Input", "type": "main", "index": 0 },
-          { "node": "Prep Pricing Input", "type": "main", "index": 0 }
-        ],
-        [
-          { "node": "RFQ Needs Review", "type": "main", "index": 0 }
+          { "node": "Prep Module 2 Input (full)", "type": "main", "index": 0 },
+          { "node": "Prep Pricing Input (full)", "type": "main", "index": 0 }
         ]
       ]
     },
-    "Prep Module 2 Input": { "main": [[{ "node": "Call Module 2", "type": "main", "index": 0 }]] },
+
     "Prep Pricing Input": { "main": [[{ "node": "Call Module 3", "type": "main", "index": 0 }]] },
-    "Call Module 2": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 0 }]] },
-    "Call Module 3": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 1 }]] },
-    "Merge M2 + M3": { "main": [[{ "node": "Build Module 4 Input", "type": "main", "index": 0 }]] },
-    "Build Module 4 Input": { "main": [[{ "node": "Call Module 4", "type": "main", "index": 0 }]] },
-    "Call Module 4": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] }
+    "Call Module 3": { "main": [[{ "node": "Build Quote Draft", "type": "main", "index": 0 }]] },
+    "Build Quote Draft": { "main": [[{ "node": "Create Quote Draft", "type": "main", "index": 0 }]] },
+    "Create Quote Draft": { "main": [[{ "node": "Quote Alert", "type": "main", "index": 0 }]] },
+    "Quote Alert": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] },
+
+    "Prep Module 2 Input": { "main": [[{ "node": "Call Module 2", "type": "main", "index": 0 }]] },
+    "Call Module 2": { "main": [[{ "node": "Build Module 4 Input (proposal)", "type": "main", "index": 0 }]] },
+    "Build Module 4 Input (proposal)": { "main": [[{ "node": "Call Module 4", "type": "main", "index": 0 }]] },
+    "Call Module 4": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] },
+
+    "Prep Module 2 Input (full)": { "main": [[{ "node": "Call Module 2 (full)", "type": "main", "index": 0 }]] },
+    "Call Module 2 (full)": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 0 }]] },
+    "Prep Pricing Input (full)": { "main": [[{ "node": "Call Module 3 (full)", "type": "main", "index": 0 }]] },
+    "Call Module 3 (full)": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 1 }]] },
+    "Merge M2 + M3": { "main": [[{ "node": "Build Module 4 Input (full)", "type": "main", "index": 0 }]] },
+    "Build Module 4 Input (full)": { "main": [[{ "node": "Call Module 4 (full)", "type": "main", "index": 0 }]] },
+    "Call Module 4 (full)": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] }
   }
 }

@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Module 4 — Proposal assembly (pure module). Entry: Execute Workflow Trigger receiving { client_id, client_config?, data:{ rfq, content, pricing } }. Fills the client's Google Docs template (selected by language), exports a PDF, creates a Gmail draft to the client's OWN commercial contact (never the extracted end customer), and sends a Telegram alert. Source of truth: repo workflows/04-proposal-assembly.json. Schema: schemas/proposal-assembly.schema.json."
+    "description": "Module 4 — Proposal assembly (pure module). Entry: Execute Workflow Trigger receiving { client_id, client_config?, data:{ rfq, content, pricing? } }. Fills the client's Google Docs MASTER template (selected by language), rendering only the sections that are IN SCOPE for this request (out-of-scope section tokens are replaced with empty string, so their block disappears). Exports a PDF, creates a Gmail draft to the client's OWN commercial contact (never the extracted end customer), and sends a Telegram alert. Template authoring: docs/TEMPLATE-GUIDE.md. Schema: schemas/proposal-assembly.schema.json."
   },
   "nodes": [
     {
@@ -27,12 +27,7 @@
           "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
           "combinator": "and",
           "conditions": [
-            {
-              "id": "cond-config-present",
-              "leftValue": "={{ !!$json.client_config }}",
-              "rightValue": "",
-              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
-            }
+            { "id": "cond-config-present", "leftValue": "={{ !!$json.client_config }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
           ]
         }
       }
@@ -46,12 +41,7 @@
       "parameters": {
         "resource": "databasePage",
         "operation": "getAll",
-        "databaseId": {
-          "__rl": true,
-          "value": "2d7fe158-febb-8189-8ca1-000b610efd7d",
-          "mode": "id",
-          "cachedResultName": "Projects (Client Registry)"
-        },
+        "databaseId": { "__rl": true, "value": "2d7fe158-febb-8189-8ca1-000b610efd7d", "mode": "id", "cachedResultName": "Projects (Client Registry)" },
         "returnAll": true,
         "options": {}
       }
@@ -65,7 +55,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: prop(match,'Client Status'),\n  plan_tier: prop(match,'plan_tier'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: prop(match,'Client Status'),\n  service_tier: prop(match,'service_tier'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
       }
     },
     {
@@ -77,7 +67,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Deterministic proposal assembly logic (replaces the legacy Set node).\n// Fixes:\n//  - B2 deterministic proposal number (no Math.random): PROP-YYYYMMDD-<hash of client+rfq>.\n//  - G2 template chosen by detected language with EN fallback (kills the dead 'language' field).\n//  - G1 draft recipient = client's own commercial contact, never the extracted end-customer email.\n//  - B1 requirements list reads 'quantity' (the key the extractor actually emits).\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst project = rfq.project || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst lang = (rfq.language === 'es' || rfq.language === 'en') ? rfq.language : 'en';\n\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\n\nconst templates = cfg.templates || {};\nconst template_id = templates[lang] || templates.en;\nif(!template_id) throw new Error(`No Google Docs template configured for client '${$json.client_id}' (language '${lang}', no EN fallback).`);\n\nconst recipient_email = cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`client_config.commercial_contact_email is not set for '${$json.client_id}'. Refusing to send the draft to the extracted end customer (legacy gap G1).`);\n\nconst requisitos_lista = reqs.map(r => '- ' + (r.item||'') + (r.quantity ? ' (x' + r.quantity + ')' : '') + (r.spec ? ': ' + r.spec : '')).join('\\n');\nconst content = data.content || {};\nconst pricing = data.pricing || null;\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: lang,\n  proposal_number,\n  fecha: $now.toFormat('dd/MM/yyyy'),\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  notification_chat_id: cfg.notification_chat_id,\n  doc_name: `Proposal ${proposal_number} - ${client.company || 'Client'}`,\n  fields: {\n    cliente_empresa: client.company || '',\n    cliente_contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' '),\n    cliente_email_end_customer: client.email || '',\n    proyecto_tipo: project.type || '',\n    proyecto_ubicacion: project.location || '',\n    proyecto_plazo: project.desired_deadline || '',\n    requisitos_lista,\n    alcance_tecnico: content.alcance_tecnico || '',\n    plan_implantacion: content.plan_implantacion || '',\n    resumen_comercial: content.resumen_comercial || ''\n  },\n  pricing\n} }];"
+        "jsCode": "// Deterministic, scope-aware proposal assembly (replaces the legacy Set node).\n// Fixes: B2 deterministic number; G2 template by language w/ EN fallback; G1 recipient = the\n// client's own commercial contact; B1 requirements read the 'quantity' key.\n// Phase 7: renders only IN-SCOPE sections. Each optional section is a single template token\n// ({{SECCION_*}}); out-of-scope -> '' so the block vanishes. A visible Scope-of-Supply block\n// ({{ALCANCE_SUMINISTRO}}) lets the reviewing reseller catch any wrong scope before sending.\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst project = rfq.project || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst scope = rfq.scope_of_supply || {};\nconst lang = (rfq.language === 'es' || rfq.language === 'en') ? rfq.language : 'en';\nconst content = data.content || {};\nconst pricing = data.pricing || null;\n\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\n\nconst templates = cfg.templates || {};\nconst template_id = templates[lang] || templates.en;\nif(!template_id) throw new Error(`No Google Docs template configured for client '${$json.client_id}' (language '${lang}', no EN fallback).`);\n\nconst recipient_email = cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`client_config.commercial_contact_email is not set for '${$json.client_id}'. Refusing to send the draft to the extracted end customer (legacy gap G1).`);\n\nconst requisitos_lista = reqs.map(r => '- ' + (r.item||'') + (r.quantity ? ' (x' + r.quantity + ')' : '') + (r.spec ? ': ' + r.spec : '')).join('\\n');\n\n// Scope-of-supply labels — source of truth: schemas/scope-catalog.json.\nconst LABELS = { materials:{en:'Materials & Equipment Supply',es:'Suministro de materiales y equipos'}, engineering:{en:'Engineering & Design',es:'Ingeniería y diseño'}, installation:{en:'Installation / Assembly',es:'Instalación / Montaje'}, commissioning:{en:'Commissioning & Start-up',es:'Puesta en marcha'}, project_management:{en:'Project Management',es:'Gestión de proyecto'}, spare_parts:{en:'Spare Parts',es:'Repuestos'}, shipping:{en:'Shipping & Logistics',es:'Transporte y logística'}, training:{en:'Training',es:'Formación'}, warranty:{en:'Warranty',es:'Garantía'} };\nconst order = ['materials','engineering','installation','commissioning','project_management','spare_parts','shipping','training','warranty'];\nconst lab = k => (LABELS[k] && LABELS[k][lang]) || k;\nconst incl = order.filter(k => scope[k] === true);\nconst excl = order.filter(k => scope[k] === false);\nconst inWord = lang==='es' ? 'Incluido' : 'Included';\nconst outWord = lang==='es' ? 'No incluido' : 'Not included';\nlet alcance_suministro = inWord + ':\\n' + incl.map(k=>'- '+lab(k)).join('\\n');\nif (excl.length) alcance_suministro += '\\n\\n' + outWord + ':\\n' + excl.map(k=>'- '+lab(k)).join('\\n');\n\nconst H = { plan_implantacion:{en:'Implementation Plan',es:'Plan de implantación'}, repuestos:{en:'Spare Parts',es:'Repuestos'}, transporte:{en:'Shipping & Logistics',es:'Transporte y logística'}, formacion:{en:'Training',es:'Formación'}, garantia:{en:'Warranty',es:'Garantía'} };\nfunction section(key){ const body=(content[key]||'').toString().trim(); if(!body) return ''; const h=(H[key]&&H[key][lang])||key; return h + '\\n' + body; }\n\nfunction economic(){ if(!pricing) return ''; const cur=pricing.currency||''; const title=lang==='es'?'Resumen económico':'Commercial Summary'; const termsLbl=lang==='es'?'Condiciones de pago':'Payment terms'; return title + '\\n' + 'Subtotal: ' + pricing.subtotal + ' ' + cur + '\\n' + 'Total: ' + pricing.total + ' ' + cur + '\\n' + termsLbl + ': ' + (pricing.payment_terms||''); }\n\nconst sectionKeys = ['plan_implantacion','repuestos','transporte','formacion','garantia'];\nconst sections_rendered = sectionKeys.filter(k => section(k) !== '');\nif (pricing) sections_rendered.push('economic');\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: lang,\n  proposal_number,\n  fecha: $now.toFormat('dd/MM/yyyy'),\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  notification_chat_id: cfg.notification_chat_id,\n  doc_name: `Proposal ${proposal_number} - ${client.company || 'Client'}`,\n  sections_rendered,\n  fields: {\n    cliente_empresa: client.company || '',\n    cliente_contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' '),\n    proyecto_tipo: project.type || '',\n    proyecto_ubicacion: project.location || '',\n    proyecto_plazo: project.desired_deadline || '',\n    requisitos_lista,\n    alcance_suministro,\n    alcance_tecnico: content.alcance_tecnico || '',\n    resumen_comercial: content.resumen_comercial || '',\n    seccion_plan_implantacion: section('plan_implantacion'),\n    seccion_repuestos: section('repuestos'),\n    seccion_transporte: section('transporte'),\n    seccion_formacion: section('formacion'),\n    seccion_garantia: section('garantia'),\n    seccion_economica: economic()\n  },\n  pricing\n} }];"
       }
     },
     {
@@ -113,7 +103,8 @@
             { "action": "replaceAll", "text": "{{PROYECTO_TIPO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}" },
             { "action": "replaceAll", "text": "{{PROYECTO_UBICACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_ubicacion }}" },
             { "action": "replaceAll", "text": "{{PROYECTO_PLAZO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_plazo }}" },
-            { "action": "replaceAll", "text": "{{REQUISITOS_LISTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.requisitos_lista }}" }
+            { "action": "replaceAll", "text": "{{REQUISITOS_LISTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.requisitos_lista }}" },
+            { "action": "replaceAll", "text": "{{ALCANCE_SUMINISTRO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.alcance_suministro }}" }
           ]
         }
       }
@@ -130,8 +121,13 @@
         "actionsUi": {
           "actionFields": [
             { "action": "replaceAll", "text": "{{ALCANCE_TECNICO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.alcance_tecnico }}" },
-            { "action": "replaceAll", "text": "{{PLAN_IMPLANTACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.plan_implantacion }}" },
-            { "action": "replaceAll", "text": "{{RESUMEN_COMERCIAL}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.resumen_comercial }}" }
+            { "action": "replaceAll", "text": "{{RESUMEN_COMERCIAL}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.resumen_comercial }}" },
+            { "action": "replaceAll", "text": "{{SECCION_PLAN_IMPLANTACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_plan_implantacion }}" },
+            { "action": "replaceAll", "text": "{{SECCION_REPUESTOS}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_repuestos }}" },
+            { "action": "replaceAll", "text": "{{SECCION_TRANSPORTE}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_transporte }}" },
+            { "action": "replaceAll", "text": "{{SECCION_FORMACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_formacion }}" },
+            { "action": "replaceAll", "text": "{{SECCION_GARANTIA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_garantia }}" },
+            { "action": "replaceAll", "text": "{{SECCION_ECONOMICA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_economica }}" }
           ]
         }
       }
@@ -189,7 +185,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst copied = $('Copy Template').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: copied.id,\n    pdf_file_name: `${copied.name}.pdf`,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id\n  }\n} }];"
+        "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst copied = $('Copy Template').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: copied.id,\n    pdf_file_name: `${copied.name}.pdf`,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id,\n    sections_rendered: cf.sections_rendered || []\n  }\n} }];"
       }
     },
     {
@@ -197,11 +193,11 @@
       "name": "Note — Module 4",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [620, -300],
+      "position": [620, -320],
       "parameters": {
-        "width": 900,
-        "height": 240,
-        "content": "## Module 4 — Proposal assembly (pure module)\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ rfq, content, pricing } }`.\n\n**Compute Proposal Fields** applies the deliberate fixes from the legacy demo:\n- **G1 recipient** → draft goes to `client_config.commercial_contact_email` (the reseller), **never** the extracted end-customer email. It throws rather than fall back to the customer.\n- **G2 language** → template chosen from `client_config.templates[language]` with EN fallback.\n- **B2 numbering** → deterministic `PROP-YYYYMMDD-<hash>` (no `Math.random`).\n- **B1 quantity** → requirements list reads the `quantity` key the extractor emits.\n\nBehaves identically whether called standalone or by the orchestrator (resolve-once passthrough)."
+        "width": 960,
+        "height": 260,
+        "content": "## Module 4 — Proposal assembly (pure, scope-aware)\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ rfq, content, pricing? } }`.\n\n**Compute Proposal Fields** applies the legacy fixes (G1 recipient, G2 language template, B2 deterministic number, B1 quantity) AND builds the scope-aware fields:\n- `{{ALCANCE_SUMINISTRO}}` — a visible Included / Not-included list so the reviewing reseller catches a wrong scope before the draft is sent.\n- `{{SECCION_*}}` tokens (plan_implantacion, repuestos, transporte, formacion, garantia) and `{{SECCION_ECONOMICA}}` — each rendered only if IN SCOPE, otherwise replaced with '' so the block disappears from the master template.\n\nTemplate authoring (master template with these tokens): **docs/TEMPLATE-GUIDE.md**. Pricing block appears only when `data.pricing` is present (proposal_only runs omit it)."
       }
     }
   ],
