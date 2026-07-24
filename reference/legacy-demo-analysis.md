@@ -62,7 +62,7 @@ client's approved documentation or past proposals. Output is plausible but ungro
 Proposal numbering and field mapping are n8n expressions inside a `Set` node — no tests, no version
 control, no review. This is exactly the logic that should move to tested, versioned code.
 - **Fix:** The business-critical pricing calculation is implemented as the versioned reference
-  formula (`modules/pricing/pricing_engine.py`) and run in workflow 03 via a Pyodide Code node.
+  formula (`modules/pricing/pricing_core.js`) and run in workflow 03's JavaScript Code node.
   Proposal numbering and field mapping move into small deterministic Code nodes inside their modules
   (versioned with the workflow JSON). (Phase 7 note: pricing *data* now comes from each client's
   Google Sheet, and the earlier `check_pricing_sync.py` guard was retired with the rest of `scripts/`.)

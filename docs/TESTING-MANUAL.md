@@ -133,7 +133,7 @@ rather than fall back to the customer.
 You can sanity-check the pricing math without n8n:
 
 ```bash
-python modules/pricing/pricing_engine.py
+node modules/pricing/pricing_core.js
 ```
 
 It prices a sample RFQ against an inline rate card and prints the subtotal/total — useful after any

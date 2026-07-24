@@ -5,8 +5,8 @@ Each client's rate card lives in a **Google Sheet in that client's Google Drive 
 their templates, generated proposals and reference docs. Module 3 reads it at runtime, so the
 sales/finance team can change prices without touching code or n8n.
 
-The repo keeps only the *formula* (`modules/pricing/pricing_engine.py`), which is versioned and
-tested. The sheet supplies the numbers the formula multiplies.
+The repo keeps only the *formula* (`modules/pricing/pricing_core.js`, mirrored in the Module 3
+"Compute Pricing" node), which is versioned. The sheet supplies the numbers the formula multiplies.
 
 ## Where it goes
 

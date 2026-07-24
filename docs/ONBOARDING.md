@@ -23,7 +23,7 @@ In the client's Google Drive folder, create a **Pricing Rules** sheet following
 rows for margin/risk/discount/terms/currency). Share it with the Google account n8n uses, then paste
 its id into `pricing_sheet_id`. **Do not invent rates** — get them signed off by the client.
 
-Sanity-check the math locally if you like: `python modules/pricing/pricing_engine.py`.
+Sanity-check the math locally if you like: `node modules/pricing/pricing_core.js`.
 
 ## 3. Build the master proposal template(s)
 

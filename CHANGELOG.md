@@ -4,6 +4,27 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 8 — Manual-test fixes + formatting polish (2026-07-24)
+Reconciled fixes found during manual testing of the live workflows, plus proposal formatting:
+- **Notion property prefix.** The n8n Notion node returns properties flattened as
+  `property_<snake_cased_name>`. The orchestrator's "Map Client Config" now reads those keys, and the
+  standalone fallbacks in Modules 1–4 tolerate both forms.
+- **Pricing node is JavaScript.** Replaced the Python/Pyodide "Compute Pricing" with plain JS (the
+  self-hosted n8n has no Python). `modules/pricing/pricing_engine.py` → `modules/pricing/pricing_core.js`
+  (same formula, `node …/pricing_core.js` to check). Module 3 reads the sheet tab named `Pricing`.
+- **Module 4 Copy Template** sets `sameFolder:false` so the generated doc lands in the proposals
+  folder, not next to the template.
+- **Module 2 empty-folder guard.** `Search Reference Docs` now has *Always Output Data* + a `Found
+  Docs?` IF, so an empty reference-docs folder skips extraction instead of stalling the flow.
+- **Scope extraction fixed.** Module 1's extractor now maps the reseller's Included/Excluded phrases
+  to catalog keys (installation supervision → installation, commissioning support → commissioning,
+  freight → shipping, fabrication/procurement → materials, …), so full-scope RFQs stop being
+  under-scoped and under-priced.
+- **Proposal formatting.** Module 2 emits plain text (no markdown) with `•` bullets and no self-made
+  headings; Module 4 gives optional sections an uppercase heading and renders the pricing block as a
+  self-contained "Economic Proposal" chapter. `docs/TEMPLATE-GUIDE.md` rewritten with a concrete,
+  professional template layout (and a note on the Docs-API upgrade for native bullets).
+
 ### Phase 7 — Service tiers, per-request scope, Sheets pricing, manual testing (2026-07-23)
 Reworked the demo after review, without changing the module boundaries:
 - **Three service tiers instead of four module checkboxes.** Notion registry: added `service_tier`

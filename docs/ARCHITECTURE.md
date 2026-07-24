@@ -114,10 +114,10 @@ is why there are **no per-client workflows**: client and request variation is ex
   subtotal = materials_cost + Σ hours_by_category[c] * rate_by_category[c]   # in-scope categories only
   total    = subtotal * (1 + risk_pct) * (1 + margin_pct) * (1 - discount_pct)
   ```
-- **Why Python:** pricing is the one place a wrong number costs real money. The formula lives in
-  `modules/pricing/pricing_engine.py` (readable, self-checkable via `python …/pricing_engine.py`),
-  and the workflow's Code node runs the same formula via Pyodide. A missing rate for an in-scope
-  category raises — never a silent wrong quote.
+- **Formula in code, data in Sheets:** the formula lives in `modules/pricing/pricing_core.js`
+  (readable, self-checkable via `node …/pricing_core.js`) and is mirrored in the Module 3 "Compute
+  Pricing" node — **plain JavaScript** (the self-hosted n8n runs JS natively; no Python/Pyodide). A
+  missing rate for an in-scope category raises — never a silent wrong quote.
 - Schema: `schemas/pricing.schema.json`.
 
 ### Module 4 — Proposal assembly (`04-proposal-assembly.json`)

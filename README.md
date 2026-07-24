@@ -65,7 +65,7 @@ Every module accepts and returns the same envelope; the module-specific payload 
 ```
 workflows/   the 4 module workflows + 00-orchestrator (n8n JSON, git-tracked source of truth)
 schemas/     JSON Schema for each module's I/O envelope + scope-catalog.json (scope-of-supply items)
-modules/pricing/   pricing_engine.py — the reference pricing formula (data lives in Google Sheets)
+modules/pricing/   pricing_core.js — the reference pricing formula (data lives in Google Sheets)
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
 docs/        ARCHITECTURE, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
              PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE, TESTING-MANUAL
@@ -92,7 +92,7 @@ pruning, incomplete-RFQ handling, recipient safety, pricing errors) and what to 
 For a quick offline sanity check of the pricing math only:
 
 ```bash
-python modules/pricing/pricing_engine.py   # prices a sample RFQ against an inline rate card
+node modules/pricing/pricing_core.js   # prices a sample RFQ against an inline rate card
 ```
 
 ## Deploying to n8n
