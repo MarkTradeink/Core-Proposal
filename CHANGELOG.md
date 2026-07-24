@@ -16,10 +16,13 @@ Reconciled fixes found during manual testing of the live workflows, plus proposa
   folder, not next to the template.
 - **Module 2 empty-folder guard.** `Search Reference Docs` now has *Always Output Data* + a `Found
   Docs?` IF, so an empty reference-docs folder skips extraction instead of stalling the flow.
-- **Scope extraction fixed.** Module 1's extractor now maps the reseller's Included/Excluded phrases
-  to catalog keys (installation supervision → installation, commissioning support → commissioning,
-  freight → shipping, fabrication/procurement → materials, …), so full-scope RFQs stop being
-  under-scoped and under-priced.
+- **Scope extraction fixed (root cause: string booleans).** The Information Extractor returns
+  `scope_of_supply` values as strings (`"true"`/`"false"`), so Module 1's strict `=== true` check was
+  discarding every value and falling back to defaults — collapsing installation/commissioning/PM/
+  shipping to `false` and under-pricing full-scope RFQs. The Validate node now coerces string
+  booleans and normalizes `language` (`"English"` → `en`). The extractor prompt also maps the
+  reseller's Included/Excluded phrases to catalog keys (installation supervision → installation,
+  commissioning support → commissioning, freight → shipping, fabrication/procurement → materials, …).
 - **Proposal formatting.** Module 2 emits plain text (no markdown) with `•` bullets and no self-made
   headings; Module 4 gives optional sections an uppercase heading and renders the pricing block as a
   self-contained "Economic Proposal" chapter. `docs/TEMPLATE-GUIDE.md` rewritten with a concrete,
