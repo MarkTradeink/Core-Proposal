@@ -122,9 +122,26 @@ Check:
 
 ## Scenario 10 — Recipient safety (the important one)
 
-In any proposal run, confirm the Gmail draft's **To:** is the `commercial_contact_email`, never the
-end customer's extracted email. If `commercial_contact_email` is blank, Module 4 must **throw**
-rather than fall back to the customer.
+In any proposal run, confirm the Gmail draft's **To:** is the original **sender** (`reply_to`), never
+the end customer's extracted email. If both the sender and `commercial_contact_email` are blank,
+Module 4 must **throw** rather than fall back to the customer.
+
+## Scenario 11 — Client identification by sender (multi-client)
+
+Add a second registry row (e.g. `acme_client`) with a different `commercial_contact_email`, its own
+`service_tier`, template, pricing sheet and `notification_chat_id`.
+
+- [ ] **Email from demo_client's address** → matched to `demo_client`; its template/sheet/chat used.
+- [ ] **Email from acme_client's address** → matched to `acme_client`; ITS template/sheet/chat used.
+- [ ] Draft **To:** is the sender in each case.
+- [ ] Chat trigger (no sender) still falls back to `demo_client`.
+
+## Scenario 12 — Unknown sender & inactive client (gating)
+
+- [ ] **Email from an unregistered address** → no proposal; admin Telegram "unrecognized sender".
+- [ ] Set the client's `Client Status` to `paused` (or `churned`) and email from their address →
+      no proposal; admin Telegram "client is paused/churned".
+- [ ] Set it back to `trial` → processed again; success Telegram shows `(trial)`.
 
 ---
 

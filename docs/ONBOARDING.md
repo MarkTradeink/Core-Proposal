@@ -8,11 +8,13 @@ changes** for a standard client.
 In the client registry ("Projects" DB — see `CLIENT-REGISTRY-SCHEMA.md`), add a row:
 
 - `Client Name`, `client_id` (a unique slug, lowercase, e.g. `acme_intralogistics`).
-- `Client Status` = `trial` (or `active`).
+- `Client Status` = `trial` (or `active`). `paused`/`churned` clients are rejected (no output);
+  `active` and `trial` are both processed.
 - `service_tier` = `pricing_only` / `proposal_only` / `full_pipeline` — their **default** deliverable
   (any individual request can still override it).
-- `commercial_contact_email` = **the reseller/commercial contact who forwards RFQs** (this is the
-  draft recipient — never the end customer).
+- `commercial_contact_email` = **the address the client emails you from.** The system matches the
+  incoming email's sender against this to identify the client, and replies (drafts the quote/proposal)
+  back to that sender — never the extracted end customer. Must be the real address they send from.
 - `notification_chat_id` = their Telegram chat id for alerts.
 - Leave template / folder / sheet ids for the steps below.
 

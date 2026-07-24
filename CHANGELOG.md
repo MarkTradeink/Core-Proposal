@@ -4,6 +4,19 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 9 — Multi-client identification, reply-to-sender, status gating (2026-07-24)
+The orchestrator now supports more than one client and stops hardcoding `demo_client`:
+- **Identify by sender email.** Build Envelope reads the Gmail sender; Map Client Config matches it to
+  the registry row via `commercial_contact_email` and sets `client_id` from that row. The chat trigger
+  (no sender) falls back to `demo_client` for testing.
+- **Reply to the original sender.** `client_config.reply_to` = the actual sender; Module 4's draft and
+  the pricing-only quote are addressed there (fallback: `commercial_contact_email`), never the
+  extracted end customer.
+- **Status gating.** A new `Client OK?` gate rejects unknown senders and `paused`/`churned` clients
+  with an admin Telegram alert (`Client Rejected`); `active`/`trial` proceed, and the status is shown
+  in the success alerts. Onboarding a trial client is now just a registry row (their sender email in
+  `commercial_contact_email`, `Client Status` = `trial`, tier + folder/sheet ids).
+
 ### Phase 8 — Manual-test fixes + formatting polish (2026-07-24)
 Reconciled fixes found during manual testing of the live workflows, plus proposal formatting:
 - **Notion property prefix.** The n8n Notion node returns properties flattened as

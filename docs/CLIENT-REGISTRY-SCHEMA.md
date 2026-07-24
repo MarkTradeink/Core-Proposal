@@ -40,9 +40,9 @@ Registry-specific properties the workflows read:
 |----------|-------------|---------|
 | `Client Name` | Title | Human-readable client name. |
 | `client_id` | Rich text | Unique slug used as the lookup key, e.g. `demo_client`. |
-| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Lifecycle state. |
+| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Gates processing: `active`/`trial` are processed; `paused`/`churned` are rejected with an admin alert. |
 | `service_tier` | Select: `pricing_only` / `proposal_only` / `full_pipeline` | Default deliverable for this client. |
-| `commercial_contact_email` | Email | **Draft recipient** — the reseller/commercial contact, never the end customer. |
+| `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. |
 | `template_id_en` | Rich text | Google Docs master template id for English proposals. |
 | `template_id_es` | Rich text | Google Docs master template id for Spanish proposals (may be empty → EN fallback). |
 | `proposals_folder_id` | Rich text | Google Drive folder to drop generated proposals into. |
@@ -59,6 +59,22 @@ place but are **not read by any workflow**.
 > in the client's **pricing Google Sheet** (`pricing_sheet_id`). Which sections appear in a proposal
 > is decided **per request** by its scope of supply (extracted by Module 1 against
 > `schemas/scope-catalog.json`), not per client — so there is no per-client section column.
+
+## Client identification & status gating
+
+The orchestrator no longer hardcodes `demo_client`. For an **email** trigger it reads the sender's
+address and the "Map Client Config" node finds the registry row whose `commercial_contact_email`
+matches it (case-insensitive) — that's the `client_id`. For the **chat** trigger (no sender) it falls
+back to `demo_client` for local testing.
+
+- **Unknown sender** (no row matches) → rejected; an admin Telegram alert fires, nothing is produced.
+- **`paused` / `churned`** → rejected the same way (client inactive).
+- **`active` / `trial`** → processed. The status is shown in the success Telegram alerts so trials are
+  visible; both are treated the same functionally today (extend here if trials should be limited).
+
+The reply address (`reply_to`) is the **actual sender**, so the draft/quote goes back to whoever
+emailed the RFQ. To onboard a trial client you only need a registry row with their sender email in
+`commercial_contact_email`, `Client Status` = `trial`, and their `service_tier` + folder/sheet ids.
 
 ## Property → `client_config` mapping
 
