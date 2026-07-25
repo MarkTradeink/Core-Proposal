@@ -4,6 +4,18 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 9.1 — Extractor truncation + wider boolean coercion (2026-07-25)
+Manual test with a real, detailed RFQ (12 technical requirements + full Included/Excluded scope
+list) failed at the Information Extractor with `OUTPUT_PARSING_FAILURE` (`` ```json {...` `` not
+valid JSON):
+- **Root cause: token cap too low.** Module 1's Anthropic Chat Model had `maxTokensToSample: 800`,
+  enough for the small demo fixture but not a real multi-item RFQ; the model's JSON got cut off
+  mid-object (`"engineering": "yes"` then nothing), which is unparseable. Raised to `4000`.
+- **Wider boolean coercion.** The same failed generation showed the model drifting to `"yes"`
+  instead of `"true"` for scope values. `toBool()` in the Validate node now also accepts
+  `yes/no`, `included/excluded`, `y/n`, `1/0` (case-insensitive), not just `true/false`, so scope
+  extraction survives normal LLM wording variance instead of only the exact literal expected.
+
 ### Phase 9 — Multi-client identification, reply-to-sender, status gating (2026-07-24)
 The orchestrator now supports more than one client and stops hardcoding `demo_client`:
 - **Identify by sender email.** Build Envelope reads the Gmail sender; Map Client Config matches it to
