@@ -33,12 +33,20 @@ Sanity-check the math locally if you like: `node modules/pricing/pricing_core.js
 
 ## 3. Build the master proposal template(s)
 
-Create the client's proposal template as a **Google Doc** containing the placeholder tokens from
-`docs/TEMPLATE-GUIDE.md` — the always-filled tokens (`{{CLIENTE_EMPRESA}}`, `{{ALCANCE_TECNICO}}`,
-`{{ALCANCE_SUMINISTRO}}`, …) and the scope-gated section tokens (`{{SECCION_REPUESTOS}}`,
-`{{SECCION_GARANTIA}}`, `{{SECCION_ECONOMICA}}`, …). It is a **superset**: include every section the
-client might offer; each request prunes the ones out of scope. Record the Doc id as `template_id_en`
-(and `template_id_es` for a Spanish variant). Set `proposals_folder_id` to the output folder.
+Build the client's proposal template in **Word** and save it as a **`.docx`** — ideally starting
+from a proposal they already send, so their own styles, headers, footers and logo carry over
+untouched. Replace the variable parts with the tags from `docs/TEMPLATE-GUIDE.md`: value tags
+(`{cliente.empresa}`, `{numero_propuesta}`, …), loops for lists and tables, and `{#has_*}` blocks
+around each optional chapter.
+
+It is a **superset**: include every chapter the client might offer; each request drops the ones out
+of scope, heading and all. Upload it to the client's Drive folder and record the file id as
+`template_id_en` (and `template_id_es` for a Spanish variant). Set `proposals_folder_id` to the
+output folder.
+
+Read the "one rule that decides whether lists work" section of the template guide before you start —
+loop tags written inline instead of on their own lines silently collapse every list into one
+paragraph, and it looks like a data bug rather than a template one.
 
 ## 4. (Optional) Reference docs for grounding
 
@@ -60,7 +68,7 @@ minimum:
 - [ ] Registry row: `client_id`, status, `service_tier`, `send_mode`.
 - [ ] `commercial_contact_email` set to the reseller, not the end customer.
 - [ ] Pricing Google Sheet created, shared, `pricing_sheet_id` recorded.
-- [ ] Master Google Docs template(s) with tokens; `template_id_en`/`_es` recorded.
+- [ ] Master `.docx` template(s) with docxtemplater tags; `template_id_en`/`_es` recorded.
 - [ ] `proposals_folder_id` and `notification_chat_id` recorded.
 - [ ] (Optional) reference-docs folder; `reference_docs_folder_id` recorded.
 - [ ] Manual test scenarios pass; the reply goes to the right recipient, from the right alias, in

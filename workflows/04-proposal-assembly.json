@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Module 4 — Proposal assembly (pure module). Entry: Execute Workflow Trigger receiving { client_id, client_config?, email_context?, data:{ rfq, content, pricing? } }. Fills the client's Google Docs MASTER template (selected by language), rendering only the sections that are IN SCOPE for this request (out-of-scope section tokens are replaced with empty string, so their block disappears). Exports a PDF, then REPLIES IN-THREAD to the client's OWN commercial contact (never the extracted end customer) from the client's verified send-as alias, and sends a Telegram alert. Delivery is create-draft -> drafts.send because the Gmail node's Send operation would overwrite From with the authenticated address; client_config.send_mode='draft' stops at the draft. Without email_context (standalone runs) it degrades to a new mail with a synthetic subject. Template authoring: docs/TEMPLATE-GUIDE.md. Schema: schemas/proposal-assembly.schema.json."
+    "description": "Module 4 — Proposal assembly (pure module). Entry: Execute Workflow Trigger receiving { client_id, client_config?, email_context?, data:{ rfq, content, pricing? } }. Renders the client's .docx MASTER template (selected by language) with docxtemplater: real Word headings, native bullet lists and a price table, with out-of-scope chapters dropped whole via {#has_*} blocks. Converts to PDF through Gotenberg, files the .docx in the client's Drive folder, then REPLIES IN-THREAD to the client's OWN commercial contact (never the extracted end customer) from the client's verified send-as alias, attaching both files, and sends a Telegram alert. Delivery is create-draft -> drafts.send because the Gmail node's Send operation would overwrite From with the authenticated address; client_config.send_mode='draft' stops at the draft. Template authoring: docs/TEMPLATE-GUIDE.md. Schema: schemas/proposal-assembly.schema.json."
   },
   "nodes": [
     {
@@ -13,21 +13,42 @@
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [-260, 0],
-      "parameters": { "inputSource": "passthrough" }
+      "position": [
+        -260,
+        0
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
     },
     {
       "id": "d4000000-0000-4000-8000-000000000002",
       "name": "Config Provided?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [-40, 0],
+      "position": [
+        -40,
+        0
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
           "combinator": "and",
           "conditions": [
-            { "id": "cond-config-present", "leftValue": "={{ !!$json.client_config }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+            {
+              "id": "cond-config-present",
+              "leftValue": "={{ !!$json.client_config }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
           ]
         }
       }
@@ -37,11 +58,19 @@
       "name": "Load Client Registry",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
-      "position": [180, 180],
+      "position": [
+        180,
+        200
+      ],
       "parameters": {
         "resource": "databasePage",
         "operation": "getAll",
-        "databaseId": { "__rl": true, "value": "2d7fe158-febb-8189-8ca1-000b610efd7d", "mode": "id", "cachedResultName": "Projects (Client Registry)" },
+        "databaseId": {
+          "__rl": true,
+          "value": "2d7fe158-febb-8189-8ca1-000b610efd7d",
+          "mode": "id",
+          "cachedResultName": "Projects (Client Registry)"
+        },
         "returnAll": true,
         "options": {}
       }
@@ -51,7 +80,10 @@
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [400, 180],
+      "position": [
+        400,
+        200
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -63,108 +95,179 @@
       "name": "Compute Proposal Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [640, 0],
+      "position": [
+        640,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Deterministic, scope-aware proposal assembly (replaces the legacy Set node).\n// Fixes: B2 deterministic number; G2 template by language w/ EN fallback; G1 recipient = the\n// client's own commercial contact; B1 requirements read the 'quantity' key.\n// Phase 7: renders only IN-SCOPE sections. Each optional section is a single template token\n// ({{SECCION_*}}); out-of-scope -> '' so the block vanishes. A visible Scope-of-Supply block\n// ({{ALCANCE_SUMINISTRO}}) lets the reviewing reseller catch any wrong scope before sending.\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst project = rfq.project || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst scope = rfq.scope_of_supply || {};\nconst lang = (rfq.language === 'es' || rfq.language === 'en') ? rfq.language : 'en';\nconst content = data.content || {};\nconst pricing = data.pricing || null;\n\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\n\nconst templates = cfg.templates || {};\nconst template_id = templates[lang] || templates.en;\nif(!template_id) throw new Error(`No Google Docs template configured for client '${$json.client_id}' (language '${lang}', no EN fallback).`);\n\nconst recipient_email = cfg.reply_to || cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`No reply address for '${$json.client_id}' (sender email + commercial_contact_email both empty). Refusing to send to the extracted end customer (legacy gap G1) — this mail is DELIVERED, not parked as a draft.`);\n\n// Outbound identity. The Gmail node's Send operation rebuilds From from the authenticated\n// mailbox, so the alias only survives the create-draft -> drafts.send pair.\nconst from_alias = cfg.from_alias || '';\nif(!from_alias) throw new Error(`No from_alias resolved for '${$json.client_id}'. Refusing to send from the raw mailbox address.`);\nconst send_mode = String(cfg.send_mode || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send';\n\n// Reply inside the reseller's original RFQ thread. Gmail threads on threadId AND a matching\n// subject, so the synthetic subject is only a fallback for runs with no thread (chat trigger,\n// standalone module calls). '' rather than null: the Gmail node treats it as falsy and omits\n// the field, whereas null would be serialised into the API call.\nconst ec = $json.email_context || {};\nconst thread_id = ec.thread_id || '';\nconst email_subject = ec.reply_subject || `Proposal ${proposal_number} — ${client.company || 'Client'}`;\n\nconst requisitos_lista = reqs.map(r => '\\u2022  ' + (r.item||'') + (r.quantity ? ' (x' + r.quantity + ')' : '') + (r.spec ? ': ' + r.spec : '')).join('\\n');\n\n// Scope-of-supply labels — source of truth: schemas/scope-catalog.json.\nconst LABELS = { materials:{en:'Materials & Equipment Supply',es:'Suministro de materiales y equipos'}, engineering:{en:'Engineering & Design',es:'Ingeniería y diseño'}, installation:{en:'Installation / Assembly',es:'Instalación / Montaje'}, commissioning:{en:'Commissioning & Start-up',es:'Puesta en marcha'}, project_management:{en:'Project Management',es:'Gestión de proyecto'}, spare_parts:{en:'Spare Parts',es:'Repuestos'}, shipping:{en:'Shipping & Logistics',es:'Transporte y logística'}, training:{en:'Training',es:'Formación'}, warranty:{en:'Warranty',es:'Garantía'} };\nconst order = ['materials','engineering','installation','commissioning','project_management','spare_parts','shipping','training','warranty'];\nconst lab = k => (LABELS[k] && LABELS[k][lang]) || k;\nconst incl = order.filter(k => scope[k] === true);\nconst excl = order.filter(k => scope[k] === false);\nconst inWord = lang==='es' ? 'Incluido' : 'Included';\nconst outWord = lang==='es' ? 'No incluido' : 'Not included';\nlet alcance_suministro = inWord + ':\\n' + incl.map(k=>'\\u2022  '+lab(k)).join('\\n');\nif (excl.length) alcance_suministro += '\\n\\n' + outWord + ':\\n' + excl.map(k=>'\\u2022  '+lab(k)).join('\\n');\n\nconst H = { plan_implantacion:{en:'Implementation Plan',es:'Plan de implantación'}, repuestos:{en:'Spare Parts',es:'Repuestos'}, transporte:{en:'Shipping & Logistics',es:'Transporte y logística'}, formacion:{en:'Training',es:'Formación'}, garantia:{en:'Warranty',es:'Garantía'} };\n// Optional sections are self-contained (uppercase heading + blank line + body) so they read as\n// real chapters and vanish cleanly when out of scope. See docs/TEMPLATE-GUIDE.md.\nfunction section(key){ const body=(content[key]||'').toString().trim(); if(!body) return ''; const h=((H[key]&&H[key][lang])||key).toUpperCase(); return h + '\\n\\n' + body; }\n\nfunction economic(){ if(!pricing) return ''; const cur=pricing.currency||''; const title=(lang==='es'?'Oferta económica':'Economic Proposal').toUpperCase(); const subLbl=lang==='es'?'Subtotal':'Subtotal'; const totLbl=lang==='es'?'Total':'Total'; const termsLbl=lang==='es'?'Condiciones de pago':'Payment terms'; return title + '\\n\\n' + '\\u2022  ' + subLbl + ': ' + pricing.subtotal + ' ' + cur + '\\n' + '\\u2022  ' + totLbl + ': ' + pricing.total + ' ' + cur + '\\n' + '\\u2022  ' + termsLbl + ': ' + (pricing.payment_terms||''); }\n\nconst sectionKeys = ['plan_implantacion','repuestos','transporte','formacion','garantia'];\nconst sections_rendered = sectionKeys.filter(k => section(k) !== '');\nif (pricing) sections_rendered.push('economic');\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: lang,\n  proposal_number,\n  fecha: $now.toFormat('dd/MM/yyyy'),\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  from_alias,\n  send_mode,\n  thread_id,\n  email_subject,\n  notification_chat_id: cfg.notification_chat_id,\n  client_status: cfg.status || '',\n  doc_name: `Proposal ${proposal_number} - ${client.company || 'Client'}`,\n  sections_rendered,\n  fields: {\n    cliente_empresa: client.company || '',\n    cliente_contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' '),\n    proyecto_tipo: project.type || '',\n    proyecto_ubicacion: project.location || '',\n    proyecto_plazo: project.desired_deadline || '',\n    requisitos_lista,\n    alcance_suministro,\n    alcance_tecnico: content.alcance_tecnico || '',\n    resumen_comercial: content.resumen_comercial || '',\n    seccion_plan_implantacion: section('plan_implantacion'),\n    seccion_repuestos: section('repuestos'),\n    seccion_transporte: section('transporte'),\n    seccion_formacion: section('formacion'),\n    seccion_garantia: section('garantia'),\n    seccion_economica: economic()\n  },\n  pricing\n} }];"
+        "jsCode": "// Deterministic, scope-aware proposal assembly.\n// Legacy fixes kept: B2 deterministic number; G2 template by language w/ EN fallback; G1 recipient\n// = the client's own commercial contact; B1 requirements read the 'quantity' key.\n//\n// Phase 10 (delivery): resolves the send-as alias, the send mode and the RFQ thread to reply into.\n// Phase 11 (document): emits a STRUCTURED render context for docxtemplater instead of\n// pre-formatted text. Real headings, native bullets and a price table are structure, and structure\n// cannot travel through a text placeholder — which is why the Google Docs find-and-replace\n// pipeline was replaced. Template authoring: docs/TEMPLATE-GUIDE.md.\n//\n// SOURCE OF TRUTH mirrored in modules/proposal/render_context.js — change both, and check with\n// `node modules/proposal/render_context.js`.\n// === PROPOSAL RENDER CORE START ===\n\n// Scope-of-supply labels — source of truth: schemas/scope-catalog.json.\nconst SCOPE_LABELS = {\n  materials: { en: 'Materials & Equipment Supply', es: 'Suministro de materiales y equipos' },\n  engineering: { en: 'Engineering & Design', es: 'Ingeniería y diseño' },\n  installation: { en: 'Installation / Assembly', es: 'Instalación / Montaje' },\n  commissioning: { en: 'Commissioning & Start-up', es: 'Puesta en marcha' },\n  project_management: { en: 'Project Management', es: 'Gestión de proyecto' },\n  spare_parts: { en: 'Spare Parts', es: 'Repuestos' },\n  shipping: { en: 'Shipping & Logistics', es: 'Transporte y logística' },\n  training: { en: 'Training', es: 'Formación' },\n  warranty: { en: 'Warranty', es: 'Garantía' },\n};\nconst SCOPE_ORDER = Object.keys(SCOPE_LABELS);\n\n// Pricing line labels. These are COST categories (Module 3 / the client's rate card), which are\n// not quite scope keys — the rate card calls on-site labour 'assembly' where the scope calls it\n// 'installation'.\nconst COST_CATEGORY_LABELS = {\n  materials: { en: 'Materials & Equipment', es: 'Materiales y equipos' },\n  engineering: { en: 'Engineering & Design', es: 'Ingeniería y diseño' },\n  assembly: { en: 'Installation / Assembly', es: 'Instalación / Montaje' },\n  commissioning: { en: 'Commissioning & Start-up', es: 'Puesta en marcha' },\n  project_management: { en: 'Project Management', es: 'Gestión de proyecto' },\n  training: { en: 'Training', es: 'Formación' },\n};\n\n// Narrative sections produced by Module 2, in document order.\nconst NARRATIVE_SECTIONS = [\n  'alcance_tecnico',\n  'resumen_comercial',\n  'plan_implantacion',\n  'repuestos',\n  'transporte',\n  'formacion',\n  'garantia',\n];\n\nconst BULLET_RE = /^[•‣◦⁃∙*\\-–—]\\s+/;\n\nfunction pickLanguage(value) {\n  return value === 'es' ? 'es' : 'en';\n}\n\nfunction labelFor(map, key, lang) {\n  const entry = map[key];\n  return (entry && entry[lang]) || key;\n}\n\n/**\n * Turn one of Module 2's plain-text sections into paragraphs and bullet lines.\n *\n * Module 2's system prompt pins the format: no markdown, paragraphs separated by a blank line,\n * list items as '•  item'. We parse that rather than asking the LLM for structured JSON —\n * it keeps the contract between modules unchanged, costs nothing, and can't drift at runtime.\n * The markdown stripping and the extra bullet characters are tolerance for LLM drift, not part\n * of the contract.\n *\n * Paragraphs and bullets are returned as two separate lists. Every section in the prompt is\n * either all paragraphs, all bullets, or an intro paragraph followed by bullets, so ordering\n * survives. If a model ever interleaves them, nothing is lost — the bullets simply group after\n * the paragraphs.\n */\nfunction parseNarrative(raw) {\n  const text = (raw == null ? '' : String(raw)).replace(/\\r\\n/g, '\\n').trim();\n  const parrafos = [];\n  const bullets = [];\n\n  for (const block of text.split(/\\n\\s*\\n/)) {\n    let buffer = [];\n    const flush = () => {\n      if (buffer.length) parrafos.push({ texto: buffer.join(' ') });\n      buffer = [];\n    };\n    for (const rawLine of block.split('\\n')) {\n      const line = cleanInline(rawLine);\n      if (!line) continue;\n      if (BULLET_RE.test(line)) {\n        flush();\n        const item = line.replace(BULLET_RE, '').trim();\n        if (item) bullets.push({ texto: item });\n      } else {\n        buffer.push(line);\n      }\n    }\n    flush();\n  }\n\n  return {\n    parrafos,\n    bullets,\n    has_parrafos: parrafos.length > 0,\n    has_bullets: bullets.length > 0,\n  };\n}\n\n// Module 2 is told to emit plain text. Strip markdown emphasis / heading marks anyway so a drifting\n// model can never put a literal '**' or '#' in front of a customer.\nfunction cleanInline(line) {\n  return String(line)\n    .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n    .replace(/__(.+?)__/g, '$1')\n    .replace(/`([^`]+)`/g, '$1')\n    .replace(/^#{1,6}\\s+/, '')\n    .trim();\n}\n\nfunction formatMoney(value, currency, lang) {\n  const n = Number(value);\n  if (value == null || !Number.isFinite(n)) return '';\n  const locale = lang === 'es' ? 'es-ES' : 'en-US';\n  if (currency) {\n    try {\n      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(n);\n    } catch (e) {\n      // Unknown/invalid ISO code — fall through to a plain number plus the raw code.\n    }\n  }\n  const plain = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);\n  return currency ? `${plain} ${currency}` : plain;\n}\n\nfunction formatNumber(value, lang) {\n  const n = Number(value);\n  if (value == null || !Number.isFinite(n)) return '';\n  return new Intl.NumberFormat(lang === 'es' ? 'es-ES' : 'en-US', { maximumFractionDigits: 2 }).format(n);\n}\n\nfunction textOf(value) {\n  return value == null ? '' : String(value).trim();\n}\n\n/**\n * Build the docxtemplater render context for one proposal.\n *\n * Every key is always present (see the nullGetter note at the top of this file), so a template\n * that references a section which is out of scope renders nothing rather than \"undefined\".\n */\nfunction buildRenderContext({ rfq, content, pricing, proposalNumber, fecha }) {\n  rfq = rfq || {};\n  content = content || {};\n\n  const lang = pickLanguage(rfq.language);\n  const client = rfq.client || {};\n  const project = rfq.project || {};\n  const scope = rfq.scope_of_supply || {};\n  const reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\n\n  // B1: the extractor's key is 'quantity'; the legacy demo read 'qty' and silently dropped it.\n  const requisitos = reqs.map((r) => ({\n    item: textOf(r && r.item),\n    cantidad: r && r.quantity != null ? formatNumber(r.quantity, lang) : '',\n    spec: textOf(r && r.spec),\n  }));\n\n  const incluido = SCOPE_ORDER.filter((k) => scope[k] === true).map((k) => ({ etiqueta: labelFor(SCOPE_LABELS, k, lang) }));\n  const excluido = SCOPE_ORDER.filter((k) => scope[k] === false).map((k) => ({ etiqueta: labelFor(SCOPE_LABELS, k, lang) }));\n\n  const context = {\n    numero_propuesta: textOf(proposalNumber),\n    fecha: textOf(fecha),\n    idioma: lang,\n\n    cliente: {\n      empresa: textOf(client.company),\n      contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' ').trim(),\n      email: textOf(client.email),\n      telefono: textOf(client.phone),\n    },\n    proyecto: {\n      tipo: textOf(project.type),\n      ubicacion: textOf(project.location),\n      plazo: textOf(project.desired_deadline),\n    },\n\n    requisitos,\n    has_requisitos: requisitos.length > 0,\n\n    alcance_incluido: incluido,\n    alcance_excluido: excluido,\n    has_alcance_incluido: incluido.length > 0,\n    has_alcance_excluido: excluido.length > 0,\n  };\n\n  // Narrative sections. An out-of-scope section arrives empty from Module 2, so has_<key> is\n  // false and the template's whole block — heading included — is dropped.\n  const sections_rendered = [];\n  for (const key of NARRATIVE_SECTIONS) {\n    const parsed = parseNarrative(content[key]);\n    const present = parsed.has_parrafos || parsed.has_bullets;\n    context[key] = parsed;\n    context[`has_${key}`] = present;\n    if (present) sections_rendered.push(key);\n  }\n\n  // Economic section. Lines are the CUSTOMER-FACING sell prices (Module 3's sell_amount), which\n  // sum exactly to the total.\n  //\n  // The internal `subtotal` is deliberately NOT exposed here. It is the pre-margin cost basis, and\n  // this document is forwarded by the reseller to their own end customer — printing the cost basis\n  // beside the total hands the customer the reseller's margin. The reseller still sees the subtotal\n  // in the quote email the orchestrator sends them.\n  const cur = (pricing && pricing.currency) || '';\n  const lineasSrc = pricing && Array.isArray(pricing.lines) ? pricing.lines : [];\n  const lineas = lineasSrc.map((l) => ({\n    concepto: labelFor(COST_CATEGORY_LABELS, l && l.category, lang),\n    cantidad: l && l.hours != null ? formatNumber(l.hours, lang) : '',\n    precio_unitario: l && l.rate != null ? formatMoney(l.rate, cur, lang) : '',\n    importe: formatMoney(l && (l.sell_amount != null ? l.sell_amount : l.amount), cur, lang),\n  }));\n\n  context.has_pricing = !!pricing;\n  context.pricing = {\n    lineas,\n    has_lineas: lineas.length > 0,\n    total: pricing ? formatMoney(pricing.total, cur, lang) : '',\n    condiciones_pago: pricing ? textOf(pricing.payment_terms) : '',\n    moneda: cur,\n  };\n  if (pricing) sections_rendered.push('economic');\n\n  return { context, sections_rendered, language: lang };\n}\n// === PROPOSAL RENDER CORE END ===\n\n// --- n8n wrapper ---\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst lang = pickLanguage(rfq.language);\n\n// B2: same RFQ in, same number out — no Date.now(), no random.\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\nconst fecha = $now.toFormat(lang === 'es' ? 'dd/MM/yyyy' : 'yyyy-MM-dd');\n\n// G2: template by language, EN fallback. These now point at a .docx FILE in Drive, not a Google Doc.\nconst templates = cfg.templates || {};\nconst template_id = templates[lang] || templates.en;\nif(!template_id) throw new Error(`No .docx template configured for client '${$json.client_id}' (language '${lang}', no EN fallback).`);\n\n// G1: never the extracted end customer. This mail is DELIVERED, not parked as a draft.\nconst recipient_email = cfg.reply_to || cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`No reply address for '${$json.client_id}' (sender email + commercial_contact_email both empty). Refusing to send to the extracted end customer (legacy gap G1).`);\n\n// Outbound identity. The Gmail node's Send operation rebuilds From from the authenticated mailbox,\n// so the alias only survives the create-draft -> drafts.send pair.\nconst from_alias = cfg.from_alias || '';\nif(!from_alias) throw new Error(`No from_alias resolved for '${$json.client_id}'. Refusing to send from the raw mailbox address.`);\nconst send_mode = String(cfg.send_mode || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send';\n\n// Reply inside the reseller's original RFQ thread. Gmail threads on threadId AND a matching\n// subject; '' rather than null so the Gmail node treats it as falsy and omits the field.\nconst ec = $json.email_context || {};\nconst thread_id = ec.thread_id || '';\nconst email_subject = ec.reply_subject || `Proposal ${proposal_number} — ${client.company || 'Client'}`;\n\nconst built = buildRenderContext({ rfq, content: data.content, pricing: data.pricing, proposalNumber: proposal_number, fecha });\n\nconst doc_name = `Proposal ${proposal_number} - ${client.company || 'Client'}`;\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: built.language,\n  proposal_number,\n  fecha,\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  from_alias,\n  send_mode,\n  thread_id,\n  email_subject,\n  notification_chat_id: cfg.notification_chat_id,\n  client_status: cfg.status || '',\n  doc_name,\n  docx_file_name: `${doc_name}.docx`,\n  pdf_file_name: `${doc_name}.pdf`,\n  sections_rendered: built.sections_rendered,\n  render_context: built.context,\n  company: client.company || '',\n  project_type: (rfq.project && rfq.project.type) || ''\n} }];"
       }
     },
     {
       "id": "d4000000-0000-4000-8000-000000000006",
-      "name": "Copy Template",
+      "name": "Download Template",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [880, 0],
+      "position": [
+        880,
+        0
+      ],
       "parameters": {
-        "operation": "copy",
-        "fileId": { "__rl": true, "value": "={{ $json.template_id }}", "mode": "id" },
-        "name": "={{ $json.doc_name }}",
-        "sameFolder": false,
-        "driveId": { "__rl": true, "mode": "list", "value": "My Drive" },
-        "folderId": { "__rl": true, "value": "={{ $json.proposals_folder_id }}", "mode": "id" },
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.template_id }}",
+          "mode": "id"
+        },
+        "options": {
+          "binaryPropertyName": "template"
+        }
+      },
+      "notes": "template_id now points at a .docx FILE in Drive, not a Google Doc. No conversion option: we want the raw .docx bytes so the client's styles, headers and logos survive untouched."
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000007",
+      "name": "Render Docx",
+      "type": "n8n-nodes-docxtemplater.docxTemplater",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "operation": "render",
+        "binaryProperty": "template",
+        "context": "={{ JSON.stringify($('Compute Proposal Fields').item.json.render_context) }}",
+        "options": {
+          "outputFileName": "={{ $('Compute Proposal Fields').item.json.docx_file_name }}",
+          "binaryPropertyOutput": "docx",
+          "paragraphLoop": true,
+          "linebreaks": true
+        }
+      },
+      "notes": "Community node n8n-nodes-docxtemplater (install via Settings > Community Nodes). Paragraph Loop MUST stay on — it is what lets {#has_x} on its own line delete the whole chapter, heading included, and what turns a loop into real list items instead of one run-on paragraph. Caveats: the node exposes no nullGetter, so a tag with no key renders the literal \"undefined\" (Compute Proposal Fields therefore emits every key, always); and it parses tags with Jexl, so key names must avoid \"-\" and loops must iterate objects, not bare strings. NOTE: this node outputs a fresh item (json: {}, only its own binary) — nothing upstream survives it."
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000008",
+      "name": "Upload Docx To Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1360,
+        0
+      ],
+      "parameters": {
+        "operation": "upload",
+        "inputDataFieldName": "docx",
+        "name": "={{ $('Compute Proposal Fields').item.json.docx_file_name }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $('Compute Proposal Fields').item.json.proposals_folder_id }}",
+          "mode": "id"
+        },
         "options": {}
       }
     },
     {
-      "id": "d4000000-0000-4000-8000-000000000007",
-      "name": "Fill RFQ Placeholders",
-      "type": "n8n-nodes-base.googleDocs",
-      "typeVersion": 2,
-      "position": [1120, 0],
-      "parameters": {
-        "operation": "update",
-        "documentURL": "={{ $('Copy Template').item.json.id }}",
-        "actionsUi": {
-          "actionFields": [
-            { "action": "replaceAll", "text": "{{NUMERO_PROPUESTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.proposal_number }}" },
-            { "action": "replaceAll", "text": "{{FECHA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fecha }}" },
-            { "action": "replaceAll", "text": "{{CLIENTE_EMPRESA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}" },
-            { "action": "replaceAll", "text": "{{CLIENTE_CONTACTO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.cliente_contacto }}" },
-            { "action": "replaceAll", "text": "{{PROYECTO_TIPO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}" },
-            { "action": "replaceAll", "text": "{{PROYECTO_UBICACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_ubicacion }}" },
-            { "action": "replaceAll", "text": "{{PROYECTO_PLAZO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.proyecto_plazo }}" },
-            { "action": "replaceAll", "text": "{{REQUISITOS_LISTA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.requisitos_lista }}" },
-            { "action": "replaceAll", "text": "{{ALCANCE_SUMINISTRO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.alcance_suministro }}" }
-          ]
-        }
-      }
-    },
-    {
-      "id": "d4000000-0000-4000-8000-000000000008",
-      "name": "Fill Generated Content",
-      "type": "n8n-nodes-base.googleDocs",
-      "typeVersion": 2,
-      "position": [1360, 0],
-      "parameters": {
-        "operation": "update",
-        "documentURL": "={{ $('Copy Template').item.json.id }}",
-        "actionsUi": {
-          "actionFields": [
-            { "action": "replaceAll", "text": "{{ALCANCE_TECNICO}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.alcance_tecnico }}" },
-            { "action": "replaceAll", "text": "{{RESUMEN_COMERCIAL}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.resumen_comercial }}" },
-            { "action": "replaceAll", "text": "{{SECCION_PLAN_IMPLANTACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_plan_implantacion }}" },
-            { "action": "replaceAll", "text": "{{SECCION_REPUESTOS}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_repuestos }}" },
-            { "action": "replaceAll", "text": "{{SECCION_TRANSPORTE}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_transporte }}" },
-            { "action": "replaceAll", "text": "{{SECCION_FORMACION}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_formacion }}" },
-            { "action": "replaceAll", "text": "{{SECCION_GARANTIA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_garantia }}" },
-            { "action": "replaceAll", "text": "{{SECCION_ECONOMICA}}", "replaceText": "={{ $('Compute Proposal Fields').item.json.fields.seccion_economica }}" }
-          ]
-        }
-      }
-    },
-    {
       "id": "d4000000-0000-4000-8000-000000000009",
-      "name": "Convert to PDF",
-      "type": "n8n-nodes-base.googleDrive",
-      "typeVersion": 3,
-      "position": [1600, 0],
+      "name": "Prepare PDF Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        0
+      ],
       "parameters": {
-        "operation": "download",
-        "fileId": { "__rl": true, "value": "={{ $('Copy Template').item.json.id }}", "mode": "id" },
-        "options": {
-          "binaryPropertyName": "data",
-          "fileName": "={{ $('Copy Template').item.json.name }}.pdf"
-        }
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// The docxtemplater node returns a fresh item — `json: {}` and ONLY its own output binary — so\n// nothing upstream survives it, and the Drive upload downstream replaces the item with file\n// metadata. Rather than depend on each node's binary-passthrough behaviour, rebuild the item\n// explicitly from the node that owns the bytes. Same reason 'Collect Artifacts' exists.\nconst rendered = $('Render Docx').first();\nconst fields = $('Compute Proposal Fields').first().json;\nreturn [{ json: fields, binary: { docx: rendered.binary.docx } }];"
       }
     },
     {
       "id": "d4000000-0000-4000-8000-000000000010",
+      "name": "Convert To PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1840,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/libreoffice/convert",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "docx"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf"
+            }
+          }
+        }
+      },
+      "notes": "Gotenberg (LibreOffice) renders the .docx to PDF with the layout intact. The URL is the docker-compose service name — change it here if yours differs (see docs/DEPLOYMENT.md). The multipart field MUST be named \"files\", and Gotenberg picks the converter from the uploaded file's extension, which is why Render Docx names the output *.docx."
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000011",
+      "name": "Collect Artifacts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Reassemble both attachments onto one item: the editable .docx (what the reseller tweaks before\n// forwarding) and the PDF (what they forward as-is). Pulled straight from the two nodes that\n// produced them, so no intermediate node's binary handling can drop one.\nconst fields = $('Compute Proposal Fields').first().json;\nconst docx = $('Render Docx').first().binary.docx;\nconst pdf = $('Convert To PDF').first().binary.pdf;\nconst uploaded = $('Upload Docx To Drive').first().json;\nreturn [{\n  json: { ...fields, document_id: uploaded.id || null, document_url: uploaded.webViewLink || null },\n  binary: { docx, pdf }\n}];"
+      }
+    },
+    {
+      "id": "d4000000-0000-4000-8000-000000000012",
       "name": "Create Draft",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
-      "position": [1840, 0],
+      "position": [
+        2320,
+        0
+      ],
       "parameters": {
         "resource": "draft",
         "subject": "={{ $('Compute Proposal Fields').item.json.email_subject }}",
         "emailType": "html",
-        "message": "=<p>Hi,</p>\n<p>The proposal for <b>{{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}</b> ({{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}) is attached for your review before it goes to the customer.</p>\n<p>Proposal number: {{ $('Compute Proposal Fields').item.json.proposal_number }}</p>",
+        "message": "=<p>Hi,</p>\n<p>The proposal for <b>{{ $('Compute Proposal Fields').item.json.company }}</b> ({{ $('Compute Proposal Fields').item.json.project_type }}) is attached for your review before it goes to the customer — as an editable Word file and as a PDF.</p>\n<p>Proposal number: {{ $('Compute Proposal Fields').item.json.proposal_number }}</p>",
         "options": {
           "sendTo": "={{ $('Compute Proposal Fields').item.json.recipient_email }}",
           "fromAlias": "={{ $('Compute Proposal Fields').item.json.from_alias }}",
           "threadId": "={{ $('Compute Proposal Fields').item.json.thread_id }}",
           "appendAttribution": false,
-          "attachmentsUi": { "attachmentsBinary": [{ "property": "data" }] }
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "docx"
+              },
+              {
+                "property": "pdf"
+              }
+            ]
+          }
         }
       }
     },
@@ -173,13 +276,28 @@
       "name": "Send Mode?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [2080, 0],
+      "position": [
+        2560,
+        0
+      ],
       "parameters": {
         "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
           "combinator": "and",
           "conditions": [
-            { "id": "cond-send-mode", "leftValue": "={{ $('Compute Proposal Fields').item.json.send_mode }}", "rightValue": "send", "operator": { "type": "string", "operation": "equals" } }
+            {
+              "id": "cond-send-mode",
+              "leftValue": "={{ $('Compute Proposal Fields').item.json.send_mode }}",
+              "rightValue": "send",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
           ]
         }
       }
@@ -189,7 +307,10 @@
       "name": "Send Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2300, -140],
+      "position": [
+        2780,
+        -140
+      ],
       "parameters": {
         "method": "POST",
         "url": "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
@@ -203,27 +324,36 @@
       "notes": "The Gmail node cannot send an existing draft, and its Send operation overwrites From with the authenticated address — so the alias only survives via draft + drafts.send. Returns the sent Message { id, threadId }."
     },
     {
-      "id": "d4000000-0000-4000-8000-000000000011",
+      "id": "d4000000-0000-4000-8000-000000000015",
       "name": "Telegram Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [2520, 0],
+      "position": [
+        3000,
+        0
+      ],
       "parameters": {
         "chatId": "={{ $('Compute Proposal Fields').item.json.notification_chat_id }}",
-        "text": "=🆕 RFQ processed — proposal {{ $('Compute Proposal Fields').item.json.send_mode === 'send' ? 'SENT ✅' : 'drafted 📝' }}\n\n👤 Client: {{ $('Compute Proposal Fields').item.json.client_id }} ({{ $('Compute Proposal Fields').item.json.client_status }})\n📍 Customer: {{ $('Compute Proposal Fields').item.json.fields.cliente_empresa }}\n📋 Project: {{ $('Compute Proposal Fields').item.json.fields.proyecto_tipo }}\n📄 Proposal {{ $('Compute Proposal Fields').item.json.proposal_number }}\n📤 From: {{ $('Compute Proposal Fields').item.json.from_alias }}\n✉️ To: {{ $('Compute Proposal Fields').item.json.recipient_email }}\n\n{{ $('Compute Proposal Fields').item.json.send_mode === 'send' ? 'Delivered as a reply in the original RFQ thread.' : 'Nothing was sent — the draft is waiting in the mailbox.' }}",
-        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+        "text": "=🆕 RFQ processed — proposal {{ $('Compute Proposal Fields').item.json.send_mode === 'send' ? 'SENT ✅' : 'drafted 📝' }}\n\n👤 Client: {{ $('Compute Proposal Fields').item.json.client_id }} ({{ $('Compute Proposal Fields').item.json.client_status }})\n📍 Customer: {{ $('Compute Proposal Fields').item.json.company }}\n📋 Project: {{ $('Compute Proposal Fields').item.json.project_type }}\n📄 Proposal {{ $('Compute Proposal Fields').item.json.proposal_number }}\n📑 Sections: {{ ($('Compute Proposal Fields').item.json.sections_rendered || []).join(', ') }}\n📤 From: {{ $('Compute Proposal Fields').item.json.from_alias }}\n✉️ To: {{ $('Compute Proposal Fields').item.json.recipient_email }}\n\n{{ $('Compute Proposal Fields').item.json.send_mode === 'send' ? 'Delivered as a reply in the original RFQ thread, with the .docx and the PDF attached.' : 'Nothing was sent — the draft is waiting in the mailbox.' }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
       }
     },
     {
-      "id": "d4000000-0000-4000-8000-000000000012",
+      "id": "d4000000-0000-4000-8000-000000000016",
       "name": "Build Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2760, 0],
+      "position": [
+        3240,
+        0
+      ],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst copied = $('Copy Template').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\n// 'Send Draft' only runs on the send branch; referencing an unexecuted node throws, so the\n// catch means 'send_mode was draft'. A genuine send failure fails that node and the run never\n// reaches here — so 'sent:false' always means 'deliberately not sent', never 'silently lost'.\nlet sent_message_id = null;\ntry { sent_message_id = $('Send Draft').first().json.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: copied.id,\n    pdf_file_name: `${copied.name}.pdf`,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    sent: cf.send_mode === 'send' && !!sent_message_id,\n    sent_message_id,\n    from_alias: cf.from_alias,\n    thread_id: cf.thread_id || null,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id,\n    sections_rendered: cf.sections_rendered || []\n  }\n} }];"
+        "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst art = $('Collect Artifacts').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\n// 'Send Draft' only runs on the send branch; referencing an unexecuted node throws, so the catch\n// means 'send_mode was draft'. A genuine send failure fails that node and the run never reaches\n// here — so 'sent:false' always means 'deliberately not sent', never 'silently lost'.\nlet sent_message_id = null;\ntry { sent_message_id = $('Send Draft').first().json.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: art.document_id,\n    document_url: art.document_url,\n    docx_file_name: cf.docx_file_name,\n    pdf_file_name: cf.pdf_file_name,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    sent: cf.send_mode === 'send' && !!sent_message_id,\n    sent_message_id,\n    from_alias: cf.from_alias,\n    thread_id: cf.thread_id || null,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id,\n    sections_rendered: cf.sections_rendered || []\n  }\n} }];"
       }
     },
     {
@@ -231,37 +361,196 @@
       "name": "Note — Module 4",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [620, -320],
+      "position": [
+        620,
+        -420
+      ],
       "parameters": {
-        "width": 960,
-        "height": 260,
-        "content": "## Module 4 — Proposal assembly (pure, scope-aware)\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ rfq, content, pricing? } }`.\n\n**Compute Proposal Fields** applies the legacy fixes (G1 recipient, G2 language template, B2 deterministic number, B1 quantity) AND builds the scope-aware fields:\n- `{{ALCANCE_SUMINISTRO}}` — a visible Included / Not-included list so the reviewing reseller catches a wrong scope before the draft is sent.\n- `{{SECCION_*}}` tokens (plan_implantacion, repuestos, transporte, formacion, garantia) and `{{SECCION_ECONOMICA}}` — each rendered only if IN SCOPE, otherwise replaced with '' so the block disappears from the master template.\n\nTemplate authoring (master template with these tokens): **docs/TEMPLATE-GUIDE.md**. Pricing block appears only when `data.pricing` is present (proposal_only runs omit it).\n\n**Delivery.** The proposal is SENT, not parked: **Create Draft** (with `fromAlias` + `threadId`, so it replies inside the reseller's own RFQ thread) → **Send Mode?** → **Send Draft** (HTTP `drafts.send`). The draft+send pair exists because the Gmail node's Send operation rebuilds `From` from the authenticated mailbox and would discard the alias. `client_config.send_mode='draft'` skips the send step — the pre-production behaviour, and the per-client rollback. ⚠️ `from_alias` must be a **verified 'Send mail as' address** on the Gmail account or `drafts.send` fails."
+        "width": 1180,
+        "height": 340,
+        "content": "## Module 4 — Proposal assembly (.docx, scope-aware, delivered)\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, email_context?, data:{ rfq, content, pricing? } }`.\n\n**Compute Proposal Fields** applies the legacy fixes (G1 recipient, G2 language template, B2 deterministic number, B1 quantity) and builds a **structured render context** — mirrored from `modules/proposal/render_context.js`, checkable offline with `node modules/proposal/render_context.js`. It no longer emits pre-formatted text: headings, bullets and the price table are *structure*, and structure cannot travel through a text placeholder, which is why the Google Docs find-and-replace pipeline is gone.\n\n**Download Template → Render Docx → Upload Docx To Drive → Convert To PDF → Collect Artifacts.** The template is the client's own **.docx** (`template_id_en`/`_es` now point at a Word file, not a Google Doc), so their styles, headers and logos survive untouched. Out-of-scope chapters vanish whole — heading included — via `{#has_*}` blocks. Both the editable .docx and the PDF are attached to the reply.\n\n⚠️ Requires the community node **n8n-nodes-docxtemplater** and a reachable **Gotenberg** service. Template authoring: **docs/TEMPLATE-GUIDE.md**.\n\n**Delivery.** **Create Draft** (with `fromAlias` + `threadId`) → **Send Mode?** → **Send Draft** (HTTP `drafts.send`). The draft+send pair exists because the Gmail node's Send operation rebuilds `From` from the authenticated mailbox and would discard the alias. `client_config.send_mode='draft'` skips the send — the per-client rollback."
       }
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": { "main": [[{ "node": "Config Provided?", "type": "main", "index": 0 }]] },
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config Provided?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Config Provided?": {
       "main": [
-        [{ "node": "Compute Proposal Fields", "type": "main", "index": 0 }],
-        [{ "node": "Load Client Registry", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Compute Proposal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Client Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Load Client Registry": { "main": [[{ "node": "Map Client Config", "type": "main", "index": 0 }]] },
-    "Map Client Config": { "main": [[{ "node": "Compute Proposal Fields", "type": "main", "index": 0 }]] },
-    "Compute Proposal Fields": { "main": [[{ "node": "Copy Template", "type": "main", "index": 0 }]] },
-    "Copy Template": { "main": [[{ "node": "Fill RFQ Placeholders", "type": "main", "index": 0 }]] },
-    "Fill RFQ Placeholders": { "main": [[{ "node": "Fill Generated Content", "type": "main", "index": 0 }]] },
-    "Fill Generated Content": { "main": [[{ "node": "Convert to PDF", "type": "main", "index": 0 }]] },
-    "Convert to PDF": { "main": [[{ "node": "Create Draft", "type": "main", "index": 0 }]] },
-    "Create Draft": { "main": [[{ "node": "Send Mode?", "type": "main", "index": 0 }]] },
+    "Load Client Registry": {
+      "main": [
+        [
+          {
+            "node": "Map Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Client Config": {
+      "main": [
+        [
+          {
+            "node": "Compute Proposal Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Proposal Fields": {
+      "main": [
+        [
+          {
+            "node": "Download Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Template": {
+      "main": [
+        [
+          {
+            "node": "Render Docx",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render Docx": {
+      "main": [
+        [
+          {
+            "node": "Upload Docx To Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Docx To Drive": {
+      "main": [
+        [
+          {
+            "node": "Prepare PDF Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare PDF Input": {
+      "main": [
+        [
+          {
+            "node": "Convert To PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert To PDF": {
+      "main": [
+        [
+          {
+            "node": "Collect Artifacts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Artifacts": {
+      "main": [
+        [
+          {
+            "node": "Create Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Draft": {
+      "main": [
+        [
+          {
+            "node": "Send Mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
     "Send Mode?": {
       "main": [
-        [{ "node": "Send Draft", "type": "main", "index": 0 }],
-        [{ "node": "Telegram Notify", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Send Draft",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Send Draft": { "main": [[{ "node": "Telegram Notify", "type": "main", "index": 0 }]] },
-    "Telegram Notify": { "main": [[{ "node": "Build Output", "type": "main", "index": 0 }]] }
+    "Send Draft": {
+      "main": [
+        [
+          {
+            "node": "Telegram Notify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Notify": {
+      "main": [
+        [
+          {
+            "node": "Build Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   }
 }

@@ -3,8 +3,8 @@
 Cifral turns an incoming industrial **RFQ** (request for quote) into a review-ready technical +
 commercial **proposal**. This repository is the **source of truth** for the automation: four
 independently-invocable [n8n](https://n8n.io) workflows plus a thin orchestrator, each with a
-documented JSON input/output contract, backed by tested Python where the logic is business-critical
-(pricing). The live n8n instance is a *deployment target*, not the canonical definition.
+documented JSON input/output contract, backed by tested JavaScript where the logic is
+business-critical (pricing, and how proposal data is shaped for the document). The live n8n instance is a *deployment target*, not the canonical definition.
 
 > Status: demo-grade, config-driven for one example client (`demo_client`). Not a multi-tenant
 > product. There are zero paying clients yet — this is deliberately kept simple.
@@ -33,8 +33,8 @@ The website still tells a four-module story (the internal building blocks). Each
 |---|----------------|---------------|--------------|
 | 1 | **Data collection & validation** — capture the request, extract key variables, flag missing information before anyone writes | `workflows/01-data-collection-validation.json` | RFQ text → structured JSON; flags `missing_fields` and marks the RFQ `complete`/`incomplete`. |
 | 2 | **Technical content generation** — draft scope and technical sections from the client's approved docs | `workflows/02-technical-content-generation.json` | Generates the 3 narrative sections, grounded in that client's reference documents. |
-| 3 | **Pricing & commercial logic** — run the client's cost, margin, and configuration rules automatically | `workflows/03-pricing-commercial-logic.json` | Computes subtotal/total/terms via the tested Python pricing engine. |
-| 4 | **Proposal assembly** — assemble the complete document in the client's own template | `workflows/04-proposal-assembly.json` | Fills the client's Google Docs template, exports a PDF, **replies in-thread to the client's own commercial contact** from the client's send-as alias, and sends a Telegram alert. |
+| 3 | **Pricing & commercial logic** — run the client's cost, margin, and configuration rules automatically | `workflows/03-pricing-commercial-logic.json` | Computes subtotal/total/terms and the price-table line breakdown via the tested pricing core. |
+| 4 | **Proposal assembly** — assemble the complete document in the client's own template | `workflows/04-proposal-assembly.json` | Renders the client's own `.docx` template (real Word headings, native lists, price table), exports a PDF, **replies in-thread to the client's own commercial contact** from the client's send-as alias with both files attached, and sends a Telegram alert. |
 | — | **Full end-to-end pipeline** | `workflows/00-orchestrator-end-to-end.json` | Thin orchestrator: Notion client lookup → M1 → (M2 ∥ M3) → M4. |
 
 A client buying only one module gets a workflow that behaves **identically** whether called
@@ -66,14 +66,15 @@ Every module accepts and returns the same envelope; the module-specific payload 
 workflows/   the 4 module workflows + 00-orchestrator (n8n JSON, git-tracked source of truth)
 schemas/     JSON Schema for each module's I/O envelope + scope-catalog.json (scope-of-supply items)
 modules/pricing/   pricing_core.js — the reference pricing formula (data lives in Google Sheets)
+modules/proposal/  render_context.js — how proposal data is shaped for the .docx template
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
 docs/        ARCHITECTURE, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
              PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE, TESTING-MANUAL
 ```
 
 Pricing **data** and proposal **templates** are not in the repo — they live in each client's Google
-Drive folder (a pricing Sheet + master Docs template), so they change without a deploy. The repo owns
-the workflows, contracts and the pricing formula.
+Drive folder (a pricing Sheet + a master `.docx` template), so they change without a deploy. The repo
+owns the workflows, contracts, the pricing formula and the document render context.
 
 ## What's different from the legacy demo
 
@@ -97,7 +98,8 @@ pruning, incomplete-RFQ handling, recipient safety, sending alias, in-thread rep
 For a quick offline sanity check of the pricing math only:
 
 ```bash
-node modules/pricing/pricing_core.js   # prices a sample RFQ against an inline rate card
+node modules/pricing/pricing_core.js     # pricing formula + price-table line breakdown
+node modules/proposal/render_context.js  # the document's render context
 ```
 
 ## Deploying to n8n
@@ -108,4 +110,4 @@ Import `workflows/*.json` into n8n by hand and link credentials — there is no 
 ## Onboarding a new client
 
 See [`docs/ONBOARDING.md`](docs/ONBOARDING.md): create the Notion registry row, build the pricing
-Google Sheet, build the master Docs template, and (optionally) gather past proposals for grounding.
+Google Sheet, build the master `.docx` template, and (optionally) gather past proposals for grounding.

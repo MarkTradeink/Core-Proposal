@@ -18,7 +18,9 @@ change a workflow.
 - [ ] Both aliases verified as "Send mail as" on the Gmail account (see `DEPLOYMENT.md`) — needed
       from Scenario 15 onwards, and harmless before.
 - [ ] Pricing Google Sheet created and shared (see `PRICING-SHEET-TEMPLATE.md`).
-- [ ] Master template has the tokens from `TEMPLATE-GUIDE.md`.
+- [ ] Community node `n8n-nodes-docxtemplater` installed and Gotenberg reachable (see `DEPLOYMENT.md`).
+- [ ] Master **`.docx`** template uploaded to Drive with the tags from `TEMPLATE-GUIDE.md`, and
+      `template_id_en` pointing at that Word file (not a Google Doc).
 
 > Fastest way to iterate: use the orchestrator's **chat trigger** ("When chat message received")
 > and paste the RFQ text, instead of sending real emails. Routing, content and pricing behave
@@ -34,8 +36,8 @@ For each run, open the execution in n8n and inspect node-by-node:
 - The Gmail **draft or sent message** (in your commercial mailbox) and the **Telegram** message.
 - **Send Mode? / Send Quote?**: which branch ran. In draft mode the `Send Draft` / `Send Quote` node
   is skipped and the Telegram alert reads `drafted 📝`; in send mode it reads `SENT ✅`.
-- **Build Output → data**: `sent`, `sent_message_id`, `from_alias`, `thread_id`.
-- For proposals: open the generated Google Doc / PDF in the proposals folder.
+- **Build Output → data**: `sent`, `sent_message_id`, `from_alias`, `thread_id`, `sections_rendered`.
+- For proposals: open the generated `.docx` in the proposals folder, and both attachments on the mail.
 
 ---
 
@@ -51,9 +53,9 @@ Check:
 - [ ] Draft lands in **commercial_contact_email**, NOT the end customer's email.
 - [ ] Draft's **From** is `proposal@cifral.io` (demo_client is `active`), with no n8n attribution
       footer appended.
-- [ ] Google Doc contains: scope-of-supply block, technical scope, implementation plan, warranty,
-      and an economic summary (subtotal/total/terms).
-- [ ] Proposal number format `PROP-YYYYMMDD-XXXXXX`; PDF attached to the draft.
+- [ ] Generated `.docx` contains: scope-of-supply lists, technical scope, implementation plan,
+      warranty, and an economic table (line items / total / terms).
+- [ ] Proposal number format `PROP-YYYYMMDD-XXXXXX`; **both** the `.docx` and the PDF attached.
 - [ ] Telegram `🆕 RFQ processed — proposal drafted 📝` fired, showing the From and To addresses.
 
 ## Scenario 2 — Pricing only
@@ -76,9 +78,9 @@ Check:
 Check:
 - [ ] Module 1: `request_type = proposal_only`.
 - [ ] Route = `proposal_only`; Modules 2 + 4 run, **Module 3 does not**.
-- [ ] Google Doc has the narrative sections and scope-of-supply block but **no economic section**
-      (the `{{SECCION_ECONOMICA}}` token is removed).
-- [ ] Draft + PDF to the commercial contact; Telegram fired.
+- [ ] The `.docx` has the narrative sections and scope-of-supply lists but **no economic chapter** —
+      the whole `{#has_pricing}` block, heading included, is gone.
+- [ ] Both attachments reach the commercial contact; Telegram fired.
 
 ## Scenario 4 — Scope pruning inside a proposal
 
@@ -86,8 +88,10 @@ Check:
 
 Check:
 - [ ] `scope_of_supply` shows those four `false`.
-- [ ] Document: **no** implementation plan section (installation/commissioning out), no spare-parts /
-      training sections. Scope-of-supply block lists them under "Not included".
+- [ ] Document: **no** implementation plan chapter (installation/commissioning out), no spare-parts /
+      training chapters — and each missing chapter takes **its heading with it**, so the numbering
+      that remains reads as a deliberate document, not one with holes.
+- [ ] Scope-of-supply block lists them under "Not included".
 - [ ] Pricing (if full): no assembly/commissioning labour lines.
 
 ## Scenario 5 — Incomplete RFQ (missing required fields)
@@ -124,6 +128,9 @@ Check:
 - [ ] Module 1: `language = es`.
 - [ ] Module 4 uses `template_id_es` if set, else falls back to `template_id_en`.
 - [ ] Narrative sections are written in Spanish.
+- [ ] Money reads `3.823,20 €` in Spanish and `€3,823.20` in English — symbol position, decimal
+      separator and grouping all follow the language, not the server locale.
+- [ ] Scope labels are translated (`Instalación / Montaje`, not `Installation / Assembly`).
 
 ## Scenario 9 — Pricing data errors (fail-loud)
 
@@ -210,6 +217,38 @@ mailbox you control.
 > mail is never delivered from the wrong address. This is why `sent: false` in the output always
 > means "deliberately not sent" and never "silently lost".
 
+## Scenario 16 — The document is really structured (not just text that looks like it)
+
+This is the point of the `.docx` engine, and the only way to check it is to open the file in Word.
+Run a `full_pipeline` RFQ with `installation`, `commissioning` and `training` excluded, then open the
+generated `.docx` from the proposals folder.
+
+- [ ] **View → Navigation Pane** lists every chapter. If a chapter is missing from the pane, its
+      heading is bold body text, not a real Heading 1 — fix the template, not the workflow.
+- [ ] Click a bullet and press **Tab**: it re-indents as a list item. If it doesn't, the "bullets"
+      are literal `•` characters.
+- [ ] The implementation-plan, spare-parts and training chapters are **absent along with their
+      headings** — no orphan heading, no blank gap.
+- [ ] The requirements table has one row per requirement, and the quantity column is populated
+      (regression guard for the legacy `quantity`/`qty` bug).
+- [ ] The economic table has one row per priced category and the **amount column adds up to the
+      total**.
+- [ ] There is **no subtotal row**. The subtotal is the pre-margin cost basis and must never reach
+      the end customer; the reseller sees it in the quote email instead.
+- [ ] Ctrl+F for `undefined` and for `{` — both must find nothing. A hit means a template tag is
+      misspelled (the renderer has no null-handling, so unknown tags print literally).
+- [ ] Open the PDF attachment beside the `.docx`: headers, footers, logo and page breaks match.
+- [ ] Both attachments are on the email — the editable `.docx` and the PDF.
+
+## Scenario 17 — Template robustness
+
+- [ ] Point `template_id_en` at a Google Doc instead of a `.docx` → **Render Docx** fails loudly
+      (it is not a zip). Nothing is sent. This is the expected migration error for old templates.
+- [ ] Misspell one tag in the template (e.g. `{cliente.empressa}`) → that spot renders `undefined`
+      rather than failing. Confirms why Scenario 16's `undefined` search matters.
+- [ ] Stop Gotenberg and run again → **Convert To PDF** fails, the run stops, and no half-finished
+      proposal is sent.
+
 ---
 
 ## Quick offline check (formula only, no n8n)
@@ -217,12 +256,38 @@ mailbox you control.
 You can sanity-check the pricing math without n8n:
 
 ```bash
-node modules/pricing/pricing_core.js
+node modules/pricing/pricing_core.js     # pricing formula + the price-table line breakdown
+node modules/proposal/render_context.js  # the document's render context
 ```
 
-It prices a sample RFQ against an inline rate card and prints the subtotal/total — useful after any
-change to the formula. (Remember: in production the numbers come from the client's Google Sheet, not
-from this file.)
+The first prices a sample RFQ against an inline rate card, prints the subtotal/total, and asserts the
+price-table lines sum exactly to the total. (In production the numbers come from the client's Google
+Sheet, not from this file.)
+
+The second builds the render context from a sample RFQ and asserts the invariant the renderer
+depends on: **every key exists**. The render node has no null handling, so a missing key becomes the
+literal word `undefined` in a customer's document — this check is what stops that reaching a
+template author.
+
+Both files carry the same logic that runs inside the n8n nodes, between `=== … CORE START/END ===`
+markers. After editing either side, confirm the two copies still agree:
+
+```bash
+node -e "
+const fs=require('fs');
+// Compare the logic, ignoring comments and layout — the node copies are compacted by hand.
+const norm = s => s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'').replace(/\s+/g,' ').trim();
+for (const [mod, wf, node, mark] of [
+  ['modules/pricing/pricing_core.js','workflows/03-pricing-commercial-logic.json','Compute Pricing','PRICING CORE'],
+  ['modules/proposal/render_context.js','workflows/04-proposal-assembly.json','Compute Proposal Fields','PROPOSAL RENDER CORE'],
+]) {
+  const S='// === '+mark+' START ===', E='// === '+mark+' END ===';
+  const cut = s => s.slice(s.indexOf(S), s.indexOf(E)+E.length);
+  const a = norm(cut(fs.readFileSync(mod,'utf8')));
+  const b = norm(cut(require('./'+wf).nodes.find(n=>n.name===node).parameters.jsCode));
+  console.log((a===b ? 'in sync   ' : 'DRIFTED   ') + mod + ' <-> ' + node);
+}"
+```
 
 ## Regression checklist (after any workflow change)
 

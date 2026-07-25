@@ -4,6 +4,58 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 11 — Document engine: Google Docs text replacement → .docx rendering (2026-07-25)
+The proposal came out flat, and not by accident: `replaceAll` on a Google Doc can only swap *text
+for text*, so a generated chapter inherited the styling of the paragraph its token sat in — no real
+headings, bullets faked with a `•` character, the price summary as three bullet lines. Headings,
+lists and tables are **structure**, and structure cannot travel through a text placeholder. Module 4
+now renders the client's own **`.docx`** with docxtemplater instead.
+
+- **Templates are Word files.** `template_id_en` / `_es` now point at a `.docx` in the client's Drive
+  folder rather than a Google Doc. The client's styles, headers, footers, logo and page setup are
+  preserved byte-for-byte instead of being degraded by a Docs conversion on the way in. **Existing
+  templates must be rebuilt — there is no automatic migration** (`docs/TEMPLATE-GUIDE.md` is rewritten
+  from scratch).
+- **Structured render context.** `Compute Proposal Fields` stopped emitting pre-formatted strings and
+  now emits paragraphs, bullet arrays and table rows. Module 2 is untouched: a deterministic parser
+  turns its plain-text sections (whose format its prompt already pins) into that structure, which
+  keeps the inter-module contract stable and costs no extra tokens.
+- **Out-of-scope chapters vanish with their headings** via `{#has_*}` blocks — the thing the old
+  token scheme explicitly could not do, and the reason `TEMPLATE-GUIDE.md` used to tell authors to
+  type headings in UPPERCASE inside the generated text.
+- **Real price table.** Module 3 gained `lines[]` (`modules/pricing/pricing_core.js` + its mirrored
+  node), one row per priced category. Lines carry both the internal cost basis and the customer-facing
+  `sell_amount`; per-line rounding residue is absorbed into the largest line so **the column sums to
+  the total exactly**.
+- **The subtotal is no longer printed in the document.** It is the pre-margin cost basis, and this
+  document is forwarded by the reseller to their own end customer — printing it beside the total
+  handed the customer the reseller's margin. The reseller still sees it in the quote email.
+- **Money is localised.** `12345.6 EUR` became `12.345,60 €` / `€12,345.60` via `Intl.NumberFormat`,
+  matching the proposal's language rather than the server's locale.
+- **Both files are attached** — the editable `.docx` the reseller tweaks, and the PDF they forward.
+  PDF conversion moved to **Gotenberg** (LibreOffice), which also fixes the pre-existing bug where
+  `Convert to PDF` was a plain Drive download with no conversion, producing a Google Doc export named
+  `.pdf`.
+- **New `modules/proposal/render_context.js`**, mirrored into the node between `PROPOSAL RENDER CORE`
+  markers exactly like the pricing core, checkable offline with `node modules/proposal/render_context.js`.
+  `schemas/scope-catalog.json`'s dead `template_block` field (`MATERIALS`, `INSTALLATION`, … read by
+  nothing) is repopulated with the real docxtemplater flags.
+
+> ⚠️ **Before deploying:** install the community node `n8n-nodes-docxtemplater` (Settings → Community
+> Nodes) and add a `gotenberg/gotenberg:8` service beside n8n. Both are covered in `DEPLOYMENT.md`,
+> which also gains a Module 4 troubleshooting table.
+
+Two constraints of the render node shaped the design and are worth knowing before editing a template:
+it exposes no `nullGetter`, so a tag with no matching key prints the literal word `undefined` (the
+context is therefore total — every key always present); and it parses tags as **Jexl** expressions, so
+key names avoid `-` and loops iterate named objects rather than bare strings.
+
+**The trap to know about:** loop tags written *inline* (`{#items}{texto}{/items}`) repeat only the
+content inside the paragraph and concatenate every item into one run-on paragraph. Tags must sit
+**alone on their own lines** for `paragraphLoop` to repeat the whole styled paragraph. This is the
+difference between a native bullet list and the exact flat text this phase set out to eliminate, and
+it is the first thing to check when a list looks wrong.
+
 ### Phase 10 — Live sending: send-as alias + in-thread replies (2026-07-25)
 Quotes and proposals are now **delivered**, not parked as Gmail drafts, and they come from a Cifral
 address instead of the personal mailbox that receives the RFQs:
