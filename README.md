@@ -9,10 +9,25 @@ documented JSON input/output contract, backed by tested Python where the logic i
 > Status: demo-grade, config-driven for one example client (`demo_client`). Not a multi-tenant
 > product. There are zero paying clients yet — this is deliberately kept simple.
 
+## Sold as three service tiers
+
+Customers buy one of three tiers, and any single request can pick a different one:
+
+| Tier | Deliverable | Modules used |
+|------|-------------|--------------|
+| **Pricing only** | A price estimate | M3 |
+| **Proposal only** | A written technical proposal (no price) | M1 + M2 + M4 |
+| **Full pipeline** | A priced proposal | M1 + M2 + M3 + M4 |
+
+Module 1 reads a `request_type` from each incoming email, so a client on `full_pipeline` can still
+ask for "just a price" on a given RFQ; the client's tier is the fallback default. Each request also
+carries a **scope of supply** (materials, engineering, installation, commissioning, spare parts,
+warranty, …) that drives pricing lines, narrative sections and template blocks together — so one
+client can send a full-turnkey RFQ today and a supply-only RFQ tomorrow through the *same* workflows.
+
 ## The four modules ↔ the website's public positioning
 
-Cifral is marketed as four modules that can be bought individually ("start with the single
-bottleneck that hurts most") or as a full end-to-end pipeline. Each maps to one workflow:
+The website still tells a four-module story (the internal building blocks). Each maps to one workflow:
 
 | # | Website module | Workflow file | What it does |
 |---|----------------|---------------|--------------|
@@ -49,12 +64,16 @@ Every module accepts and returns the same envelope; the module-specific payload 
 
 ```
 workflows/   the 4 module workflows + 00-orchestrator (n8n JSON, git-tracked source of truth)
-schemas/     JSON Schema for each module's I/O envelope
-modules/pricing/   pricing_engine.py + pytest tests + example_client_config.json (demo rate card)
+schemas/     JSON Schema for each module's I/O envelope + scope-catalog.json (scope-of-supply items)
+modules/pricing/   pricing_core.js — the reference pricing formula (data lives in Google Sheets)
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
-docs/        ARCHITECTURE, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING
-scripts/     deploy_workflows.py, smoke_test.py, check_pricing_sync.py
+docs/        ARCHITECTURE, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
+             PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE, TESTING-MANUAL
 ```
+
+Pricing **data** and proposal **templates** are not in the repo — they live in each client's Google
+Drive folder (a pricing Sheet + master Docs template), so they change without a deploy. The repo owns
+the workflows, contracts and the pricing formula.
 
 ## What's different from the legacy demo
 
@@ -64,35 +83,24 @@ flagging, ungrounded content, untested logic, a silent `quantity` bug, non-deter
 numbers). All are catalogued and mapped to their fix in
 [`reference/legacy-demo-analysis.md`](reference/legacy-demo-analysis.md).
 
-## Running the tests
+## Testing
+
+Testing is **manual** against the live n8n workflows with the `demo_client` — see
+[`docs/TESTING-MANUAL.md`](docs/TESTING-MANUAL.md) for every scenario (each service tier, scope
+pruning, incomplete-RFQ handling, recipient safety, pricing errors) and what to check.
+
+For a quick offline sanity check of the pricing math only:
 
 ```bash
-# 1. Pricing engine unit tests (the business-critical logic)
-python -m pytest modules/pricing/tests/ -v
-
-# 2. Guard: the Python pricing engine and the n8n Code node stay in sync
-python scripts/check_pricing_sync.py
-
-# 3. End-to-end smoke test: a demo_client RFQ fixture validated against every schema
-python scripts/smoke_test.py
+node modules/pricing/pricing_core.js   # prices a sample RFQ against an inline rate card
 ```
-
-Dependencies for the scripts: `pip install jsonschema` (pricing engine + tests are stdlib-only).
 
 ## Deploying to n8n
 
-`scripts/deploy_workflows.py` pushes `workflows/*.json` to the live n8n instance via its REST API.
-It reads `N8N_API_URL` and `N8N_API_KEY` from the environment and refuses to run without them — it
-never fabricates credentials. See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
-
-```bash
-export N8N_API_URL="https://<your-n8n-host>"
-export N8N_API_KEY="<your-api-key>"
-python scripts/deploy_workflows.py
-```
+Import `workflows/*.json` into n8n by hand and link credentials — there is no deploy script. See
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
 ## Onboarding a new client
 
-See [`docs/ONBOARDING.md`](docs/ONBOARDING.md): create the Notion registry row, gather the rate card
-into a config file, gather 3–5 past proposals for content grounding, and register the Google Docs
-template.
+See [`docs/ONBOARDING.md`](docs/ONBOARDING.md): create the Notion registry row, build the pricing
+Google Sheet, build the master Docs template, and (optionally) gather past proposals for grounding.

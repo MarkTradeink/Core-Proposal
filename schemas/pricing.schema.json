@@ -22,7 +22,12 @@
         "discount_pct": { "type": "number", "minimum": 0, "maximum": 1 },
         "total": { "type": "number", "minimum": 0 },
         "payment_terms": { "type": "string", "minLength": 1 },
-        "currency": { "type": "string", "description": "Optional ISO currency code (e.g. EUR)." }
+        "currency": { "type": "string", "description": "Optional ISO currency code (e.g. EUR)." },
+        "priced_categories": {
+          "type": "array",
+          "description": "Optional. Labour categories actually priced for this request (after scope filtering). Categories out of scope are omitted from the quote.",
+          "items": { "type": "string" }
+        }
       }
     }
   }

@@ -1,120 +1,133 @@
 # Client Registry (Notion) — Schema
 
-The **client registry** is the single lookup each workflow uses to decide which modules are active
-for a `client_id` and to load that client's operational config (recipient, template ids, folders,
-notification target). The orchestrator queries it **once** per RFQ and passes the result through the
-shared `client_config` envelope.
+The **client registry** is the single lookup each workflow uses to load a `client_id`'s operational
+config (default service tier, recipient, template ids, folders, pricing sheet, notification target).
+The orchestrator queries it **once** per RFQ and passes the result through the shared `client_config`
+envelope.
 
-> This is a **new, separate** Notion database. It is **not** the existing "Customers Manager" CRM
-> (that one tracks the sales pipeline / outreach and must stay untouched).
+> This is a **separate** Notion database. It is **not** the existing "Customers Manager" CRM (that
+> one tracks the sales pipeline / outreach and must stay untouched).
 
 ## Where it lives
 
-We repurpose the existing empty **"Projects"** database in the *Sales Wiki* teamspace as the client
+We repurpose the existing **"Projects"** database in the *Sales Wiki* teamspace as the client
 registry.
 
 - Database: **Projects** — `https://app.notion.com/p/2d7fe158febb8121a687d1d1595c9eee`
 - Data source id: `2d7fe158-febb-8189-8ca1-000b610efd7d`
 
+## Service tier, not module checkboxes
+
+A client buys one of **three service tiers** — this is the offering, and it is the *default* for
+their requests:
+
+| `service_tier` | What the client gets | Modules used |
+|----------------|----------------------|--------------|
+| `pricing_only` | A price estimate only | M3 |
+| `proposal_only` | A written technical proposal, no price | M1 + M2 + M4 |
+| `full_pipeline` | Both — priced proposal | M1 + M2 + M3 + M4 |
+
+The four internal modules are still the engineering building blocks (and the website's marketing
+story), but they are **not** individually sold, so the registry no longer has per-module checkboxes.
+Any single **request** can override the client's default by stating what it wants (`request_type`,
+extracted by Module 1); `service_tier` is the fallback when a request doesn't say.
+
 ## Properties
 
-Registry-specific properties (the ones the workflows read):
+Registry-specific properties the workflows read:
 
 | Property | Notion type | Purpose |
 |----------|-------------|---------|
-| `Client Name` | Title | Human-readable client name (was the DB's `Name` title). |
+| `Client Name` | Title | Human-readable client name. |
 | `client_id` | Rich text | Unique slug used as the lookup key, e.g. `demo_client`. |
-| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Lifecycle state. |
-| `plan_tier` | Select: `single_module` / `full_pipeline` | Which offering the client bought. |
-| `module_data_collection` | Checkbox | Module 1 active for this client. |
-| `module_content_generation` | Checkbox | Module 2 active. |
-| `module_pricing` | Checkbox | Module 3 active. |
-| `module_proposal_assembly` | Checkbox | Module 4 active. |
-| `commercial_contact_email` | Email | **Draft recipient** — the reseller/commercial contact, never the end customer. |
-| `template_id_en` | Rich text | Google Docs template id for English proposals. |
-| `template_id_es` | Rich text | Google Docs template id for Spanish proposals (may be empty → EN fallback). |
+| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Gates processing: `active`/`trial` are processed; `paused`/`churned` are rejected with an admin alert. |
+| `service_tier` | Select: `pricing_only` / `proposal_only` / `full_pipeline` | Default deliverable for this client. |
+| `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. |
+| `template_id_en` | Rich text | Google Docs master template id for English proposals. |
+| `template_id_es` | Rich text | Google Docs master template id for Spanish proposals (may be empty → EN fallback). |
 | `proposals_folder_id` | Rich text | Google Drive folder to drop generated proposals into. |
 | `reference_docs_folder_id` | Rich text | Google Drive folder of the client's approved docs / past proposals for Module 2 grounding. |
+| `pricing_sheet_id` | Rich text | Google Sheet id holding this client's rate card (see `docs/PRICING-SHEET-TEMPLATE.md`). |
 | `notification_chat_id` | Rich text | Telegram chat id for the "draft ready" / "needs review" alerts. |
-| `Contract Start Date` | Date | Contract start (was the DB's `Start Date`). |
+| `Contract Start Date` | Date | Contract start. |
 | `notes` | Rich text | Free-form notes. |
 
 The DB's pre-existing `Customer Type`, `Tags`, `End Date`, and native `Status` properties are left in
-place but are **not read by any workflow** — they are harmless leftovers from the "Projects" board and
-can be removed later if desired.
+place but are **not read by any workflow**.
 
-> The **rate card** is intentionally *not* a Notion column. Rate cards are structured nested data
-> (rate-per-category, margins) that live better as a config file. For the demo it is in
-> `modules/pricing/example_client_config.json`; in production it ships with the client's config. The
-> registry can hold a pointer to it if needed, but the pricing engine consumes the config object.
+> Neither the **rate card** nor a **template section list** is a Notion column. The rate card lives
+> in the client's **pricing Google Sheet** (`pricing_sheet_id`). Which sections appear in a proposal
+> is decided **per request** by its scope of supply (extracted by Module 1 against
+> `schemas/scope-catalog.json`), not per client — so there is no per-client section column.
+
+## Client identification & status gating
+
+The orchestrator no longer hardcodes `demo_client`. For an **email** trigger it reads the sender's
+address and the "Map Client Config" node finds the registry row whose `commercial_contact_email`
+matches it (case-insensitive) — that's the `client_id`. For the **chat** trigger (no sender) it falls
+back to `demo_client` for local testing.
+
+- **Unknown sender** (no row matches) → rejected; an admin Telegram alert fires, nothing is produced.
+- **`paused` / `churned`** → rejected the same way (client inactive).
+- **`active` / `trial`** → processed. The status is shown in the success Telegram alerts so trials are
+  visible; both are treated the same functionally today (extend here if trials should be limited).
+
+The reply address (`reply_to`) is the **actual sender**, so the draft/quote goes back to whoever
+emailed the RFQ. To onboard a trial client you only need a registry row with their sender email in
+`commercial_contact_email`, `Client Status` = `trial`, and their `service_tier` + folder/sheet ids.
 
 ## Property → `client_config` mapping
 
-The "Load Client Config" node maps Notion properties into the envelope's `client_config`:
+The "Map Client Config" node maps Notion properties into the envelope's `client_config`:
 
 ```
 Client Name                → client_name
 client_id                  → client_id
 Client Status              → status
-plan_tier                  → plan_tier
-module_*                   → modules.{data_collection,content_generation,pricing,proposal_assembly}
+service_tier               → service_tier
 commercial_contact_email   → commercial_contact_email
 template_id_en/_es         → templates.{en,es}
 proposals_folder_id        → proposals_folder_id
 reference_docs_folder_id   → reference_docs_folder_id
+pricing_sheet_id           → pricing_sheet_id
 notification_chat_id       → notification_chat_id
-(rate card config file)    → rate_card
+(pricing Google Sheet)     → rate_card  (read at runtime by Module 3, not from Notion)
 ```
 
-## DDL applied
+## DDL applied (Phase 7)
 
-> ✅ **Applied** on 2026-07-21 via the Notion MCP `update-data-source` tool against data source
-> `2d7fe158-febb-8189-8ca1-000b610efd7d`, and the `demo_client` row was seeded
-> (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`). The statements below are recorded for
-> reproducibility / disaster recovery.
+> ✅ **Applied** on 2026-07-23 via the Notion MCP `update-data-source` tool against data source
+> `2d7fe158-febb-8189-8ca1-000b610efd7d`. Recorded here for reproducibility / disaster recovery.
 
 ```sql
-RENAME COLUMN "Name" TO "Client Name";
-RENAME COLUMN "Start Date" TO "Contract Start Date";
-ADD COLUMN "client_id" RICH_TEXT;
-ADD COLUMN "Client Status" SELECT('active':green,'trial':blue,'paused':yellow,'churned':gray);
-ADD COLUMN "plan_tier" SELECT('single_module':gray,'full_pipeline':green);
-ADD COLUMN "module_data_collection" CHECKBOX;
-ADD COLUMN "module_content_generation" CHECKBOX;
-ADD COLUMN "module_pricing" CHECKBOX;
-ADD COLUMN "module_proposal_assembly" CHECKBOX;
-ADD COLUMN "commercial_contact_email" EMAIL;
-ADD COLUMN "template_id_en" RICH_TEXT;
-ADD COLUMN "template_id_es" RICH_TEXT;
-ADD COLUMN "proposals_folder_id" RICH_TEXT;
-ADD COLUMN "reference_docs_folder_id" RICH_TEXT;
-ADD COLUMN "notification_chat_id" RICH_TEXT;
-ADD COLUMN "notes" RICH_TEXT;
+ADD COLUMN "service_tier" SELECT('pricing_only':blue,'proposal_only':purple,'full_pipeline':green);
+ADD COLUMN "pricing_sheet_id" RICH_TEXT;
+DROP COLUMN "module_data_collection";
+DROP COLUMN "module_content_generation";
+DROP COLUMN "module_pricing";
+DROP COLUMN "module_proposal_assembly";
+DROP COLUMN "plan_tier";
 ```
+
+(The Phase 5 DDL that first created the registry — `client_id`, `Client Status`,
+`commercial_contact_email`, template/folder/chat columns, etc. — is unchanged; see the repo history.)
 
 ## Seed row — `demo_client`
 
-> ✅ **Created** (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`). Seeded from the legacy demo's
-> hardcoded ids. `commercial_contact_email` currently holds a clearly-fake placeholder
-> (`reseller@demo-client.example`) and `reference_docs_folder_id`/`template_id_es` are empty —
-> all flagged as TODO in the row's `notes` until real values are provided.
+The `demo_client` row (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`) already exists from Phase 5.
+**Finish it by hand** (TODO):
 
-| Property | Value |
-|----------|-------|
-| `Client Name` | Demo Client |
-| `client_id` | `demo_client` |
-| `Client Status` | `trial` |
-| `plan_tier` | `full_pipeline` |
-| `module_*` | all checked |
-| `commercial_contact_email` | *(placeholder — needs the real reseller contact; TODO)* |
-| `template_id_en` | `1szdkO1MVKVsIXizYQd_x-6WJMP8OPK50oSif4Uw5LQA` |
-| `template_id_es` | *(empty — EN fallback until an ES template exists; TODO)* |
-| `proposals_folder_id` | `1vmm_AQf8FGtc7E_ujJsetwNpuzzVXCxc` |
-| `reference_docs_folder_id` | *(placeholder — needs the client's docs folder; TODO)* |
-| `notification_chat_id` | `1748634056` |
+| Property | Set to |
+|----------|--------|
+| `service_tier` | `full_pipeline` |
+| `pricing_sheet_id` | id of the client's pricing Google Sheet (create per `docs/PRICING-SHEET-TEMPLATE.md`) |
+| `commercial_contact_email` | the real reseller/commercial contact (currently a placeholder) |
+| `template_id_en` | already set (`1szdkO1M…`) — update the doc to the master-template tokens (`docs/TEMPLATE-GUIDE.md`) |
+| `reference_docs_folder_id` | optional — Drive folder of past proposals for grounding |
+| `notification_chat_id` | already set (`1748634056`) |
 
 ## If you don't have Notion write access
 
-If the DDL cannot be applied from your environment, create the properties manually in the Notion UI
-using the table above, then add the `demo_client` row. The workflows only require the property
-**names** and **types** to match; the "Load Client Config" node maps by name.
+Create the properties manually in the Notion UI using the table above, then fill the `demo_client`
+row. The workflows only require the property **names** and **types** to match; "Map Client Config"
+maps by name.

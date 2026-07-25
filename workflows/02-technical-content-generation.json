@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Module 2 — Technical content generation. Entry: Execute Workflow Trigger receiving { client_id, client_config?, data:<Module 1 output data> }. Generates the 3 narrative sections grounded in the client's reference docs (fixes legacy gap G4). Source of truth: repo workflows/02-technical-content-generation.json. Schema: schemas/content-generation.schema.json."
+    "description": "Module 2 — Technical content generation. Entry: Execute Workflow Trigger receiving { client_id, client_config?, data:<Module 1 output data> }. Generates the narrative sections that are IN SCOPE for this request (alcance_tecnico + resumen_comercial always; plan_implantacion + extra sections only when their scope_of_supply item is included), grounded in the client's reference docs (fixes gap G4). Content is plain text (no markdown) for clean placeholder replacement in Module 4. Schema: schemas/content-generation.schema.json."
   },
   "nodes": [
     {
@@ -55,7 +55,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(p===undefined||p===null) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
       }
     },
     {
@@ -80,6 +80,7 @@
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [780, -140],
+      "alwaysOutputData": true,
       "parameters": {
         "resource": "fileFolder",
         "operation": "search",
@@ -91,11 +92,27 @@
       }
     },
     {
+      "id": "c2000000-0000-4000-8000-000000000016",
+      "name": "Found Docs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1000, -140],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            { "id": "cond-found-docs", "leftValue": "={{ !!$json.id }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
+          ]
+        }
+      }
+    },
+    {
       "id": "c2000000-0000-4000-8000-000000000007",
       "name": "Download as Text",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
-      "position": [1000, -140],
+      "position": [1220, -240],
       "parameters": {
         "operation": "download",
         "fileId": { "__rl": true, "value": "={{ $json.id }}", "mode": "id" },
@@ -110,7 +127,7 @@
       "name": "Extract Text",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
-      "position": [1220, -140],
+      "position": [1440, -240],
       "parameters": { "operation": "text", "binaryPropertyName": "data", "destinationKey": "text", "options": {} }
     },
     {
@@ -118,7 +135,7 @@
       "name": "Aggregate Grounding",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1440, -140],
+      "position": [1660, -240],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
@@ -130,7 +147,7 @@
       "name": "No Grounding",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [780, 160],
+      "position": [1000, 160],
       "parameters": {
         "assignments": { "assignments": [
           { "id": "set-empty-grounding", "name": "grounding", "value": "", "type": "string" }
@@ -139,17 +156,29 @@
       }
     },
     {
+      "id": "c2000000-0000-4000-8000-000000000015",
+      "name": "Plan Sections",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1900, 0],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Decide which narrative sections to generate for THIS request, from its scope_of_supply.\n// alcance_tecnico + resumen_comercial are always written; the rest are scope-gated.\n// Keep these mappings in sync with schemas/scope-catalog.json (narrative_section per item).\nconst grounding = $json.grounding || '';\nconst trig = $('Execute Workflow Trigger').first().json;\nconst scope = (trig.data && trig.data.scope_of_supply) || {};\nconst want = ['alcance_tecnico'];\nif (scope.installation || scope.commissioning || scope.project_management) want.push('plan_implantacion');\nif (scope.spare_parts) want.push('repuestos');\nif (scope.shipping) want.push('transporte');\nif (scope.training) want.push('formacion');\nif (scope.warranty) want.push('garantia');\nwant.push('resumen_comercial');\nreturn [{ json: { grounding, want } }];"
+      }
+    },
+    {
       "id": "c2000000-0000-4000-8000-000000000011",
       "name": "Generate Sections",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
-      "position": [1720, 0],
+      "position": [2140, 0],
       "parameters": {
         "promptType": "define",
-        "text": "=RFQ data:\n{{ JSON.stringify($('Execute Workflow Trigger').first().json.data) }}\n\nReference material from this client's approved past proposals — ground your writing in this style and terminology (do not copy verbatim, do not invent prices or brands):\n{{ $json.grounding || '(no reference material available; write conservatively)' }}\n\nGenerate exactly the 3 sections.",
+        "text": "=RFQ data (includes scope_of_supply for this request):\n{{ JSON.stringify($('Execute Workflow Trigger').first().json.data) }}\n\nGenerate ONLY these sections (leave every other section key as an empty string \"\"):\n{{ JSON.stringify($json.want) }}\n\nReference material from this client's approved past proposals — ground your writing in this style and terminology (do not copy verbatim, do not invent prices or brands):\n{{ $json.grounding || '(no reference material available; write conservatively)' }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "You are an experienced Sales Engineer specializing in intralogistics and industrial automation. You write narrative sections of technical proposals, matching the language of the RFQ data (Spanish or English). Generate exactly 3 sections in JSON: alcance_tecnico, plan_implantacion, resumen_comercial.\n\nRules:\n- alcance_tecnico: 3-5 short paragraphs — what is delivered, main components, proposed architecture; correct industrial terminology.\n- plan_implantacion: milestones by phase (Engineering, Supply, Assembly, Commissioning, Startup) with indicative timeframes.\n- resumen_comercial: 2 paragraphs — scope, generic commercial terms, next steps.\n- Ground the content in the provided reference material when present. Do not invent concrete prices or specific equipment brands (name categories only).\nReturn ONLY the JSON."
+          "systemMessage": "You are an experienced Sales Engineer specializing in intralogistics and industrial automation. You write narrative sections of technical proposals, matching the language of the RFQ data (Spanish or English).\n\nReturn a JSON object with EXACTLY these keys: alcance_tecnico, plan_implantacion, resumen_comercial, repuestos, transporte, formacion, garantia. Write real content ONLY for the sections listed in the 'Generate ONLY these sections' list; every other key MUST be an empty string \"\". This honors the request's scope of supply — never write about work that is out of scope (e.g. do not describe installation if it is not requested).\n\nFORMATTING (important — the text is dropped straight into a Google Doc):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section title/heading yourself — the document template already provides the heading.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n\nSection guidance:\n- alcance_tecnico: 3-5 short paragraphs — what is delivered, main components, proposed architecture; correct industrial terminology.\n- plan_implantacion: the in-scope phases only (Engineering, Supply, Installation, Commissioning, Start-up) as '\\u2022  Phase — indicative timeframe' bullet lines.\n- resumen_comercial: ONE short intro paragraph, then a blank line, then the key commercial conditions as '\\u2022  ' bullet lines (validity, indicative delivery, payment terms, main exclusions, next step). Keep prices out of this section.\n- repuestos: recommended spare-parts approach as bullet lines (categories, not brands/prices).\n- transporte: shipping/logistics and delivery terms as bullet lines (generic).\n- formacion: operator/maintenance training approach as bullet lines.\n- garantia: 1-2 short paragraphs of standard warranty terms (generic, no invented durations).\n\nDo not invent concrete prices or specific equipment brands (name categories only). Return ONLY the JSON."
         }
       }
     },
@@ -158,7 +187,7 @@
       "name": "Anthropic Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.3,
-      "position": [1660, 220],
+      "position": [2080, 220],
       "parameters": {
         "model": { "__rl": true, "value": "claude-sonnet-4-6", "mode": "list", "cachedResultName": "Claude Sonnet 4.6" },
         "options": { "maxTokensToSample": 2048, "temperature": 0.3 }
@@ -169,19 +198,19 @@
       "name": "Structured Output Parser",
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
-      "position": [1880, 220],
-      "parameters": { "jsonSchemaExample": "{\n  \"alcance_tecnico\": \"...\",\n  \"plan_implantacion\": \"...\",\n  \"resumen_comercial\": \"...\"\n}" }
+      "position": [2300, 220],
+      "parameters": { "jsonSchemaExample": "{\n  \"alcance_tecnico\": \"...\",\n  \"plan_implantacion\": \"...\",\n  \"resumen_comercial\": \"...\",\n  \"repuestos\": \"...\",\n  \"transporte\": \"...\",\n  \"formacion\": \"...\",\n  \"garantia\": \"...\"\n}" }
     },
     {
       "id": "c2000000-0000-4000-8000-000000000014",
       "name": "Build Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1980, 0],
+      "position": [2400, 0],
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Wrap the generated sections in the shared envelope (schema: content-generation.schema.json).\nconst trig = $('Execute Workflow Trigger').first().json;\nconst out = $input.first().json.output || {};\nlet grounded = [];\ntry { grounded = $('Aggregate Grounding').first().json.grounded_on || []; } catch (e) {}\nreturn [{ json: {\n  client_id: trig.client_id,\n  client_config: trig.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: {\n    alcance_tecnico: out.alcance_tecnico || '',\n    plan_implantacion: out.plan_implantacion || '',\n    resumen_comercial: out.resumen_comercial || '',\n    grounded_on: grounded\n  }\n} }];"
+        "jsCode": "// Wrap the generated sections in the shared envelope (schema: content-generation.schema.json).\n// Only keep sections that were requested AND came back non-empty; record which ones for traceability.\nconst trig = $('Execute Workflow Trigger').first().json;\nconst out = $input.first().json.output || {};\nconst want = ($('Plan Sections').first().json.want) || ['alcance_tecnico', 'resumen_comercial'];\nlet grounded = [];\ntry { grounded = $('Aggregate Grounding').first().json.grounded_on || []; } catch (e) {}\n\nconst data = { grounded_on: grounded, sections_generated: [] };\nfor (const key of want) {\n  const val = (out[key] || '').toString().trim();\n  if (val) { data[key] = val; data.sections_generated.push(key); }\n}\n// Safety net: the two core sections must always be present.\nif (!data.alcance_tecnico) data.alcance_tecnico = (out.alcance_tecnico || '').toString().trim() || 'Scope to be detailed.';\nif (!data.resumen_comercial) data.resumen_comercial = (out.resumen_comercial || '').toString().trim() || 'Commercial summary to be detailed.';\n\nreturn [{ json: {\n  client_id: trig.client_id,\n  client_config: trig.client_config || null,\n  status: 'ok',\n  errors: [],\n  data\n} }];"
       }
     },
     {
@@ -189,11 +218,11 @@
       "name": "Note — Module 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [540, -360],
+      "position": [540, -420],
       "parameters": {
-        "width": 940,
-        "height": 200,
-        "content": "## Module 2 — Technical content generation (grounded)\nFixes legacy gap **G4** (ungrounded generic prompt).\n\n**Has Reference Folder?** → when `client_config.reference_docs_folder_id` is set, the client's approved past proposals are searched, downloaded as text, and concatenated into a grounding block injected into **Generate Sections**. When it's not set (demo default / TODO), the **No Grounding** branch lets the module still run, writing conservatively.\n\n`grounded_on` records which docs grounded the output (traceability). Production tip: raise the file limit / add chunking for larger reference libraries."
+        "width": 1120,
+        "height": 240,
+        "content": "## Module 2 — Technical content generation (grounded + scope-aware)\nFixes legacy gap **G4** (ungrounded generic prompt) and honors the request's **scope of supply**.\n\n**Has Reference Folder?** → when `reference_docs_folder_id` is set, the client's approved past proposals are searched. **Search Reference Docs** has *Always Output Data* on, and **Found Docs?** routes: if the folder actually has files they are downloaded + grounded; if it is empty, it falls through to **No Grounding** (no more stalling on an empty folder). When no folder is configured, **No Grounding** runs directly.\n\n**Plan Sections** reads `data.scope_of_supply` and decides which sections to write: `alcance_tecnico` + `resumen_comercial` always; `plan_implantacion`, `repuestos`, `transporte`, `formacion`, `garantia` only when their scope item is in. **Generate Sections** writes plain-text, bullet-formatted content (no markdown, no headings — the template supplies headings); **Build Output** drops empties and records `sections_generated`."
       }
     }
   ],
@@ -213,11 +242,18 @@
         [{ "node": "No Grounding", "type": "main", "index": 0 }]
       ]
     },
-    "Search Reference Docs": { "main": [[{ "node": "Download as Text", "type": "main", "index": 0 }]] },
+    "Search Reference Docs": { "main": [[{ "node": "Found Docs?", "type": "main", "index": 0 }]] },
+    "Found Docs?": {
+      "main": [
+        [{ "node": "Download as Text", "type": "main", "index": 0 }],
+        [{ "node": "No Grounding", "type": "main", "index": 0 }]
+      ]
+    },
     "Download as Text": { "main": [[{ "node": "Extract Text", "type": "main", "index": 0 }]] },
     "Extract Text": { "main": [[{ "node": "Aggregate Grounding", "type": "main", "index": 0 }]] },
-    "Aggregate Grounding": { "main": [[{ "node": "Generate Sections", "type": "main", "index": 0 }]] },
-    "No Grounding": { "main": [[{ "node": "Generate Sections", "type": "main", "index": 0 }]] },
+    "Aggregate Grounding": { "main": [[{ "node": "Plan Sections", "type": "main", "index": 0 }]] },
+    "No Grounding": { "main": [[{ "node": "Plan Sections", "type": "main", "index": 0 }]] },
+    "Plan Sections": { "main": [[{ "node": "Generate Sections", "type": "main", "index": 0 }]] },
     "Anthropic Chat Model": { "ai_languageModel": [[{ "node": "Generate Sections", "type": "ai_languageModel", "index": 0 }]] },
     "Structured Output Parser": { "ai_outputParser": [[{ "node": "Generate Sections", "type": "ai_outputParser", "index": 0 }]] },
     "Generate Sections": { "main": [[{ "node": "Build Output", "type": "main", "index": 0 }]] }

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cifral.io/schemas/content-generation.schema.json",
   "title": "Module 2 — Technical content generation output",
-  "description": "Output envelope of 02-technical-content-generation. The three narrative sections are grounded in the client's reference docs.",
+  "description": "Output envelope of 02-technical-content-generation. Narrative sections are grounded in the client's reference docs. Which sections are present depends on the request's scope_of_supply: alcance_tecnico and resumen_comercial are always written; plan_implantacion and the extra scope sections (repuestos, transporte, formacion, garantia, ...) appear only when their scope item is included.",
   "type": "object",
   "required": ["client_id", "data", "status"],
   "additionalProperties": true,
@@ -13,12 +13,21 @@
     "errors": { "type": "array", "items": { "type": "string" } },
     "data": {
       "type": "object",
-      "required": ["alcance_tecnico", "plan_implantacion", "resumen_comercial"],
+      "required": ["alcance_tecnico", "resumen_comercial"],
       "additionalProperties": true,
       "properties": {
-        "alcance_tecnico": { "type": "string", "minLength": 1 },
-        "plan_implantacion": { "type": "string", "minLength": 1 },
-        "resumen_comercial": { "type": "string", "minLength": 1 },
+        "alcance_tecnico": { "type": "string", "minLength": 1, "description": "Always generated (core section)." },
+        "resumen_comercial": { "type": "string", "minLength": 1, "description": "Always generated (core section)." },
+        "plan_implantacion": { "type": "string", "description": "Implementation plan. Present only when installation / commissioning / project_management is in scope." },
+        "repuestos": { "type": "string", "description": "Spare-parts section. Present only when spare_parts is in scope." },
+        "transporte": { "type": "string", "description": "Shipping/logistics section. Present only when shipping is in scope." },
+        "formacion": { "type": "string", "description": "Training section. Present only when training is in scope." },
+        "garantia": { "type": "string", "description": "Warranty section. Present only when warranty is in scope." },
+        "sections_generated": {
+          "type": "array",
+          "description": "Scope-item keys the module wrote content for (traceability).",
+          "items": { "type": "string" }
+        },
         "grounded_on": {
           "type": "array",
           "description": "Optional list of reference-doc identifiers used to ground the generation (traceability).",

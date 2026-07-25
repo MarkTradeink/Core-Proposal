@@ -4,6 +4,76 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 9.1 — Extractor truncation + wider boolean coercion (2026-07-25)
+Manual test with a real, detailed RFQ (12 technical requirements + full Included/Excluded scope
+list) failed at the Information Extractor with `OUTPUT_PARSING_FAILURE` (`` ```json {...` `` not
+valid JSON):
+- **Root cause: token cap too low.** Module 1's Anthropic Chat Model had `maxTokensToSample: 800`,
+  enough for the small demo fixture but not a real multi-item RFQ; the model's JSON got cut off
+  mid-object (`"engineering": "yes"` then nothing), which is unparseable. Raised to `4000`.
+- **Wider boolean coercion.** The same failed generation showed the model drifting to `"yes"`
+  instead of `"true"` for scope values. `toBool()` in the Validate node now also accepts
+  `yes/no`, `included/excluded`, `y/n`, `1/0` (case-insensitive), not just `true/false`, so scope
+  extraction survives normal LLM wording variance instead of only the exact literal expected.
+
+### Phase 9 — Multi-client identification, reply-to-sender, status gating (2026-07-24)
+The orchestrator now supports more than one client and stops hardcoding `demo_client`:
+- **Identify by sender email.** Build Envelope reads the Gmail sender; Map Client Config matches it to
+  the registry row via `commercial_contact_email` and sets `client_id` from that row. The chat trigger
+  (no sender) falls back to `demo_client` for testing.
+- **Reply to the original sender.** `client_config.reply_to` = the actual sender; Module 4's draft and
+  the pricing-only quote are addressed there (fallback: `commercial_contact_email`), never the
+  extracted end customer.
+- **Status gating.** A new `Client OK?` gate rejects unknown senders and `paused`/`churned` clients
+  with an admin Telegram alert (`Client Rejected`); `active`/`trial` proceed, and the status is shown
+  in the success alerts. Onboarding a trial client is now just a registry row (their sender email in
+  `commercial_contact_email`, `Client Status` = `trial`, tier + folder/sheet ids).
+
+### Phase 8 — Manual-test fixes + formatting polish (2026-07-24)
+Reconciled fixes found during manual testing of the live workflows, plus proposal formatting:
+- **Notion property prefix.** The n8n Notion node returns properties flattened as
+  `property_<snake_cased_name>`. The orchestrator's "Map Client Config" now reads those keys, and the
+  standalone fallbacks in Modules 1–4 tolerate both forms.
+- **Pricing node is JavaScript.** Replaced the Python/Pyodide "Compute Pricing" with plain JS (the
+  self-hosted n8n has no Python). `modules/pricing/pricing_engine.py` → `modules/pricing/pricing_core.js`
+  (same formula, `node …/pricing_core.js` to check). Module 3 reads the sheet tab named `Pricing`.
+- **Module 4 Copy Template** sets `sameFolder:false` so the generated doc lands in the proposals
+  folder, not next to the template.
+- **Module 2 empty-folder guard.** `Search Reference Docs` now has *Always Output Data* + a `Found
+  Docs?` IF, so an empty reference-docs folder skips extraction instead of stalling the flow.
+- **Scope extraction fixed (root cause: string booleans).** The Information Extractor returns
+  `scope_of_supply` values as strings (`"true"`/`"false"`), so Module 1's strict `=== true` check was
+  discarding every value and falling back to defaults — collapsing installation/commissioning/PM/
+  shipping to `false` and under-pricing full-scope RFQs. The Validate node now coerces string
+  booleans and normalizes `language` (`"English"` → `en`). The extractor prompt also maps the
+  reseller's Included/Excluded phrases to catalog keys (installation supervision → installation,
+  commissioning support → commissioning, freight → shipping, fabrication/procurement → materials, …).
+- **Proposal formatting.** Module 2 emits plain text (no markdown) with `•` bullets and no self-made
+  headings; Module 4 gives optional sections an uppercase heading and renders the pricing block as a
+  self-contained "Economic Proposal" chapter. `docs/TEMPLATE-GUIDE.md` rewritten with a concrete,
+  professional template layout (and a note on the Docs-API upgrade for native bullets).
+
+### Phase 7 — Service tiers, per-request scope, Sheets pricing, manual testing (2026-07-23)
+Reworked the demo after review, without changing the module boundaries:
+- **Three service tiers instead of four module checkboxes.** Notion registry: added `service_tier`
+  (`pricing_only` / `proposal_only` / `full_pipeline`) and `pricing_sheet_id`; dropped the four
+  `module_*` checkboxes and `plan_tier`. The orchestrator now **routes per request**: Module 1
+  extracts `request_type`, and the orchestrator branches (pricing_only → M3 + quote draft;
+  proposal_only → M2+M4, no pricing; full_pipeline → M2 ∥ M3 → M4), falling back to `service_tier`.
+- **Per-request scope of supply.** New `schemas/scope-catalog.json` defines the canonical scope
+  items. Module 1 extracts a `scope_of_supply` map; it drives pricing lines (M3), narrative sections
+  (M2) and template blocks (M4) together. Module 4 renders in-scope `{{SECCION_*}}` tokens and removes
+  out-of-scope ones; it also prints a visible Scope-of-Supply block for the reviewing reseller.
+- **Pricing data moved to Google Sheets.** Module 3 reads the rate card at runtime from the client's
+  pricing Google Sheet (`pricing_sheet_id`); removed `example_client_config.json`.
+  `modules/pricing/pricing_engine.py` stays as the versioned, self-contained reference formula.
+- **Manual testing replaces the Python test suite.** Removed `scripts/` (`deploy_workflows.py`,
+  `smoke_test.py`, `check_pricing_sync.py`, `requirements.txt`) and `modules/pricing/tests/`. Added
+  `docs/TESTING-MANUAL.md`.
+- **New docs:** `PRICING-SHEET-TEMPLATE.md`, `TEMPLATE-GUIDE.md` (master template with conditional
+  section tokens), `RESELLER-EMAIL-GUIDE.md` (request instructions + email templates). Updated
+  README, ARCHITECTURE, DEPLOYMENT, ONBOARDING, CLIENT-REGISTRY-SCHEMA.
+
 ### Phase 6 — Smoke test + deploy script (2026-07-21)
 - `scripts/smoke_test.py`: runs a demo_client RFQ fixture through all four contract stages,
   validating each against `schemas/*.json`, executing the pricing engine for real, and asserting

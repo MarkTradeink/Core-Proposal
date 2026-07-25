@@ -16,9 +16,19 @@
     "errors": { "type": "array", "items": { "type": "string" } },
     "data": {
       "type": "object",
-      "required": ["client", "project", "technical_requirements", "language", "status", "missing_fields"],
+      "required": ["client", "project", "technical_requirements", "language", "status", "missing_fields", "request_type", "scope_of_supply"],
       "additionalProperties": true,
       "properties": {
+        "request_type": {
+          "type": "string",
+          "enum": ["pricing_only", "proposal_only", "full_pipeline", "unspecified"],
+          "description": "What the reseller asked Cifral to produce for THIS request. Drives orchestrator routing (falls back to the client's default service_tier when 'unspecified')."
+        },
+        "scope_of_supply": {
+          "type": "object",
+          "description": "Per-request map of scope-item key (see schemas/scope-catalog.json) -> included boolean. Drives pricing lines, narrative sections, and template blocks together.",
+          "additionalProperties": { "type": "boolean" }
+        },
         "client": {
           "type": "object",
           "required": ["company", "contact_name", "contact_last_name", "email"],
