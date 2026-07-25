@@ -1,9 +1,9 @@
 # Reseller request guide + email templates
 
 Cifral's client is the **company/reseller** (e.g. an intralogistics integrator). They email a
-request to Cifral's inbox; Cifral produces a **price estimate and/or a written proposal** and returns
-it as a **draft to the reseller** — who reviews it and forwards it to their own end customer. The
-reseller is always the human-in-the-loop: nothing is auto-sent to the end customer.
+request to Cifral's inbox; Cifral produces a **price estimate and/or a written proposal** and
+**replies to the reseller in the same email thread** — they review it and forward it to their own end
+customer. The reseller is always the human-in-the-loop: nothing is ever sent to the end customer.
 
 This guide is what you hand the reseller so their emails contain what Module 1 needs. The better the
 email, the fewer "needs review" bounce-backs.

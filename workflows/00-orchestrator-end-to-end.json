@@ -5,7 +5,7 @@
     "callerPolicy": "workflowsFromSameOwner"
   },
   "meta": {
-    "description": "Orchestrator. Resolves client config ONCE from Notion, runs Module 1, then ROUTES on the request type (pricing_only | proposal_only | full_pipeline): a price-only request runs Module 3 and drafts a quote; a proposal-only request runs Modules 2+4 (no pricing); a full request runs Modules 2 ∥ 3 then Module 4. Effective route = the request's own request_type, falling back to the client's default service_tier. Incomplete RFQs branch to a Telegram review alert. NOTE: after import, repoint each 'Call Module N' Execute Workflow node to the deployed sub-workflow (by name) and link credentials."
+    "description": "Orchestrator. Resolves client config ONCE from Notion, runs Module 1, then ROUTES on the request type (pricing_only | proposal_only | full_pipeline): a price-only request runs Module 3 and replies with a quote; a proposal-only request runs Modules 2+4 (no pricing); a full request runs Modules 2 ∥ 3 then Module 4. Effective route = the request's own request_type, falling back to the client's default service_tier. Incomplete RFQs branch to a Telegram review alert. Replies are SENT (not just drafted) from the client's from_alias — demo@cifral.io for trial clients, proposal@cifral.io otherwise — as a reply inside the original RFQ thread; the per-client send_mode='draft' switch parks the reply in the mailbox instead. NOTE: after import, repoint each 'Call Module N' Execute Workflow node to the deployed sub-workflow (by name) and link credentials — including the Gmail OAuth2 credential on the 'Send Quote' HTTP Request node."
   },
   "nodes": [
     {
@@ -34,7 +34,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Build the shared envelope from whichever trigger fired, and identify the client by the\n// SENDER's email (matched against the Notion registry in the next node). Chat-trigger runs\n// have no sender, so they fall back to demo_client for local testing.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\nfunction headerVal(obj, name){ try { const hs=(obj.payload&&obj.payload.headers)||obj.headers; if(Array.isArray(hs)){ const h=hs.find(x=>String(x.name).toLowerCase()===name); return h?h.value:null; } if(hs&&typeof hs==='object'){ return hs[name] ?? hs[name.charAt(0).toUpperCase()+name.slice(1)] ?? null; } } catch(e){} return null; }\nlet fromRaw = t.from || t.From || headerVal(t,'from') || '';\nif (fromRaw && typeof fromRaw==='object') { fromRaw = (fromRaw.value&&fromRaw.value[0]&&(fromRaw.value[0].address||fromRaw.value[0].value)) || fromRaw.address || fromRaw.text || ''; }\nconst m = String(fromRaw).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\nconst sender_email = m ? m[0].toLowerCase() : null;\nconst fallback_client_id = sender_email ? null : 'demo_client';\nreturn [{ json: { sender_email, fallback_client_id, data: { subject, text } } }];"
+        "jsCode": "// Build the shared envelope from whichever trigger fired, and identify the client by the\n// SENDER's email (matched against the Notion registry in the next node). Chat-trigger runs\n// have no sender, so they fall back to demo_client for local testing.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\nfunction headerVal(obj, name){ try { const hs=(obj.payload&&obj.payload.headers)||obj.headers; if(Array.isArray(hs)){ const h=hs.find(x=>String(x.name).toLowerCase()===name); return h?h.value:null; } if(hs&&typeof hs==='object'){ return hs[name] ?? hs[name.charAt(0).toUpperCase()+name.slice(1)] ?? null; } } catch(e){} return null; }\nlet fromRaw = t.from || t.From || headerVal(t,'from') || '';\nif (fromRaw && typeof fromRaw==='object') { fromRaw = (fromRaw.value&&fromRaw.value[0]&&(fromRaw.value[0].address||fromRaw.value[0].value)) || fromRaw.address || fromRaw.text || ''; }\nconst m = String(fromRaw).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\nconst sender_email = m ? m[0].toLowerCase() : null;\nconst fallback_client_id = sender_email ? null : 'demo_client';\n\n// Thread context — lets the reply land INSIDE the reseller's original RFQ thread instead of\n// opening a new conversation. Gmail threads a reply on threadId + a matching subject, so the\n// subject must be the original one prefixed with 'Re: ', never a synthetic one.\n// Chat-trigger runs have no thread; every field is null and threading degrades to a new mail.\nconst thread_id = t.threadId || t.thread_id || null;\nconst message_id = headerVal(t, 'message-id') || null;\n// Only meaningful when there IS a thread to reply into — otherwise a chat run with no subject\n// would ship a bare 'Re: RFQ' instead of letting the caller build a real one.\nconst reply_subject = thread_id ? (/^re:\\s/i.test(subject) ? subject : `Re: ${subject}`) : null;\nconst email_context = { thread_id, message_id, reply_subject };\nreturn [{ json: { sender_email, fallback_client_id, email_context, data: { subject, text } } }];"
       }
     },
     {
@@ -60,7 +60,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// Resolve the client ONCE from the registry by the SENDER's email (or the chat fallback id),\n// enforcing Client Status. The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender: no registry row matches the sender email.\n//   - inactive: the matched client is 'paused' or 'churned'.\nconst env = $('Build Envelope').first().json;\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\nif(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, data: env.data } }]; }\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, data: env.data } }]; }\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id')\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, data: env.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Resolve the client ONCE from the registry by the SENDER's email (or the chat fallback id),\n// enforcing Client Status. The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender: no registry row matches the sender email.\n//   - inactive: the matched client is 'paused' or 'churned'.\nconst env = $('Build Envelope').first().json;\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\nif(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, data: env.data } }]; }\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, data: env.data } }]; }\n\n// Outbound identity. 'trial' clients send from the demo address so pilot traffic stays\n// visibly separate from production. Both must be VERIFIED 'Send mail as' aliases on the\n// Gmail account that owns the credential, or Gmail rejects drafts.send.\n// Keep in sync with 04-proposal-assembly.json -> 'Map Client Config' (standalone fallback).\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nfunction resolveFromAlias(status){ return status === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS; }\n// send_mode is the per-client kill switch: 'send' delivers the reply, 'draft' only parks it\n// in the mailbox (the pre-production behaviour). Anything other than 'draft' means 'send'.\nfunction resolveSendMode(raw){ return String(raw || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'; }\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id'),\n  from_alias: resolveFromAlias(clientStatus),\n  send_mode: resolveSendMode(prop(match,'property_send_mode'))\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, email_context: env.email_context || null, data: env.data, status: 'ok', errors: [] } }];"
       }
     },
     {
@@ -219,7 +219,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\nconst cfg = j.client_config || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\nconst subject = `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', subject, html, company, total: p.total, currency: cur } }];"
+        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\n// client_config rides through Module 3 untouched; fall back to the orchestrator's own\n// resolution if a future change ever drops it, so the alias can never silently go missing.\nconst cfg = j.client_config || $('Map Client Config').first().json.client_config || {};\nconst ec = $('Build Envelope').first().json.email_context || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\n// Reply inside the reseller's own RFQ thread. Gmail only threads when the threadId AND the\n// subject match the original, so a synthetic subject would break out into a new conversation.\nconst subject = ec.reply_subject || `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nconst from_alias = cfg.from_alias || '';\nif (!from_alias) throw new Error(`No from_alias resolved for '${j.client_id}'. Refusing to send from the raw mailbox address.`);\n// Empty string (not null) for threadId: the Gmail node treats it as falsy and omits the\n// field, whereas a null would be serialised into the API call.\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', from_alias, send_mode: cfg.send_mode || 'send', thread_id: ec.thread_id || '', subject, html, company, total: p.total, currency: cur } }];"
       }
     },
     {
@@ -233,18 +233,57 @@
         "subject": "={{ $json.subject }}",
         "emailType": "html",
         "message": "={{ $json.html }}",
-        "options": { "sendTo": "={{ $json.recipient }}" }
+        "options": {
+          "sendTo": "={{ $json.recipient }}",
+          "fromAlias": "={{ $json.from_alias }}",
+          "threadId": "={{ $json.thread_id }}",
+          "appendAttribution": false
+        }
       }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000035",
+      "name": "Send Quote?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1760, -260],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+          "combinator": "and",
+          "conditions": [
+            { "id": "cond-send-quote", "leftValue": "={{ $('Build Quote Draft').item.json.send_mode }}", "rightValue": "send", "operator": { "type": "string", "operation": "equals" } }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000036",
+      "name": "Send Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, -360],
+      "parameters": {
+        "method": "POST",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $('Create Quote Draft').item.json.id }) }}",
+        "options": {}
+      },
+      "notes": "The Gmail node cannot send a draft, and its Send operation overwrites From with the authenticated address — so the alias only survives via draft + drafts.send. Returns the sent Message { id, threadId }."
     },
     {
       "id": "00000000-0000-4000-8000-000000000034",
       "name": "Quote Alert",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [1760, -260],
+      "position": [2200, -260],
       "parameters": {
         "chatId": "={{ $('Build Quote Draft').item.json.notification_chat_id }}",
-        "text": "=💶 Price estimate ready\n\n👤 Client: {{ $('Build Quote Draft').item.json.client_id }} ({{ $('Build Quote Draft').item.json.client_status }})\n📍 Customer: {{ $('Build Quote Draft').item.json.company }}\n💰 Total: {{ $('Build Quote Draft').item.json.total }} {{ $('Build Quote Draft').item.json.currency }}\n✉️ Draft to: {{ $('Build Quote Draft').item.json.recipient }}\n\nReview in your commercial inbox before sending to the customer.",
+        "text": "=💶 Price estimate {{ $('Build Quote Draft').item.json.send_mode === 'send' ? 'SENT ✅' : 'drafted 📝' }}\n\n👤 Client: {{ $('Build Quote Draft').item.json.client_id }} ({{ $('Build Quote Draft').item.json.client_status }})\n📍 Customer: {{ $('Build Quote Draft').item.json.company }}\n💰 Total: {{ $('Build Quote Draft').item.json.total }} {{ $('Build Quote Draft').item.json.currency }}\n📤 From: {{ $('Build Quote Draft').item.json.from_alias }}\n✉️ To: {{ $('Build Quote Draft').item.json.recipient }}\n\n{{ $('Build Quote Draft').item.json.send_mode === 'send' ? 'Delivered as a reply in the original RFQ thread.' : 'Nothing was sent — the draft is waiting in the mailbox.' }}",
         "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
       }
     },
@@ -282,7 +321,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
+        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\n// email_context is per-request (which thread to reply in) so it travels beside client_config,\n// not inside it; Module 4 treats it as optional and falls back to a fresh mail without it.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
       }
     },
     {
@@ -363,7 +402,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
+        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
       }
     },
     {
@@ -396,7 +435,7 @@
       "parameters": {
         "width": 1200,
         "height": 260,
-        "content": "## 00 — Orchestrator (identify → resolve-once → route)\n**Build Envelope** reads the SENDER's email from the Gmail trigger (chat runs fall back to demo_client). **Load Client Registry → Map Client Config** matches that email to a registry row via `commercial_contact_email`, enforces `Client Status` (paused/churned rejected), and resolves `client_config` ONCE (incl. `service_tier`, `pricing_sheet_id`, and `reply_to` = the sender). **Client OK?** stops unknown/inactive senders with a **Client Rejected** admin alert. The draft/quote is addressed to `reply_to` (the original sender), never the extracted end customer.\n\n**Call Module 1 → RFQ Complete?**: if Module 1 flags the RFQ `incomplete`, **RFQ Needs Review** (Telegram) fires and it stops. Otherwise **Resolve Route** picks the effective route — the request's own `request_type`, falling back to the client's `service_tier` — and **Route by Request Type** (Switch) branches:\n- **pricing_only** → Module 3 → **Build Quote Draft** → Gmail draft + Telegram (a price estimate, no document).\n- **proposal_only** → Module 2 → Module 4 (document with NO pricing block).\n- **full_pipeline** → Module 2 ∥ Module 3 → merge → Module 4 (full document).\n\nPricing inputs are entered manually and **filtered by the request's scope of supply** (phase 1 has no auto hours-estimation engine). ⚠️ After import, repoint each **Call Module N** node to the deployed sub-workflow (by name) and link Gmail/Google/Anthropic/Telegram/Notion credentials."
+        "content": "## 00 — Orchestrator (identify → resolve-once → route)\n**Build Envelope** reads the SENDER's email from the Gmail trigger (chat runs fall back to demo_client). **Load Client Registry → Map Client Config** matches that email to a registry row via `commercial_contact_email`, enforces `Client Status` (paused/churned rejected), and resolves `client_config` ONCE (incl. `service_tier`, `pricing_sheet_id`, and `reply_to` = the sender). **Client OK?** stops unknown/inactive senders with a **Client Rejected** admin alert. The draft/quote is addressed to `reply_to` (the original sender), never the extracted end customer.\n\n**Sender identity & delivery.** `Build Envelope` also captures the RFQ's `threadId` and builds a `Re: <original subject>` line, so replies land **inside the reseller's own thread** (Gmail needs both to thread). `Map Client Config` derives `from_alias` from Client Status — `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io` — and reads `send_mode` (`send` | `draft`, default `send`). Because the Gmail node's Send operation overwrites `From` with the authenticated address, the alias only survives the **create-draft → `drafts.send`** pair; `Send Quote?` / `Send Mode?` skip the send step when `send_mode` is `draft`. ⚠️ Both aliases must be **verified 'Send mail as' addresses** on the Gmail account before switching a client to `send`.\n\n**Call Module 1 → RFQ Complete?**: if Module 1 flags the RFQ `incomplete`, **RFQ Needs Review** (Telegram) fires and it stops. Otherwise **Resolve Route** picks the effective route — the request's own `request_type`, falling back to the client's `service_tier` — and **Route by Request Type** (Switch) branches:\n- **pricing_only** → Module 3 → **Build Quote Draft** → **Create Quote Draft** → **Send Quote?** → **Send Quote** (HTTP `drafts.send`) + Telegram (a price estimate, no document).\n- **proposal_only** → Module 2 → Module 4 (document with NO pricing block).\n- **full_pipeline** → Module 2 ∥ Module 3 → merge → Module 4 (full document).\n\nPricing inputs are entered manually and **filtered by the request's scope of supply** (phase 1 has no auto hours-estimation engine). ⚠️ After import, repoint each **Call Module N** node to the deployed sub-workflow (by name) and link Gmail/Google/Anthropic/Telegram/Notion credentials."
       }
     }
   ],
@@ -434,7 +473,14 @@
     "Prep Pricing Input": { "main": [[{ "node": "Call Module 3", "type": "main", "index": 0 }]] },
     "Call Module 3": { "main": [[{ "node": "Build Quote Draft", "type": "main", "index": 0 }]] },
     "Build Quote Draft": { "main": [[{ "node": "Create Quote Draft", "type": "main", "index": 0 }]] },
-    "Create Quote Draft": { "main": [[{ "node": "Quote Alert", "type": "main", "index": 0 }]] },
+    "Create Quote Draft": { "main": [[{ "node": "Send Quote?", "type": "main", "index": 0 }]] },
+    "Send Quote?": {
+      "main": [
+        [{ "node": "Send Quote", "type": "main", "index": 0 }],
+        [{ "node": "Quote Alert", "type": "main", "index": 0 }]
+      ]
+    },
+    "Send Quote": { "main": [[{ "node": "Quote Alert", "type": "main", "index": 0 }]] },
     "Quote Alert": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] },
 
     "Prep Module 2 Input": { "main": [[{ "node": "Call Module 2", "type": "main", "index": 0 }]] },

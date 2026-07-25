@@ -34,7 +34,7 @@ The website still tells a four-module story (the internal building blocks). Each
 | 1 | **Data collection & validation** — capture the request, extract key variables, flag missing information before anyone writes | `workflows/01-data-collection-validation.json` | RFQ text → structured JSON; flags `missing_fields` and marks the RFQ `complete`/`incomplete`. |
 | 2 | **Technical content generation** — draft scope and technical sections from the client's approved docs | `workflows/02-technical-content-generation.json` | Generates the 3 narrative sections, grounded in that client's reference documents. |
 | 3 | **Pricing & commercial logic** — run the client's cost, margin, and configuration rules automatically | `workflows/03-pricing-commercial-logic.json` | Computes subtotal/total/terms via the tested Python pricing engine. |
-| 4 | **Proposal assembly** — assemble the complete document in the client's own template | `workflows/04-proposal-assembly.json` | Fills the client's Google Docs template, exports a PDF, creates a Gmail draft **to the client's own commercial contact**, and sends a Telegram alert. |
+| 4 | **Proposal assembly** — assemble the complete document in the client's own template | `workflows/04-proposal-assembly.json` | Fills the client's Google Docs template, exports a PDF, **replies in-thread to the client's own commercial contact** from the client's send-as alias, and sends a Telegram alert. |
 | — | **Full end-to-end pipeline** | `workflows/00-orchestrator-end-to-end.json` | Thin orchestrator: Notion client lookup → M1 → (M2 ∥ M3) → M4. |
 
 A client buying only one module gets a workflow that behaves **identically** whether called
@@ -87,7 +87,12 @@ numbers). All are catalogued and mapped to their fix in
 
 Testing is **manual** against the live n8n workflows with the `demo_client` — see
 [`docs/TESTING-MANUAL.md`](docs/TESTING-MANUAL.md) for every scenario (each service tier, scope
-pruning, incomplete-RFQ handling, recipient safety, pricing errors) and what to check.
+pruning, incomplete-RFQ handling, recipient safety, sending alias, in-thread replies, the
+`send_mode` rollback, pricing errors) and what to check.
+
+> ⚠️ Proposals and quotes are **sent**, not parked as drafts. Set a client's `send_mode` to `draft`
+> in the Notion registry to hold delivery while you test — see
+> [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md).
 
 For a quick offline sanity check of the pricing math only:
 

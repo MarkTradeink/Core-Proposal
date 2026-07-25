@@ -122,8 +122,9 @@ is why there are **no per-client workflows**: client and request variation is ex
 
 ### Module 4 — Proposal assembly (`04-proposal-assembly.json`)
 - **In:** outputs of Modules 1 + 2 (+ 3 for full_pipeline; `pricing` is `null` for proposal_only) + `client_id`.
-- **Out:** a Google Doc + PDF, a Gmail **draft to `client_config.commercial_contact_email`**, and a
-  Telegram notification to `client_config.notification_chat_id`.
+- **Out:** a Google Doc + PDF, an email **sent to `client_config.commercial_contact_email`** (in
+  practice the RFQ sender) as a reply inside the original thread, and a Telegram notification to
+  `client_config.notification_chat_id`.
 - **Scope-aware rendering:** the master template holds every section as a `{{SECCION_*}}` token;
   Module 4 fills the in-scope ones and replaces out-of-scope ones with `""` so the block disappears.
   A visible `{{ALCANCE_SUMINISTRO}}` (Included / Not-included) block lets the reviewing reseller catch
@@ -133,24 +134,37 @@ is why there are **no per-client workflows**: client and request variation is ex
     the extracted end-customer email (legacy gap G1).
   - Template is selected by `language` from `client_config.templates` with EN fallback (gap G2).
   - Proposal number is deterministic (`PROP-YYYYMMDD-<hash>`), computed in a Code node (bug B2).
+- **Delivery:** the reply is **sent**, not left as a draft, from the client's own send-as alias
+  (`demo@cifral.io` for `trial` clients, `proposal@cifral.io` otherwise) and threaded onto the
+  original RFQ. Mechanically this is *create draft → `drafts.send`*: the Gmail node's Send operation
+  rebuilds `From` from the authenticated mailbox and would discard the alias, while its Create Draft
+  operation honours both `fromAlias` and `threadId`. `client_config.send_mode = 'draft'` skips the
+  send step — the per-client rollback.
 - Schema: `schemas/proposal-assembly.schema.json`.
 
 ## How the orchestrator composes them (`00-orchestrator-end-to-end.json`)
 
 ```
 trigger (Gmail / chat)
+  → Build Envelope (sender + thread id + "Re: <subject>")
   → Load Client Config (Notion, ONCE)                 ┐ resolve-once
   → Module 1  (Execute Workflow, client_config passed) ┘
   → IF status == "incomplete"
         → Telegram "RFQ needs human review" → stop     (realizes the website's Module-1 promise)
      ELSE Resolve Route (request_type, else service_tier) → Switch:
-        • pricing_only  → Module 3 → Build Quote Draft → Gmail draft + Telegram   (price estimate, no doc)
+        • pricing_only  → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
         • proposal_only → Module 2 → Module 4                                      (document, no pricing block)
         • full_pipeline → Module 2 ∥ Module 3 → Merge → Module 4                   (full document)
 ```
 
 Pricing inputs are entered manually and **filtered by the request's scope of supply** before
 Module 3 (phase-1 has no auto hours-estimation engine).
+
+Two envelope fields carry the email context. `client_config` holds what belongs to the *client*
+(`from_alias`, `send_mode`, both derived in "Map Client Config"); a sibling `email_context` holds
+what belongs to the *request* (`thread_id`, `message_id`, `reply_subject`). Runs with no originating
+thread — the chat trigger, or a module invoked standalone — get a `null` `email_context` and
+degrade to a new message with a synthetic subject rather than failing.
 
 Because the orchestrator passes `client_config` through, each `Execute Workflow` sub-call skips its
 own Notion lookup. A module called standalone (no `client_config` in the input) performs its own

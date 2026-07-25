@@ -40,7 +40,8 @@ Registry-specific properties the workflows read:
 |----------|-------------|---------|
 | `Client Name` | Title | Human-readable client name. |
 | `client_id` | Rich text | Unique slug used as the lookup key, e.g. `demo_client`. |
-| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Gates processing: `active`/`trial` are processed; `paused`/`churned` are rejected with an admin alert. |
+| `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Gates processing: `active`/`trial` are processed; `paused`/`churned` are rejected with an admin alert. Also picks the **sending address**: `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io`. |
+| `send_mode` | Select: `send` / `draft` (empty → `send`) | Delivery switch. `send` replies to the reseller for real; `draft` stops at a Gmail draft and sends nothing. The per-client rollback — set it to `draft` to take one client out of live sending without touching the workflows. |
 | `service_tier` | Select: `pricing_only` / `proposal_only` / `full_pipeline` | Default deliverable for this client. |
 | `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. |
 | `template_id_en` | Rich text | Google Docs master template id for English proposals. |
@@ -70,11 +71,35 @@ back to `demo_client` for local testing.
 - **Unknown sender** (no row matches) → rejected; an admin Telegram alert fires, nothing is produced.
 - **`paused` / `churned`** → rejected the same way (client inactive).
 - **`active` / `trial`** → processed. The status is shown in the success Telegram alerts so trials are
-  visible; both are treated the same functionally today (extend here if trials should be limited).
+  visible, and it selects the sending address (below).
 
-The reply address (`reply_to`) is the **actual sender**, so the draft/quote goes back to whoever
+The reply address (`reply_to`) is the **actual sender**, so the quote/proposal goes back to whoever
 emailed the RFQ. To onboard a trial client you only need a registry row with their sender email in
 `commercial_contact_email`, `Client Status` = `trial`, and their `service_tier` + folder/sheet ids.
+
+## Sender identity & delivery
+
+Replies are **sent**, not parked as drafts, and they land **inside the reseller's original RFQ
+thread** (the workflow keeps the incoming `threadId` and answers with `Re: <original subject>` —
+Gmail needs both to thread).
+
+| `Client Status` | Sends from |
+|-----------------|------------|
+| `trial` | `demo@cifral.io` |
+| `active` (and any other processed status) | `proposal@cifral.io` |
+
+Both addresses must be **verified "Send mail as" aliases** on the Gmail account that owns the n8n
+Gmail credential — see `docs/DEPLOYMENT.md`. Gmail accepts an unverified alias at draft time but
+rejects it on send, so an unverified alias fails loudly at the send step rather than quietly going
+out from the wrong address.
+
+> **Why draft-then-send.** The Gmail node's *Send Message* operation rebuilds the `From` header from
+> the authenticated mailbox, discarding any alias. Only *Create Draft* honours `fromAlias`, so the
+> workflow creates a draft and then fires `drafts.send` over HTTP. That is also what makes
+> `send_mode: draft` a clean rollback: it simply skips the second step.
+
+Set `send_mode` to `draft` for a client to keep the old review-before-sending behaviour. Leave it
+empty (or `send`) for live delivery.
 
 ## Property → `client_config` mapping
 
@@ -83,7 +108,8 @@ The "Map Client Config" node maps Notion properties into the envelope's `client_
 ```
 Client Name                → client_name
 client_id                  → client_id
-Client Status              → status
+Client Status              → status  (+ derives from_alias: trial → demo@, else proposal@)
+send_mode                  → send_mode  (normalised to 'send' | 'draft')
 service_tier               → service_tier
 commercial_contact_email   → commercial_contact_email
 template_id_en/_es         → templates.{en,es}
@@ -112,6 +138,19 @@ DROP COLUMN "plan_tier";
 (The Phase 5 DDL that first created the registry — `client_id`, `Client Status`,
 `commercial_contact_email`, template/folder/chat columns, etc. — is unchanged; see the repo history.)
 
+## DDL pending — live sending
+
+> ⏳ **Not applied yet.** Run this against the same data source before switching any client to live
+> sending. Until the column exists, `send_mode` resolves to its default (`send`) for every client.
+
+```sql
+ADD COLUMN "send_mode" SELECT('send':green,'draft':yellow);
+```
+
+Because the default is `send`, adding the column is not what turns delivery on — deploying the
+updated workflows is. If you want a staged rollout, add the column **first** and set every existing
+client to `draft`, then flip them to `send` one at a time.
+
 ## Seed row — `demo_client`
 
 The `demo_client` row (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`) already exists from Phase 5.
@@ -120,6 +159,7 @@ The `demo_client` row (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`) already exis
 | Property | Set to |
 |----------|--------|
 | `service_tier` | `full_pipeline` |
+| `send_mode` | `draft` while verifying the alias and threading; `send` once the checks in `docs/TESTING-MANUAL.md` pass |
 | `pricing_sheet_id` | id of the client's pricing Google Sheet (create per `docs/PRICING-SHEET-TEMPLATE.md`) |
 | `commercial_contact_email` | the real reseller/commercial contact (currently a placeholder) |
 | `template_id_en` | already set (`1szdkO1M…`) — update the doc to the master-template tokens (`docs/TEMPLATE-GUIDE.md`) |

@@ -4,6 +4,45 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 10 — Live sending: send-as alias + in-thread replies (2026-07-25)
+Quotes and proposals are now **delivered**, not parked as Gmail drafts, and they come from a Cifral
+address instead of the personal mailbox that receives the RFQs:
+
+- **Send-as alias.** `Map Client Config` derives `client_config.from_alias` from `Client Status` —
+  `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io` — and Module 4 / the quote
+  branch pass it as the Gmail node's `fromAlias`. This finally gives `trial` behaviour of its own;
+  it was cosmetic before.
+- **Draft-then-send, not send.** The Gmail node's *Send Message* operation rebuilds `From` from the
+  authenticated mailbox and silently discards any alias, while *Create Draft* honours `fromAlias`
+  and `threadId`. Delivery is therefore `Create Draft` → new **`Send Draft`** / **`Send Quote`** HTTP
+  node calling `gmail/v1/users/me/drafts/send`.
+- **Replies land in the RFQ thread.** `Build Envelope` now keeps the trigger's `threadId`,
+  `Message-ID` and a `Re: <original subject>` line in a new per-request `email_context`, carried
+  beside `client_config` into Module 4. Gmail threads only when the thread id *and* the subject
+  match, so the synthetic `Proposal PROP-… — Company` subject is now a fallback for runs with no
+  thread (chat trigger, standalone module calls) rather than the default.
+- **`send_mode` kill switch.** New per-client Notion column (`send` | `draft`, default `send`).
+  `draft` skips the send step and restores exactly the previous behaviour — the per-client rollback
+  for the first production deploy. DDL is in `CLIENT-REGISTRY-SCHEMA.md` and **not yet applied**.
+- **`appendAttribution: false`** on both mail nodes — outgoing client mail was carrying n8n's own
+  promotional footer.
+- **Output records delivery.** `proposal-assembly.schema.json` gains `sent`, `sent_message_id`,
+  `from_alias`, `thread_id`; the Telegram alerts now say `SENT ✅` / `drafted 📝` with the From and
+  To addresses instead of always claiming a draft was created. `sent: false` always means
+  "deliberately not sent" — a genuine send failure fails the node and the run.
+- **Recipient guard hardened.** Gap G1 ("never the extracted end customer") now protects a real
+  send, and Module 4 additionally throws if no `from_alias` resolved rather than falling back to the
+  raw mailbox address. `TESTING-MANUAL.md` gains scenarios 13–15 (alias by status, in-thread reply,
+  live sending + rollback) and promotes the recipient-safety check to every regression pass.
+
+> ⚠️ **Before deploying:** verify `demo@cifral.io` and `proposal@cifral.io` as "Send mail as"
+> addresses on the Gmail account (`DEPLOYMENT.md`), and link the Gmail OAuth2 credential to the two
+> new HTTP Request nodes. Gmail rejects an unverified alias at send time, not at draft time.
+
+Known unrelated defect, left for the document-engine work: Module 4's `Convert to PDF` node is a
+plain Drive download with no `googleFileConversion` option, so the "PDF" attachment is the raw Google
+Doc export with a `.pdf` name.
+
 ### Phase 9.1 — Extractor truncation + wider boolean coercion (2026-07-25)
 Manual test with a real, detailed RFQ (12 technical requirements + full Included/Excluded scope
 list) failed at the Information Extractor with `OUTPUT_PARSING_FAILURE` (`` ```json {...` `` not

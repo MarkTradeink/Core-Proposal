@@ -9,12 +9,16 @@ In the client registry ("Projects" DB — see `CLIENT-REGISTRY-SCHEMA.md`), add 
 
 - `Client Name`, `client_id` (a unique slug, lowercase, e.g. `acme_intralogistics`).
 - `Client Status` = `trial` (or `active`). `paused`/`churned` clients are rejected (no output);
-  `active` and `trial` are both processed.
+  `active` and `trial` are both processed. The status also picks the sending address: `trial` sends
+  from `demo@cifral.io`, everything else from `proposal@cifral.io`.
+- `send_mode` = `draft` while you validate the client's setup — replies are held in the mailbox
+  instead of going out. Switch to `send` (or leave it empty) once you've run the checks.
 - `service_tier` = `pricing_only` / `proposal_only` / `full_pipeline` — their **default** deliverable
   (any individual request can still override it).
 - `commercial_contact_email` = **the address the client emails you from.** The system matches the
-  incoming email's sender against this to identify the client, and replies (drafts the quote/proposal)
-  back to that sender — never the extracted end customer. Must be the real address they send from.
+  incoming email's sender against this to identify the client, and replies with the quote/proposal
+  **inside that same email thread** — never to the extracted end customer. Must be the real address
+  they send from.
 - `notification_chat_id` = their Telegram chat id for alerts.
 - Leave template / folder / sheet ids for the steps below.
 
@@ -53,10 +57,12 @@ minimum:
 
 ## Checklist
 
-- [ ] Registry row: `client_id`, status, `service_tier`.
+- [ ] Registry row: `client_id`, status, `service_tier`, `send_mode`.
 - [ ] `commercial_contact_email` set to the reseller, not the end customer.
 - [ ] Pricing Google Sheet created, shared, `pricing_sheet_id` recorded.
 - [ ] Master Google Docs template(s) with tokens; `template_id_en`/`_es` recorded.
 - [ ] `proposals_folder_id` and `notification_chat_id` recorded.
 - [ ] (Optional) reference-docs folder; `reference_docs_folder_id` recorded.
-- [ ] Manual test scenarios pass; draft goes to the right recipient.
+- [ ] Manual test scenarios pass; the reply goes to the right recipient, from the right alias, in
+      the original thread.
+- [ ] `send_mode` flipped to `send` only after those checks pass.
