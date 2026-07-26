@@ -1,181 +1,328 @@
 {
-  "name": "00-orchestrator-end-to-end",
-  "settings": {
-    "executionOrder": "v1",
-    "callerPolicy": "workflowsFromSameOwner"
-  },
-  "meta": {
-    "description": "Orchestrator. Resolves client config ONCE from Notion, runs Module 1, then ROUTES on the request type (pricing_only | proposal_only | full_pipeline): a price-only request runs Module 3 and replies with a quote; a proposal-only request runs Modules 2+4 (no pricing); a full request runs Modules 2 ∥ 3 then Module 4. Effective route = the request's own request_type, falling back to the client's default service_tier. Incomplete RFQs branch to a Telegram review alert. Replies are SENT (not just drafted) from the client's from_alias — demo@cifral.io for trial clients, proposal@cifral.io otherwise — as a reply inside the original RFQ thread; the per-client send_mode='draft' switch parks the reply in the mailbox instead. NOTE: after import, repoint each 'Call Module N' Execute Workflow node to the deployed sub-workflow (by name) and link credentials — including the Gmail OAuth2 credential on the 'Send Quote' HTTP Request node."
-  },
   "nodes": [
     {
-      "id": "00000000-0000-4000-8000-000000000001",
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "subject:(RFQ OR presupuesto OR proposal OR quote OR estimate)"
+        },
+        "options": {}
+      },
+      "id": "a4334338-7c95-4275-899d-e0f99d4b2fe9",
       "name": "Gmail Trigger",
       "type": "n8n-nodes-base.gmailTrigger",
       "typeVersion": 1.3,
-      "position": [-900, 0],
-      "parameters": { "pollTimes": { "item": [{ "mode": "everyMinute" }] }, "simple": false, "filters": { "q": "subject:(RFQ OR presupuesto OR proposal OR quote OR estimate)" }, "options": {} }
+      "position": [
+        -5584,
+        -160
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "hFMjvzufVBoFxyF2",
+          "name": "Gmail account_Cifral"
+        }
+      }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000002",
+      "parameters": {
+        "options": {}
+      },
+      "id": "8484719a-46f0-44b7-88d9-fb21cf02f0b8",
       "name": "When chat message received",
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
-      "position": [-900, 220],
-      "parameters": { "options": {} },
+      "position": [
+        -5584,
+        80
+      ],
       "webhookId": "orch-chat-trigger-0001"
     },
     {
-      "id": "00000000-0000-4000-8000-000000000003",
+      "parameters": {
+        "jsCode": "// Build the shared envelope from whichever trigger fired, and identify the client by the\n// SENDER's email (matched against the Notion registry in the next node). Chat-trigger runs\n// have no sender, so they fall back to demo_client for local testing.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\nfunction headerVal(obj, name){ try { const hs=(obj.payload&&obj.payload.headers)||obj.headers; if(Array.isArray(hs)){ const h=hs.find(x=>String(x.name).toLowerCase()===name); return h?h.value:null; } if(hs&&typeof hs==='object'){ return hs[name] ?? hs[name.charAt(0).toUpperCase()+name.slice(1)] ?? null; } } catch(e){} return null; }\nlet fromRaw = t.from || t.From || headerVal(t,'from') || '';\nif (fromRaw && typeof fromRaw==='object') { fromRaw = (fromRaw.value&&fromRaw.value[0]&&(fromRaw.value[0].address||fromRaw.value[0].value)) || fromRaw.address || fromRaw.text || ''; }\nconst m = String(fromRaw).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\nconst sender_email = m ? m[0].toLowerCase() : null;\nconst fallback_client_id = sender_email ? null : 'demo_client';\n\n// Thread context — lets the reply land INSIDE the reseller's original RFQ thread instead of\n// opening a new conversation. Gmail threads a reply on threadId + a matching subject, so the\n// subject must be the original one prefixed with 'Re: ', never a synthetic one.\n// Chat-trigger runs have no thread; every field is null and threading degrades to a new mail.\nconst thread_id = t.threadId || t.thread_id || null;\nconst message_id = headerVal(t, 'message-id') || null;\n// Only meaningful when there IS a thread to reply into — otherwise a chat run with no subject\n// would ship a bare 'Re: RFQ' instead of letting the caller build a real one.\nconst reply_subject = thread_id ? (/^re:\\s/i.test(subject) ? subject : `Re: ${subject}`) : null;\nconst email_context = { thread_id, message_id, reply_subject };\nreturn [{ json: { sender_email, fallback_client_id, email_context, data: { subject, text } } }];"
+      },
+      "id": "df55d63e-05d5-4876-8a3f-c14d41a8cadb",
       "name": "Build Envelope",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-680, 100],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Build the shared envelope from whichever trigger fired, and identify the client by the\n// SENDER's email (matched against the Notion registry in the next node). Chat-trigger runs\n// have no sender, so they fall back to demo_client for local testing.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\nfunction headerVal(obj, name){ try { const hs=(obj.payload&&obj.payload.headers)||obj.headers; if(Array.isArray(hs)){ const h=hs.find(x=>String(x.name).toLowerCase()===name); return h?h.value:null; } if(hs&&typeof hs==='object'){ return hs[name] ?? hs[name.charAt(0).toUpperCase()+name.slice(1)] ?? null; } } catch(e){} return null; }\nlet fromRaw = t.from || t.From || headerVal(t,'from') || '';\nif (fromRaw && typeof fromRaw==='object') { fromRaw = (fromRaw.value&&fromRaw.value[0]&&(fromRaw.value[0].address||fromRaw.value[0].value)) || fromRaw.address || fromRaw.text || ''; }\nconst m = String(fromRaw).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\nconst sender_email = m ? m[0].toLowerCase() : null;\nconst fallback_client_id = sender_email ? null : 'demo_client';\n\n// Thread context — lets the reply land INSIDE the reseller's original RFQ thread instead of\n// opening a new conversation. Gmail threads a reply on threadId + a matching subject, so the\n// subject must be the original one prefixed with 'Re: ', never a synthetic one.\n// Chat-trigger runs have no thread; every field is null and threading degrades to a new mail.\nconst thread_id = t.threadId || t.thread_id || null;\nconst message_id = headerVal(t, 'message-id') || null;\n// Only meaningful when there IS a thread to reply into — otherwise a chat run with no subject\n// would ship a bare 'Re: RFQ' instead of letting the caller build a real one.\nconst reply_subject = thread_id ? (/^re:\\s/i.test(subject) ? subject : `Re: ${subject}`) : null;\nconst email_context = { thread_id, message_id, reply_subject };\nreturn [{ json: { sender_email, fallback_client_id, email_context, data: { subject, text } } }];"
-      }
+      "position": [
+        -5360,
+        -48
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000004",
-      "name": "Load Client Registry",
-      "type": "n8n-nodes-base.notion",
-      "typeVersion": 2.2,
-      "position": [-460, 100],
       "parameters": {
         "resource": "databasePage",
         "operation": "getAll",
-        "databaseId": { "__rl": true, "value": "2d7fe158-febb-8189-8ca1-000b610efd7d", "mode": "id", "cachedResultName": "Projects (Client Registry)" },
+        "databaseId": {
+          "__rl": true,
+          "value": "2d7fe158-febb-8121-a687-d1d1595c9eee",
+          "mode": "list",
+          "cachedResultName": "Projects",
+          "cachedResultUrl": "https://app.notion.com/p/2d7fe158febb8121a687d1d1595c9eee"
+        },
         "returnAll": true,
         "options": {}
+      },
+      "id": "c8efb8d5-35e9-4e74-bfdd-1a1f669e9d55",
+      "name": "Load Client Registry",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        -5136,
+        -48
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "VsM5JpC7L0fyBwHt",
+          "name": "Cifral Notion"
+        }
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000005",
+      "parameters": {
+        "jsCode": "// Resolve the client ONCE from the registry by the SENDER's email (or the chat fallback id),\n// enforcing Client Status. The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender: no registry row matches the sender email.\n//   - inactive: the matched client is 'paused' or 'churned'.\nconst env = $('Build Envelope').first().json;\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\nif(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, data: env.data } }]; }\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, data: env.data } }]; }\n\n// Outbound identity. 'trial' clients send from the demo address so pilot traffic stays\n// visibly separate from production. Both must be VERIFIED 'Send mail as' aliases on the\n// Gmail account that owns the credential, or Gmail rejects drafts.send.\n// Keep in sync with 04-proposal-assembly.json -> 'Map Client Config' (standalone fallback).\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nfunction resolveFromAlias(status){ return status === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS; }\n// send_mode is the per-client kill switch: 'send' delivers the reply, 'draft' only parks it\n// in the mailbox (the pre-production behaviour). Anything other than 'draft' means 'send'.\nfunction resolveSendMode(raw){ return String(raw || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'; }\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id'),\n  from_alias: resolveFromAlias(clientStatus),\n  send_mode: resolveSendMode(prop(match,'property_send_mode'))\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, email_context: env.email_context || null, data: env.data, status: 'ok', errors: [] } }];"
+      },
+      "id": "eb7becde-bd78-4ac5-bdfa-c8bfb7057076",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-240, 100],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Resolve the client ONCE from the registry by the SENDER's email (or the chat fallback id),\n// enforcing Client Status. The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender: no registry row matches the sender email.\n//   - inactive: the matched client is 'paused' or 'churned'.\nconst env = $('Build Envelope').first().json;\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\nif(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, data: env.data } }]; }\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, data: env.data } }]; }\n\n// Outbound identity. 'trial' clients send from the demo address so pilot traffic stays\n// visibly separate from production. Both must be VERIFIED 'Send mail as' aliases on the\n// Gmail account that owns the credential, or Gmail rejects drafts.send.\n// Keep in sync with 04-proposal-assembly.json -> 'Map Client Config' (standalone fallback).\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nfunction resolveFromAlias(status){ return status === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS; }\n// send_mode is the per-client kill switch: 'send' delivers the reply, 'draft' only parks it\n// in the mailbox (the pre-production behaviour). Anything other than 'draft' means 'send'.\nfunction resolveSendMode(raw){ return String(raw || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'; }\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id'),\n  from_alias: resolveFromAlias(clientStatus),\n  send_mode: resolveSendMode(prop(match,'property_send_mode'))\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, email_context: env.email_context || null, data: env.data, status: 'ok', errors: [] } }];"
-      }
+      "position": [
+        -4944,
+        -48
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000070",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-resolved",
+              "leftValue": "={{ $json.resolved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "9d83fe50-c22c-4e76-8305-209de05b0f91",
       "name": "Client OK?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [-240, 100],
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
-          "combinator": "and",
-          "conditions": [
-            { "id": "cond-resolved", "leftValue": "={{ $json.resolved }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
-          ]
-        }
-      }
+      "position": [
+        -4736,
+        -48
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000071",
+      "parameters": {
+        "chatId": "1748634056",
+        "text": "=🚫 RFQ not processed — {{ $json.reason === 'inactive' ? ('client is ' + $json.client_status) : 'unrecognized sender' }}.\n\nSender: {{ $json.sender_email || 'unknown' }}{{ $json.client_id ? ('Client: ' + $json.client_id) : '' }}\n\nAdd or activate this client in the registry to enable processing.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "b080eb52-2997-46eb-9f2b-b72e65adc987",
       "name": "Client Rejected",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
-      "position": [40, 320],
-      "parameters": {
-        "chatId": "1748634056",
-        "text": "=🚫 RFQ not processed — {{ $json.reason === 'inactive' ? ('client is ' + $json.client_status) : 'unrecognized sender' }}.\n\nSender: {{ $json.sender_email || 'unknown' }}{{ $json.client_id ? ('\nClient: ' + $json.client_id) : '' }}\n\nAdd or activate this client in the registry to enable processing.",
-        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
-      }
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000006",
-      "name": "Call Module 1",
-      "type": "n8n-nodes-base.executeWorkflow",
-      "typeVersion": 1.2,
-      "position": [-20, 100],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_01_data_collection_validation", "mode": "id", "cachedResultName": "01-data-collection-validation" },
-        "options": { "waitForSubWorkflow": true }
-      }
-    },
-    {
-      "id": "00000000-0000-4000-8000-000000000007",
-      "name": "RFQ Complete?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.2,
-      "position": [200, 100],
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
-          "combinator": "and",
-          "conditions": [
-            { "id": "cond-rfq-complete", "leftValue": "={{ $json.data.status }}", "rightValue": "complete", "operator": { "type": "string", "operation": "equals" } }
-          ]
+      "position": [
+        -4416,
+        176
+      ],
+      "webhookId": "507c764a-a393-430b-a824-2289910667eb",
+      "credentials": {
+        "telegramApi": {
+          "id": "PrgBGa5bFXJdkcMb",
+          "name": "Telegram-CifralDemo01"
         }
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000015",
-      "name": "RFQ Needs Review",
-      "type": "n8n-nodes-base.telegram",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "IxcPXFh0eZe8szsu",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/IxcPXFh0eZe8szsu",
+          "cachedResultName": "01-data-collection-validation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "d720d334-265e-4796-95fb-b365e63d0130",
+      "name": "Call Module 1",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [420, 320],
+      "position": [
+        -4416,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-rfq-complete",
+              "leftValue": "={{ $json.data.status }}",
+              "rightValue": "complete",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "869e8973-21ea-4390-abf8-5475b01603d7",
+      "name": "RFQ Complete?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4192,
+        -48
+      ]
+    },
+    {
       "parameters": {
         "chatId": "={{ $json.client_config.notification_chat_id }}",
         "text": "=⚠️ RFQ needs human review — required information is missing.\n\nClient: {{ $json.data.client.company || 'unknown' }}\nRequested: {{ $json.data.request_type }}\nMissing: {{ (($json.data.missing_fields)||[]).join(', ') }}\n\nNothing was produced. Fill the gaps and re-send.",
-        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "bb4c3e9f-42ab-4e22-899d-8b746ea9ed6e",
+      "name": "RFQ Needs Review",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3968,
+        176
+      ],
+      "webhookId": "f23bd4cb-b634-472f-93da-9b520e8778d3",
+      "credentials": {
+        "telegramApi": {
+          "id": "PrgBGa5bFXJdkcMb",
+          "name": "Telegram-CifralDemo01"
+        }
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000020",
+      "parameters": {
+        "jsCode": "// Decide what to produce. The request's own request_type wins; if the reseller didn't\n// specify ('unspecified'), fall back to the client's default service_tier from the registry.\nconst j = $json;\nconst rt = j.data && j.data.request_type;\nconst tier = (j.client_config && j.client_config.service_tier) || 'full_pipeline';\nlet route = (rt && rt !== 'unspecified') ? rt : tier;\nif (!['pricing_only', 'proposal_only', 'full_pipeline'].includes(route)) route = 'full_pipeline';\nreturn [{ json: { ...j, route } }];"
+      },
+      "id": "8a411494-1822-4769-a18d-75f00b3318e2",
       "name": "Resolve Route",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [420, 60],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Decide what to produce. The request's own request_type wins; if the reseller didn't\n// specify ('unspecified'), fall back to the client's default service_tier from the registry.\nconst j = $json;\nconst rt = j.data && j.data.request_type;\nconst tier = (j.client_config && j.client_config.service_tier) || 'full_pipeline';\nlet route = (rt && rt !== 'unspecified') ? rt : tier;\nif (!['pricing_only', 'proposal_only', 'full_pipeline'].includes(route)) route = 'full_pipeline';\nreturn [{ json: { ...j, route } }];"
-      }
+      "position": [
+        -3968,
+        -80
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000021",
-      "name": "Route by Request Type",
-      "type": "n8n-nodes-base.switch",
-      "typeVersion": 3.2,
-      "position": [640, 60],
       "parameters": {
-        "mode": "rules",
         "rules": {
           "values": [
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
                 "combinator": "and",
-                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "pricing_only", "operator": { "type": "string", "operation": "equals" } } ]
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "pricing_only",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
               },
               "renameOutput": true,
               "outputKey": "pricing_only"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
                 "combinator": "and",
-                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "proposal_only", "operator": { "type": "string", "operation": "equals" } } ]
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "proposal_only",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
               },
               "renameOutput": true,
               "outputKey": "proposal_only"
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
                 "combinator": "and",
-                "conditions": [ { "leftValue": "={{ $json.route }}", "rightValue": "full_pipeline", "operator": { "type": "string", "operation": "equals" } } ]
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "full_pipeline",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
               },
               "renameOutput": true,
               "outputKey": "full_pipeline"
@@ -183,86 +330,133 @@
           ]
         },
         "options": {}
-      }
+      },
+      "id": "2ef169c6-efab-423b-991b-c6d86d8f86a0",
+      "name": "Route by Request Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -3760,
+        -96
+      ]
     },
-
     {
-      "id": "00000000-0000-4000-8000-000000000030",
+      "parameters": {
+        "jsCode": "// Manual pricing estimate (phase 1 has NO auto hours-estimation engine — explicit non-goal).\n// The representative estimate is FILTERED by the request's scope_of_supply: out-of-scope\n// categories are dropped so the quote only prices what we're actually supplying.\n// scope->cost-category mapping mirrors schemas/scope-catalog.json.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
+      },
+      "id": "6121334b-e504-4ec6-9fc1-545182c26dfb",
       "name": "Prep Pricing Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, -260],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Manual pricing estimate (phase 1 has NO auto hours-estimation engine — explicit non-goal).\n// The representative estimate is FILTERED by the request's scope_of_supply: out-of-scope\n// categories are dropped so the quote only prices what we're actually supplying.\n// scope->cost-category mapping mirrors schemas/scope-catalog.json.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
-      }
+      "position": [
+        -3520,
+        -416
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000031",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OkhndQD6mEpIUAPY",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/OkhndQD6mEpIUAPY",
+          "cachedResultName": "03-pricing-commercial-logic"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ff732273-bd2d-4a75-b820-0628cc70a403",
       "name": "Call Module 3",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1100, -260],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_03_pricing_commercial_logic", "mode": "id", "cachedResultName": "03-pricing-commercial-logic" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -3296,
+        -416
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000032",
+      "parameters": {
+        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\n// client_config rides through Module 3 untouched; fall back to the orchestrator's own\n// resolution if a future change ever drops it, so the alias can never silently go missing.\nconst cfg = j.client_config || $('Map Client Config').first().json.client_config || {};\nconst ec = $('Build Envelope').first().json.email_context || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\n// Reply inside the reseller's own RFQ thread. Gmail only threads when the threadId AND the\n// subject match the original, so a synthetic subject would break out into a new conversation.\nconst subject = ec.reply_subject || `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nconst from_alias = cfg.from_alias || '';\nif (!from_alias) throw new Error(`No from_alias resolved for '${j.client_id}'. Refusing to send from the raw mailbox address.`);\n// Empty string (not null) for threadId: the Gmail node treats it as falsy and omits the\n// field, whereas a null would be serialised into the API call.\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', from_alias, send_mode: cfg.send_mode || 'send', thread_id: ec.thread_id || '', subject, html, company, total: p.total, currency: cur } }];"
+      },
+      "id": "a9c6365b-a62c-41a7-a18e-5d265a4dcdc5",
       "name": "Build Quote Draft",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1320, -260],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\n// client_config rides through Module 3 untouched; fall back to the orchestrator's own\n// resolution if a future change ever drops it, so the alias can never silently go missing.\nconst cfg = j.client_config || $('Map Client Config').first().json.client_config || {};\nconst ec = $('Build Envelope').first().json.email_context || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\n// Reply inside the reseller's own RFQ thread. Gmail only threads when the threadId AND the\n// subject match the original, so a synthetic subject would break out into a new conversation.\nconst subject = ec.reply_subject || `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nconst from_alias = cfg.from_alias || '';\nif (!from_alias) throw new Error(`No from_alias resolved for '${j.client_id}'. Refusing to send from the raw mailbox address.`);\n// Empty string (not null) for threadId: the Gmail node treats it as falsy and omits the\n// field, whereas a null would be serialised into the API call.\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', from_alias, send_mode: cfg.send_mode || 'send', thread_id: ec.thread_id || '', subject, html, company, total: p.total, currency: cur } }];"
-      }
+      "position": [
+        -3072,
+        -416
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000033",
-      "name": "Create Quote Draft",
-      "type": "n8n-nodes-base.gmail",
-      "typeVersion": 2.2,
-      "position": [1540, -260],
       "parameters": {
         "resource": "draft",
         "subject": "={{ $json.subject }}",
         "emailType": "html",
         "message": "={{ $json.html }}",
         "options": {
-          "sendTo": "={{ $json.recipient }}",
           "fromAlias": "={{ $json.from_alias }}",
           "threadId": "={{ $json.thread_id }}",
-          "appendAttribution": false
+          "sendTo": "={{ $json.recipient }}"
+        }
+      },
+      "id": "7fc566cf-0d27-4f35-9569-2fe92d1c4acc",
+      "name": "Create Quote Draft",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        -2848,
+        -416
+      ],
+      "webhookId": "415a4933-ca21-45cd-9c4c-6869a91e5a28",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "hFMjvzufVBoFxyF2",
+          "name": "Gmail account_Cifral"
         }
       }
     },
     {
-      "id": "00000000-0000-4000-8000-000000000035",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-send-quote",
+              "leftValue": "={{ $('Build Quote Draft').item.json.send_mode }}",
+              "rightValue": "send",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "74e5c2ee-ad5e-49ae-96cf-65ed8bda4609",
       "name": "Send Quote?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [1760, -260],
-      "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
-          "combinator": "and",
-          "conditions": [
-            { "id": "cond-send-quote", "leftValue": "={{ $('Build Quote Draft').item.json.send_mode }}", "rightValue": "send", "operator": { "type": "string", "operation": "equals" } }
-          ]
-        }
-      }
+      "position": [
+        -2640,
+        -416
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000036",
-      "name": "Send Quote",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1980, -360],
       "parameters": {
         "method": "POST",
         "url": "https://gmail.googleapis.com/gmail/v1/users/me/drafts/send",
@@ -273,227 +467,716 @@
         "jsonBody": "={{ JSON.stringify({ id: $('Create Quote Draft').item.json.id }) }}",
         "options": {}
       },
+      "id": "6b8e9689-11af-45d9-ad8c-66f51f7c0ab8",
+      "name": "Send Quote",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2384,
+        -528
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "hFMjvzufVBoFxyF2",
+          "name": "Gmail account_Cifral"
+        }
+      },
       "notes": "The Gmail node cannot send a draft, and its Send operation overwrites From with the authenticated address — so the alias only survives via draft + drafts.send. Returns the sent Message { id, threadId }."
     },
     {
-      "id": "00000000-0000-4000-8000-000000000034",
-      "name": "Quote Alert",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1.2,
-      "position": [2200, -260],
       "parameters": {
         "chatId": "={{ $('Build Quote Draft').item.json.notification_chat_id }}",
         "text": "=💶 Price estimate {{ $('Build Quote Draft').item.json.send_mode === 'send' ? 'SENT ✅' : 'drafted 📝' }}\n\n👤 Client: {{ $('Build Quote Draft').item.json.client_id }} ({{ $('Build Quote Draft').item.json.client_status }})\n📍 Customer: {{ $('Build Quote Draft').item.json.company }}\n💰 Total: {{ $('Build Quote Draft').item.json.total }} {{ $('Build Quote Draft').item.json.currency }}\n📤 From: {{ $('Build Quote Draft').item.json.from_alias }}\n✉️ To: {{ $('Build Quote Draft').item.json.recipient }}\n\n{{ $('Build Quote Draft').item.json.send_mode === 'send' ? 'Delivered as a reply in the original RFQ thread.' : 'Nothing was sent — the draft is waiting in the mailbox.' }}",
-        "additionalFields": { "appendAttribution": false, "parse_mode": "HTML" }
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "13789826-f211-475e-8ccf-59f18f6e394c",
+      "name": "Quote Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -2144,
+        -400
+      ],
+      "webhookId": "fded95b6-c0b4-441b-916a-68516fab59f2",
+      "credentials": {
+        "telegramApi": {
+          "id": "PrgBGa5bFXJdkcMb",
+          "name": "Telegram-CifralDemo01"
+        }
       }
     },
-
     {
-      "id": "00000000-0000-4000-8000-000000000040",
+      "parameters": {
+        "jsCode": "// Module 2 receives the Module 1 output data (incl. scope_of_supply) + client_config (passthrough).\nreturn [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
+      },
+      "id": "fe058493-8a08-4bea-a8ba-89fe75827b40",
       "name": "Prep Module 2 Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, -20],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Module 2 receives the Module 1 output data (incl. scope_of_supply) + client_config (passthrough).\nreturn [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
-      }
+      "position": [
+        -3520,
+        -176
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000041",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "muKy5gKJXtNIjDa9",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/muKy5gKJXtNIjDa9",
+          "cachedResultName": "02-technical-content-generation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "354528d3-065d-4a68-9607-20cf74c8dde0",
       "name": "Call Module 2",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1100, -20],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_02_technical_content_generation", "mode": "id", "cachedResultName": "02-technical-content-generation" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -3296,
+        -176
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000042",
+      "parameters": {
+        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\n// email_context is per-request (which thread to reply in) so it travels beside client_config,\n// not inside it; Module 4 treats it as optional and falls back to a fresh mail without it.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
+      },
+      "id": "45fe16b8-fc84-4b40-a780-da9ddad459f6",
       "name": "Build Module 4 Input (proposal)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1320, -20],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\n// email_context is per-request (which thread to reply in) so it travels beside client_config,\n// not inside it; Module 4 treats it as optional and falls back to a fresh mail without it.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
-      }
+      "position": [
+        -3072,
+        -176
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000043",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "krSAmgIGRTFe9bS7",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/krSAmgIGRTFe9bS7",
+          "cachedResultName": "04-proposal-assembly"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "6d436ced-f1b3-4893-9ddb-0e5be30f1608",
       "name": "Call Module 4",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1540, -20],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_04_proposal_assembly", "mode": "id", "cachedResultName": "04-proposal-assembly" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -2848,
+        -176
+      ]
     },
-
     {
-      "id": "00000000-0000-4000-8000-000000000050",
+      "parameters": {
+        "jsCode": "return [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
+      },
+      "id": "492dc9aa-b112-4135-9749-8b80b7278b47",
       "name": "Prep Module 2 Input (full)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 200],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "return [{ json: { client_id: $json.client_id, client_config: $json.client_config, data: $json.data } }];"
-      }
+      "position": [
+        -3520,
+        48
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000051",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "muKy5gKJXtNIjDa9",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/muKy5gKJXtNIjDa9",
+          "cachedResultName": "02-technical-content-generation"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "2318d6c5-06c7-4074-b89b-e47b23090d6f",
       "name": "Call Module 2 (full)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1100, 200],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_02_technical_content_generation", "mode": "id", "cachedResultName": "02-technical-content-generation" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -3296,
+        48
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000052",
+      "parameters": {
+        "jsCode": "// Same scope-filtered manual estimate as the pricing_only branch.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
+      },
+      "id": "920c0ef9-ebed-4c54-a945-3cb0fe87328d",
       "name": "Prep Pricing Input (full)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [880, 420],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Same scope-filtered manual estimate as the pricing_only branch.\nconst j = $json;\nconst scope = (j.data && j.data.scope_of_supply) || {};\nconst ALL_HOURS = { engineering: 40, assembly: 60, commissioning: 20, project_management: 15 };\nconst GATE = { engineering: scope.engineering, assembly: scope.installation, commissioning: scope.commissioning, project_management: scope.project_management };\nconst hours_by_category = {};\nfor (const k of Object.keys(ALL_HOURS)) { if (GATE[k]) hours_by_category[k] = ALL_HOURS[k]; }\nconst materials_cost = scope.materials ? 5000 : 0;\nreturn [{ json: { client_id: j.client_id, client_config: j.client_config, data: { materials_cost, hours_by_category } } }];"
-      }
+      "position": [
+        -3520,
+        272
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000053",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "OkhndQD6mEpIUAPY",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/OkhndQD6mEpIUAPY",
+          "cachedResultName": "03-pricing-commercial-logic"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "fd57d64c-73b3-4ed1-b354-6956a15e0eac",
       "name": "Call Module 3 (full)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1100, 420],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_03_pricing_commercial_logic", "mode": "id", "cachedResultName": "03-pricing-commercial-logic" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -3296,
+        272
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000054",
+      "parameters": {},
+      "id": "180dc71d-2e43-4b6a-9ce3-ee67617c4914",
       "name": "Merge M2 + M3",
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
-      "position": [1340, 300],
-      "parameters": { "mode": "append", "numberInputs": 2 }
+      "position": [
+        -3056,
+        160
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000055",
+      "parameters": {
+        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
+      },
+      "id": "ef2ffd4f-48a2-4405-8796-807903864b2d",
       "name": "Build Module 4 Input (full)",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1560, 300],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
-      }
+      "position": [
+        -2832,
+        160
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-000000000056",
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "krSAmgIGRTFe9bS7",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/krSAmgIGRTFe9bS7",
+          "cachedResultName": "04-proposal-assembly"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "ef7f7761-0a18-4117-8553-cfbefd070b3b",
       "name": "Call Module 4 (full)",
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
-      "position": [1780, 300],
-      "parameters": {
-        "source": "database",
-        "workflowId": { "__rl": true, "value": "REPOINT_04_proposal_assembly", "mode": "id", "cachedResultName": "04-proposal-assembly" },
-        "options": { "waitForSubWorkflow": true }
-      }
+      "position": [
+        -2608,
+        160
+      ]
     },
-
     {
-      "id": "00000000-0000-4000-8000-000000000060",
+      "parameters": {},
+      "id": "bb6be9bb-d748-4059-82c5-40bc032f9fb2",
       "name": "Pipeline Complete",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [2040, 60],
-      "parameters": {}
+      "position": [
+        -1856,
+        -176
+      ]
     },
     {
-      "id": "00000000-0000-4000-8000-0000000000f1",
+      "parameters": {
+        "content": "## 00 — Orchestrator (identify → resolve-once → route)\n**Build Envelope** reads the SENDER's email from the Gmail trigger (chat runs fall back to demo_client). **Load Client Registry → Map Client Config** matches that email to a registry row via `commercial_contact_email`, enforces `Client Status` (paused/churned rejected), and resolves `client_config` ONCE (incl. `service_tier`, `pricing_sheet_id`, and `reply_to` = the sender). **Client OK?** stops unknown/inactive senders with a **Client Rejected** admin alert. The draft/quote is addressed to `reply_to` (the original sender), never the extracted end customer.\n\n**Sender identity & delivery.** `Build Envelope` also captures the RFQ's `threadId` and builds a `Re: <original subject>` line, so replies land **inside the reseller's own thread** (Gmail needs both to thread). `Map Client Config` derives `from_alias` from Client Status — `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io` — and reads `send_mode` (`send` | `draft`, default `send`). Because the Gmail node's Send operation overwrites `From` with the authenticated address, the alias only survives the **create-draft → `drafts.send`** pair; `Send Quote?` / `Send Mode?` skip the send step when `send_mode` is `draft`. ⚠️ Both aliases must be **verified 'Send mail as' addresses** on the Gmail account before switching a client to `send`.\n\n**Call Module 1 → RFQ Complete?**: if Module 1 flags the RFQ `incomplete`, **RFQ Needs Review** (Telegram) fires and it stops. Otherwise **Resolve Route** picks the effective route — the request's own `request_type`, falling back to the client's `service_tier` — and **Route by Request Type** (Switch) branches:\n- **pricing_only** → Module 3 → **Build Quote Draft** → **Create Quote Draft** → **Send Quote?** → **Send Quote** (HTTP `drafts.send`) + Telegram (a price estimate, no document).\n- **proposal_only** → Module 2 → Module 4 (document with NO pricing block).\n- **full_pipeline** → Module 2 ∥ Module 3 → merge → Module 4 (full document).\n\nPricing inputs are entered manually and **filtered by the request's scope of supply** (phase 1 has no auto hours-estimation engine). ⚠️ After import, repoint each **Call Module N** node to the deployed sub-workflow (by name) and link Gmail/Google/Anthropic/Telegram/Notion credentials.",
+        "height": 260,
+        "width": 1200
+      },
+      "id": "ab3dd4ea-120c-4d44-b870-a6e257f96203",
       "name": "Note — Orchestrator",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-700, -320],
-      "parameters": {
-        "width": 1200,
-        "height": 260,
-        "content": "## 00 — Orchestrator (identify → resolve-once → route)\n**Build Envelope** reads the SENDER's email from the Gmail trigger (chat runs fall back to demo_client). **Load Client Registry → Map Client Config** matches that email to a registry row via `commercial_contact_email`, enforces `Client Status` (paused/churned rejected), and resolves `client_config` ONCE (incl. `service_tier`, `pricing_sheet_id`, and `reply_to` = the sender). **Client OK?** stops unknown/inactive senders with a **Client Rejected** admin alert. The draft/quote is addressed to `reply_to` (the original sender), never the extracted end customer.\n\n**Sender identity & delivery.** `Build Envelope` also captures the RFQ's `threadId` and builds a `Re: <original subject>` line, so replies land **inside the reseller's own thread** (Gmail needs both to thread). `Map Client Config` derives `from_alias` from Client Status — `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io` — and reads `send_mode` (`send` | `draft`, default `send`). Because the Gmail node's Send operation overwrites `From` with the authenticated address, the alias only survives the **create-draft → `drafts.send`** pair; `Send Quote?` / `Send Mode?` skip the send step when `send_mode` is `draft`. ⚠️ Both aliases must be **verified 'Send mail as' addresses** on the Gmail account before switching a client to `send`.\n\n**Call Module 1 → RFQ Complete?**: if Module 1 flags the RFQ `incomplete`, **RFQ Needs Review** (Telegram) fires and it stops. Otherwise **Resolve Route** picks the effective route — the request's own `request_type`, falling back to the client's `service_tier` — and **Route by Request Type** (Switch) branches:\n- **pricing_only** → Module 3 → **Build Quote Draft** → **Create Quote Draft** → **Send Quote?** → **Send Quote** (HTTP `drafts.send`) + Telegram (a price estimate, no document).\n- **proposal_only** → Module 2 → Module 4 (document with NO pricing block).\n- **full_pipeline** → Module 2 ∥ Module 3 → merge → Module 4 (full document).\n\nPricing inputs are entered manually and **filtered by the request's scope of supply** (phase 1 has no auto hours-estimation engine). ⚠️ After import, repoint each **Call Module N** node to the deployed sub-workflow (by name) and link Gmail/Google/Anthropic/Telegram/Notion credentials."
-      }
+      "position": [
+        -5088,
+        -480
+      ]
     }
   ],
   "connections": {
-    "Gmail Trigger": { "main": [[{ "node": "Build Envelope", "type": "main", "index": 0 }]] },
-    "When chat message received": { "main": [[{ "node": "Build Envelope", "type": "main", "index": 0 }]] },
-    "Build Envelope": { "main": [[{ "node": "Load Client Registry", "type": "main", "index": 0 }]] },
-    "Load Client Registry": { "main": [[{ "node": "Map Client Config", "type": "main", "index": 0 }]] },
-    "Map Client Config": { "main": [[{ "node": "Client OK?", "type": "main", "index": 0 }]] },
-    "Client OK?": {
+    "Gmail Trigger": {
       "main": [
-        [{ "node": "Call Module 1", "type": "main", "index": 0 }],
-        [{ "node": "Client Rejected", "type": "main", "index": 0 }]
-      ]
-    },
-    "Call Module 1": { "main": [[{ "node": "RFQ Complete?", "type": "main", "index": 0 }]] },
-    "RFQ Complete?": {
-      "main": [
-        [{ "node": "Resolve Route", "type": "main", "index": 0 }],
-        [{ "node": "RFQ Needs Review", "type": "main", "index": 0 }]
-      ]
-    },
-    "Resolve Route": { "main": [[{ "node": "Route by Request Type", "type": "main", "index": 0 }]] },
-    "Route by Request Type": {
-      "main": [
-        [{ "node": "Prep Pricing Input", "type": "main", "index": 0 }],
-        [{ "node": "Prep Module 2 Input", "type": "main", "index": 0 }],
         [
-          { "node": "Prep Module 2 Input (full)", "type": "main", "index": 0 },
-          { "node": "Prep Pricing Input (full)", "type": "main", "index": 0 }
+          {
+            "node": "Build Envelope",
+            "type": "main",
+            "index": 0
+          }
         ]
       ]
     },
-
-    "Prep Pricing Input": { "main": [[{ "node": "Call Module 3", "type": "main", "index": 0 }]] },
-    "Call Module 3": { "main": [[{ "node": "Build Quote Draft", "type": "main", "index": 0 }]] },
-    "Build Quote Draft": { "main": [[{ "node": "Create Quote Draft", "type": "main", "index": 0 }]] },
-    "Create Quote Draft": { "main": [[{ "node": "Send Quote?", "type": "main", "index": 0 }]] },
-    "Send Quote?": {
+    "When chat message received": {
       "main": [
-        [{ "node": "Send Quote", "type": "main", "index": 0 }],
-        [{ "node": "Quote Alert", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Build Envelope",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Send Quote": { "main": [[{ "node": "Quote Alert", "type": "main", "index": 0 }]] },
-    "Quote Alert": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] },
-
-    "Prep Module 2 Input": { "main": [[{ "node": "Call Module 2", "type": "main", "index": 0 }]] },
-    "Call Module 2": { "main": [[{ "node": "Build Module 4 Input (proposal)", "type": "main", "index": 0 }]] },
-    "Build Module 4 Input (proposal)": { "main": [[{ "node": "Call Module 4", "type": "main", "index": 0 }]] },
-    "Call Module 4": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] },
-
-    "Prep Module 2 Input (full)": { "main": [[{ "node": "Call Module 2 (full)", "type": "main", "index": 0 }]] },
-    "Call Module 2 (full)": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 0 }]] },
-    "Prep Pricing Input (full)": { "main": [[{ "node": "Call Module 3 (full)", "type": "main", "index": 0 }]] },
-    "Call Module 3 (full)": { "main": [[{ "node": "Merge M2 + M3", "type": "main", "index": 1 }]] },
-    "Merge M2 + M3": { "main": [[{ "node": "Build Module 4 Input (full)", "type": "main", "index": 0 }]] },
-    "Build Module 4 Input (full)": { "main": [[{ "node": "Call Module 4 (full)", "type": "main", "index": 0 }]] },
-    "Call Module 4 (full)": { "main": [[{ "node": "Pipeline Complete", "type": "main", "index": 0 }]] }
+    "Build Envelope": {
+      "main": [
+        [
+          {
+            "node": "Load Client Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Client Registry": {
+      "main": [
+        [
+          {
+            "node": "Map Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Client Config": {
+      "main": [
+        [
+          {
+            "node": "Client OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Client OK?": {
+      "main": [
+        [
+          {
+            "node": "Call Module 1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Client Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 1": {
+      "main": [
+        [
+          {
+            "node": "RFQ Complete?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RFQ Complete?": {
+      "main": [
+        [
+          {
+            "node": "Resolve Route",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RFQ Needs Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Route": {
+      "main": [
+        [
+          {
+            "node": "Route by Request Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Request Type": {
+      "main": [
+        [
+          {
+            "node": "Prep Pricing Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Module 2 Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prep Module 2 Input (full)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prep Pricing Input (full)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Pricing Input": {
+      "main": [
+        [
+          {
+            "node": "Call Module 3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 3": {
+      "main": [
+        [
+          {
+            "node": "Build Quote Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Quote Draft": {
+      "main": [
+        [
+          {
+            "node": "Create Quote Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Quote Draft": {
+      "main": [
+        [
+          {
+            "node": "Send Quote?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Quote?": {
+      "main": [
+        [
+          {
+            "node": "Send Quote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Quote Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Quote": {
+      "main": [
+        [
+          {
+            "node": "Quote Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quote Alert": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Module 2 Input": {
+      "main": [
+        [
+          {
+            "node": "Call Module 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 2": {
+      "main": [
+        [
+          {
+            "node": "Build Module 4 Input (proposal)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Module 4 Input (proposal)": {
+      "main": [
+        [
+          {
+            "node": "Call Module 4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 4": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Module 2 Input (full)": {
+      "main": [
+        [
+          {
+            "node": "Call Module 2 (full)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 2 (full)": {
+      "main": [
+        [
+          {
+            "node": "Merge M2 + M3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prep Pricing Input (full)": {
+      "main": [
+        [
+          {
+            "node": "Call Module 3 (full)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 3 (full)": {
+      "main": [
+        [
+          {
+            "node": "Merge M2 + M3",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge M2 + M3": {
+      "main": [
+        [
+          {
+            "node": "Build Module 4 Input (full)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Module 4 Input (full)": {
+      "main": [
+        [
+          {
+            "node": "Call Module 4 (full)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Module 4 (full)": {
+      "main": [
+        [
+          {
+            "node": "Pipeline Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Gmail Trigger": [
+      {
+        "id": "19f9e683dbe346fd",
+        "threadId": "19f9e683dbe346fd",
+        "labelIds": [
+          "UNREAD",
+          "IMPORTANT",
+          "CATEGORY_PERSONAL",
+          "INBOX"
+        ],
+        "sizeEstimate": 15226,
+        "headers": {
+          "delivered-to": "Delivered-To: cifral.digital@gmail.com",
+          "received": "Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])\r\n        by mx.google.com with SMTPS id a1e0cc1a2514c-97774dde68fsor498324241.5.2026.07.26.05.30.58\r\n        for <cifral.digital@gmail.com>\r\n        (Google Transport Security);\r\n        Sun, 26 Jul 2026 05:30:59 -0700 (PDT)",
+          "x-received": "X-Received: by 2002:a05:6102:54a5:b0:739:626d:4473 with SMTP id\r\n ada2fe7eead31-7503a7d9f30mr2798852137.0.1785069058654; Sun, 26 Jul 2026\r\n 05:30:58 -0700 (PDT)",
+          "arc-seal": "ARC-Seal: i=1; a=rsa-sha256; t=1785069058; cv=none;\r\n        d=google.com; s=arc-20260327;\r\n        b=B+M6fs5b4OKXrggP/9bZUX1Xa+uAi56YIEDkIM6cK6Jv/Yn8SvZ/XpPkc3oiFOveKH\r\n         avSoHyoHU/lxHIg0JnXZ+i53RHwFHEAXzdf74TLAVNNEstq/CDsWXOMImNpF5Rht97Y4\r\n         NdzyqoZcYbwTEKJF7dDGEAaDVFsOZ73Sq7YBxlHBpLPp3nZ6cOFM4n65tZEiLhWihWnu\r\n         rkqG2oICCDMBrWoN16DhvSZaeMVJdyhsGnrJ0INi19meK9p+NjIkC83whcbakdtIWUPp\r\n         xDqxARSLWBDc/fP0f/rsrOKHsECV0FUfaOcJG482+419W3NsdPGH0rr43mliI2NUaYmw\r\n         xnMA==",
+          "arc-message-signature": "ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20260327;\r\n        h=to:subject:message-id:date:from:mime-version:dkim-signature;\r\n        bh=8no0NhUjhSWLNjEsRsNpJOARtFR1/WhMlDYMlEs5k8g=;\r\n        fh=gCxnYZQTUFJQdBdS7dXBqovEbfAUe5Vs1Fv3REVnPhU=;\r\n        b=hDAr7HLge6OKr3RMBt4yV9G/uZyvPLEcfNo31lfzwe/RPaLMfVcHJ1qAyap9nxYGMo\r\n         lNu390ILsSoTOEVUX20VKLwdXRwipPEeofi3/U7Bk5wdvnsznuotij8SXLRvPnpx57Ea\r\n         UR6LOGBPymEwohlyrn57Ls8sXDGvnH8TyIk3t1FS1h+yvLDZR/TIyLk2iVjhomStJWeL\r\n         +yTcIUcBkosnn3WBh3GFqzpQ2I58g5GBVprjQO9PISKbLXmILlGf/46fCPq59oMrh69H\r\n         3SjmTZeFO89Mh5D09Ag+roc6xP8MOsj3Dp2BXf2p1iwyU89WE+ORQYGrtUos5tPcgdC9\r\n         TYRA==;\r\n        dara=google.com",
+          "arc-authentication-results": "ARC-Authentication-Results: i=1; mx.google.com; arc=none",
+          "return-path": "Return-Path: <markbmx360@gmail.com>",
+          "received-spf": "Received-SPF: pass (google.com: domain of markbmx360@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;",
+          "authentication-results": "Authentication-Results: mx.google.com;\r\n       dkim=pass header.i=@gmail.com header.s=20251104 header.b=PCCsCooN;\r\n       arc=pass (i=1);\r\n       spf=pass (google.com: domain of markbmx360@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=markbmx360@gmail.com;\r\n       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;\r\n       dara=pass header.i=@gmail.com",
+          "dkim-signature": "DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n        d=gmail.com; s=20251104; t=1785069058; x=1785673858; dara=google.com;\r\n        h=content-type:to:subject:message-id:date:from:mime-version:from:to\r\n         :cc:subject:date:message-id:reply-to:content-type;\r\n        bh=8no0NhUjhSWLNjEsRsNpJOARtFR1/WhMlDYMlEs5k8g=;\r\n        b=PCCsCooNkgOz9z1EjTFzimkJTFtrg5GpFGiQsNNxn7z63jAN/b3+ycHPI/5LnrAK8p\r\n         J52VuIgYF2lagCuLQVDp/KjssFlIFWqhokfQPHqud5DEkWmoOu2Qp/i6bYrH53mtSSHM\r\n         cq2Er0ixbHLalQkaQ8pZKXv8i0P2XplHBsA6hu4CEE9ahFA9ZV+4O71ZRnTTIBlPOSaH\r\n         bhAjsY1dV4xztJBqh/Pv/K3TsiMaIcxSbM84HPMNiqx9OglrmYSsr7H0bQJE7FKtAq1o\r\n         ZvLspJdBpXC/qGsMx1Ql0TlMiv3GoLkl94+ent7VIuNcZRRx+1x/UZhA6Bc2y61Z3sAo\r\n         DejA==",
+          "x-google-dkim-signature": "X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;\r\n        d=1e100.net; s=20251104; t=1785069058; x=1785673858;\r\n        h=content-type:to:subject:message-id:date:from:mime-version:x-gm-gg\r\n         :x-gm-message-state:from:to:cc:subject:date:message-id:reply-to\r\n         :content-type;\r\n        bh=8no0NhUjhSWLNjEsRsNpJOARtFR1/WhMlDYMlEs5k8g=;\r\n        b=PoKuqIPq9Zpk313gAoS/cyFtKFZxpF3MqZIfFV8Pq8TJ+oejwMhnbcSDElAY5ofvlu\r\n         L9O/yEqeVtkDZhWgn4AvPJm/EQM++tvgYtmfnuZ8PkC2FikZtc8cCcWpIWZw+GTqEc1o\r\n         orhksUFZ8tTtaZBF8GG72m5UNJrbvalSUnqn7FTCr6EeGAbdHP9+2argqXsSyAQDYq19\r\n         svogxin6Yl4wbX1u99IHGhVLVlt9G7uz4XybmMqEL5HBaYdY5/ObyPsmCcX+EBFlStcq\r\n         ukGmRQgbxaNrtbUaokBY1u1Wsil+cOizZaj5Lz8WkjU/c02SEnqxNED0UgW6Y2CxfAju\r\n         inrQ==",
+          "x-gm-message-state": "X-Gm-Message-State: AOJu0Yygcxa/NbmLv2ZcYK3Vm2pc9nAUmJCk2RXSGKqxMNHhj5Xr8z8c\r\n\tVmsD60APWYaGllVbOcYLDwdjaI8tAr4LRDPaMPpQlzLMgkYEQqenZiXQZzOkgY/h5O4NpMKKgCI\r\n\t1SmEExvc8oCYOlsDr5gps9cWy/9os0ERnrDxMs9Ls0w==",
+          "x-gm-gg": "X-Gm-Gg: AR+sD11B7Kz/aATDGiexBQZyVmKczyFwPsDRk42IxwW5eER07OpbSu088KWPn1qUHW6\r\n\tA0oTpHZ+pBKaL4MPksf8Uuwg8Joh9+aX46CwK/v27sUFvVHHmonE3G92H5I+YK7QjH4eyt2qMRH\r\n\t78Q+x6K33CRiNgmHMUhy7giDE3vp57sDiiB90bJf84/v+hV3S0KVXQtkVxASODKDB8zYR4ypSk6\r\n\tBw48aUAV7AeAornkIqwbxtw2WptJRHcaei8LEIjwhOCeAtxvWsMUNBEiME/Dj4AWHd0P56S4En1\r\n\t4Ijb9UTthKYPE+gVHgMcPvbtzw6IxqNLcil7xSfoNN9uTiiwDw==",
+          "mime-version": "MIME-Version: 1.0",
+          "from": "From: \"Mark B.\" <markbmx360@gmail.com>",
+          "date": "Date: Sun, 26 Jul 2026 14:30:47 +0200",
+          "x-gm-features": "X-Gm-Features: AUfX_mxqJ-jxm2ICkt5pRgfJsjkqzOjlTE5mhDfxq97FbTHJf_LbWfMWVgu1wm0",
+          "message-id": "Message-ID: <CAF9WxGNuwKHxa0ZZTbe7MkoHf6fZxGhV9obwUYKrqn097R5i+A@mail.gmail.com>",
+          "subject": "Subject: =?UTF-8?Q?RFQ_=E2=80=94_Sistemas_de_Bombeo_Skid_d=C3=BAplex_de_agua_de_r?=\r\n\t=?UTF-8?Q?efrigeraci=C3=B3n?=",
+          "to": "To: cifral.digital@gmail.com",
+          "content-type": "Content-Type: multipart/alternative; boundary=\"00000000000024066a065782c777\""
+        },
+        "html": "<div dir=\"ltr\"><p>Hola Cifral:</p><p>Por favor, preparad la propuesta completa CON precios para el siguiente proyecto.</p><p>Cliente final: Sistemas de Bombeo del Golfo, S.L.<br>Contacto: Javier Ortega — <a href=\"mailto:javier.ortega@sistemasbombeo.es\">javier.ortega@sistemasbombeo.es</a><br>Proyecto: Skid dúplex de bombeo de agua de refrigeración de proceso<br>Ubicación: Planta industrial de Tarragona, España<br>Propuesta requerida antes del: 21 de agosto de 2026<br>Entrega requerida: Segundo trimestre de 2027</p><p>Alcance de suministro:</p><ul><li><p>Incluido: ingeniería, materiales, fabricación, suministro de bombas y equipos, montaje del skid, tuberías, cuadro eléctrico y controles, pruebas en taller, transporte, supervisión de instalación, soporte durante la puesta en marcha, gestión del proyecto y garantía</p></li><li><p>Excluido: obra civil, cimentación de hormigón, conexiones de servicios fuera de los límites del skid, descarga en planta, formación de operadores y repuestos operativos</p></li></ul><p>Requisitos técnicos:</p><ul><li><p>Skid dúplex de bombeo de agua de refrigeración — cantidad 1 — dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100 % de la capacidad del sistema</p></li><li><p>Caudal de diseño — 100 m³/h</p></li><li><p>Altura manométrica requerida — aproximadamente 34 m</p></li><li><p>Fluido — agua tratada de refrigeración de proceso</p></li><li><p>Temperatura de operación — aproximadamente 7–35 °C</p></li><li><p>Presión de diseño — 10 bar(g)</p></li><li><p>Tuberías principales de proceso — acero al carbono, con conexiones de aspiración e impulsión de aproximadamente DN100</p></li><li><p>Motores de las bombas — 400 VCA, trifásicos, 50 Hz, protección IP55</p></li><li><p>Cuadro de control — cantidad 1 — cuadro apto para instalación exterior con PLC, HMI y un variador de frecuencia independiente para cada bomba</p></li><li><p>Funciones de control — alternancia automática entre bomba principal y reserva, arranque de la bomba de reserva en caso de fallo, control local de marcha y paro y señal de alarma general</p></li><li><p>Instrumentación — indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas</p></li><li><p>Bastidor del skid — estructura soldada de acero al carbono con puntos de elevación y accesos para carretilla elevadora</p></li><li><p>Instalación — zona exterior cubierta y clasificada como no peligrosa</p></li></ul><p>Notas:</p><ul><li><p>El conjunto deberá entregarse montado, cableado y probado en taller antes del envío.</p></li><li><p>Incluid en la propuesta un plano preliminar de disposición general y un P&amp;ID.</p></li><li><p>Las conexiones mecánicas y eléctricas externas deberán estar agrupadas y claramente identificadas para simplificar la instalación en planta.</p></li><li><p>Indicad claramente las hipótesis de cálculo, desviaciones, recomendaciones técnicas y cualquier información pendiente de confirmar.</p></li><li><p>La selección final de las bombas, el diámetro definitivo de las tuberías, la potencia de los motores y las dimensiones del skid podrán confirmarse durante la fase de ingeniería de detalle.</p></li><li><p>Presentad el precio desglosado, como mínimo, en ingeniería, equipos principales, fabricación, controles, pruebas, transporte y servicios de puesta en marcha.</p></li></ul><span style=\"background-color:transparent\">Gracias.</span><br><p>Un saludo,</p><p>Carlos Martín<br>Ingeniero de Proyectos<br>AGI Fabricators</p></div>\n",
+        "text": "Hola Cifral:\n\nPor favor, preparad la propuesta completa CON precios para el siguiente\nproyecto.\n\nCliente final: Sistemas de Bombeo del Golfo, S.L.\nContacto: Javier Ortega — javier.ortega@sistemasbombeo.es\nProyecto: Skid dúplex de bombeo de agua de refrigeración de proceso\nUbicación: Planta industrial de Tarragona, España\nPropuesta requerida antes del: 21 de agosto de 2026\nEntrega requerida: Segundo trimestre de 2027\n\nAlcance de suministro:\n\n   -\n\n   Incluido: ingeniería, materiales, fabricación, suministro de bombas y\n   equipos, montaje del skid, tuberías, cuadro eléctrico y controles, pruebas\n   en taller, transporte, supervisión de instalación, soporte durante la\n   puesta en marcha, gestión del proyecto y garantía\n   -\n\n   Excluido: obra civil, cimentación de hormigón, conexiones de servicios\n   fuera de los límites del skid, descarga en planta, formación de operadores\n   y repuestos operativos\n\nRequisitos técnicos:\n\n   -\n\n   Skid dúplex de bombeo de agua de refrigeración — cantidad 1 — dos bombas\n   centrífugas horizontales en configuración servicio/reserva, cada una\n   dimensionada para el 100 % de la capacidad del sistema\n   -\n\n   Caudal de diseño — 100 m³/h\n   -\n\n   Altura manométrica requerida — aproximadamente 34 m\n   -\n\n   Fluido — agua tratada de refrigeración de proceso\n   -\n\n   Temperatura de operación — aproximadamente 7–35 °C\n   -\n\n   Presión de diseño — 10 bar(g)\n   -\n\n   Tuberías principales de proceso — acero al carbono, con conexiones de\n   aspiración e impulsión de aproximadamente DN100\n   -\n\n   Motores de las bombas — 400 VCA, trifásicos, 50 Hz, protección IP55\n   -\n\n   Cuadro de control — cantidad 1 — cuadro apto para instalación exterior\n   con PLC, HMI y un variador de frecuencia independiente para cada bomba\n   -\n\n   Funciones de control — alternancia automática entre bomba principal y\n   reserva, arranque de la bomba de reserva en caso de fallo, control local de\n   marcha y paro y señal de alarma general\n   -\n\n   Instrumentación — indicación de presión en aspiración e impulsión,\n   medición de caudal en la descarga y supervisión básica de alarmas\n   -\n\n   Bastidor del skid — estructura soldada de acero al carbono con puntos de\n   elevación y accesos para carretilla elevadora\n   -\n\n   Instalación — zona exterior cubierta y clasificada como no peligrosa\n\nNotas:\n\n   -\n\n   El conjunto deberá entregarse montado, cableado y probado en taller\n   antes del envío.\n   -\n\n   Incluid en la propuesta un plano preliminar de disposición general y un\n   P&ID.\n   -\n\n   Las conexiones mecánicas y eléctricas externas deberán estar agrupadas y\n   claramente identificadas para simplificar la instalación en planta.\n   -\n\n   Indicad claramente las hipótesis de cálculo, desviaciones,\n   recomendaciones técnicas y cualquier información pendiente de confirmar.\n   -\n\n   La selección final de las bombas, el diámetro definitivo de las\n   tuberías, la potencia de los motores y las dimensiones del skid podrán\n   confirmarse durante la fase de ingeniería de detalle.\n   -\n\n   Presentad el precio desglosado, como mínimo, en ingeniería, equipos\n   principales, fabricación, controles, pruebas, transporte y servicios de\n   puesta en marcha.\n\nGracias.\n\nUn saludo,\n\nCarlos Martín\nIngeniero de Proyectos\nAGI Fabricators\n",
+        "textAsHtml": "<p>Hola Cifral:</p><p>Por favor, preparad la propuesta completa CON precios para el siguiente<br/>proyecto.</p><p>Cliente final: Sistemas de Bombeo del Golfo, S.L.<br/>Contacto: Javier Ortega &mdash; <a href=\"mailto:javier.ortega@sistemasbombeo.es\">javier.ortega@sistemasbombeo.es</a><br/>Proyecto: Skid d&uacute;plex de bombeo de agua de refrigeraci&oacute;n de proceso<br/>Ubicaci&oacute;n: Planta industrial de Tarragona, Espa&ntilde;a<br/>Propuesta requerida antes del: 21 de agosto de 2026<br/>Entrega requerida: Segundo trimestre de 2027</p><p>Alcance de suministro:</p><p>   -</p><p>   Incluido: ingenier&iacute;a, materiales, fabricaci&oacute;n, suministro de bombas y<br/>   equipos, montaje del skid, tuber&iacute;as, cuadro el&eacute;ctrico y controles, pruebas<br/>   en taller, transporte, supervisi&oacute;n de instalaci&oacute;n, soporte durante la<br/>   puesta en marcha, gesti&oacute;n del proyecto y garant&iacute;a<br/>   -</p><p>   Excluido: obra civil, cimentaci&oacute;n de hormig&oacute;n, conexiones de servicios<br/>   fuera de los l&iacute;mites del skid, descarga en planta, formaci&oacute;n de operadores<br/>   y repuestos operativos</p><p>Requisitos t&eacute;cnicos:</p><p>   -</p><p>   Skid d&uacute;plex de bombeo de agua de refrigeraci&oacute;n &mdash; cantidad 1 &mdash; dos bombas<br/>   centr&iacute;fugas horizontales en configuraci&oacute;n servicio/reserva, cada una<br/>   dimensionada para el 100 % de la capacidad del sistema<br/>   -</p><p>   Caudal de dise&ntilde;o &mdash; 100 m&sup3;/h<br/>   -</p><p>   Altura manom&eacute;trica requerida &mdash; aproximadamente 34 m<br/>   -</p><p>   Fluido &mdash; agua tratada de refrigeraci&oacute;n de proceso<br/>   -</p><p>   Temperatura de operaci&oacute;n &mdash; aproximadamente 7&ndash;35 &deg;C<br/>   -</p><p>   Presi&oacute;n de dise&ntilde;o &mdash; 10 bar(g)<br/>   -</p><p>   Tuber&iacute;as principales de proceso &mdash; acero al carbono, con conexiones de<br/>   aspiraci&oacute;n e impulsi&oacute;n de aproximadamente DN100<br/>   -</p><p>   Motores de las bombas &mdash; 400 VCA, trif&aacute;sicos, 50 Hz, protecci&oacute;n IP55<br/>   -</p><p>   Cuadro de control &mdash; cantidad 1 &mdash; cuadro apto para instalaci&oacute;n exterior<br/>   con PLC, HMI y un variador de frecuencia independiente para cada bomba<br/>   -</p><p>   Funciones de control &mdash; alternancia autom&aacute;tica entre bomba principal y<br/>   reserva, arranque de la bomba de reserva en caso de fallo, control local de<br/>   marcha y paro y se&ntilde;al de alarma general<br/>   -</p><p>   Instrumentaci&oacute;n &mdash; indicaci&oacute;n de presi&oacute;n en aspiraci&oacute;n e impulsi&oacute;n,<br/>   medici&oacute;n de caudal en la descarga y supervisi&oacute;n b&aacute;sica de alarmas<br/>   -</p><p>   Bastidor del skid &mdash; estructura soldada de acero al carbono con puntos de<br/>   elevaci&oacute;n y accesos para carretilla elevadora<br/>   -</p><p>   Instalaci&oacute;n &mdash; zona exterior cubierta y clasificada como no peligrosa</p><p>Notas:</p><p>   -</p><p>   El conjunto deber&aacute; entregarse montado, cableado y probado en taller<br/>   antes del env&iacute;o.<br/>   -</p><p>   Incluid en la propuesta un plano preliminar de disposici&oacute;n general y un<br/>   P&amp;ID.<br/>   -</p><p>   Las conexiones mec&aacute;nicas y el&eacute;ctricas externas deber&aacute;n estar agrupadas y<br/>   claramente identificadas para simplificar la instalaci&oacute;n en planta.<br/>   -</p><p>   Indicad claramente las hip&oacute;tesis de c&aacute;lculo, desviaciones,<br/>   recomendaciones t&eacute;cnicas y cualquier informaci&oacute;n pendiente de confirmar.<br/>   -</p><p>   La selecci&oacute;n final de las bombas, el di&aacute;metro definitivo de las<br/>   tuber&iacute;as, la potencia de los motores y las dimensiones del skid podr&aacute;n<br/>   confirmarse durante la fase de ingenier&iacute;a de detalle.<br/>   -</p><p>   Presentad el precio desglosado, como m&iacute;nimo, en ingenier&iacute;a, equipos<br/>   principales, fabricaci&oacute;n, controles, pruebas, transporte y servicios de<br/>   puesta en marcha.</p><p>Gracias.</p><p>Un saludo,</p><p>Carlos Mart&iacute;n<br/>Ingeniero de Proyectos<br/>AGI Fabricators</p>",
+        "subject": "RFQ — Sistemas de Bombeo Skid dúplex de agua de refrigeración",
+        "date": "2026-07-26T12:30:47.000Z",
+        "to": {
+          "value": [
+            {
+              "address": "cifral.digital@gmail.com",
+              "name": ""
+            }
+          ],
+          "html": "<span class=\"mp_address_group\"><a href=\"mailto:cifral.digital@gmail.com\" class=\"mp_address_email\">cifral.digital@gmail.com</a></span>",
+          "text": "cifral.digital@gmail.com"
+        },
+        "from": {
+          "value": [
+            {
+              "address": "markbmx360@gmail.com",
+              "name": "Mark B."
+            }
+          ],
+          "html": "<span class=\"mp_address_group\"><span class=\"mp_address_name\">Mark B.</span> &lt;<a href=\"mailto:markbmx360@gmail.com\" class=\"mp_address_email\">markbmx360@gmail.com</a>&gt;</span>",
+          "text": "\"Mark B.\" <markbmx360@gmail.com>"
+        },
+        "messageId": "<CAF9WxGNuwKHxa0ZZTbe7MkoHf6fZxGhV9obwUYKrqn097R5i+A@mail.gmail.com>"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6cf691ae4b818c0fa5987ac19eaf2f8dd5a147702425d4e31b1029a1cf278c82"
   }
 }
