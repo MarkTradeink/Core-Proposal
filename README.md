@@ -22,8 +22,24 @@ Customers buy one of three tiers, and any single request can pick a different on
 Module 1 reads a `request_type` from each incoming email, so a client on `full_pipeline` can still
 ask for "just a price" on a given RFQ; the client's tier is the fallback default. Each request also
 carries a **scope of supply** (materials, engineering, installation, commissioning, spare parts,
-warranty, …) that drives pricing lines, narrative sections and template blocks together — so one
+warranty, …) that drives pricing lines, narrative chapters and template blocks together — so one
 client can send a full-turnkey RFQ today and a supply-only RFQ tomorrow through the *same* workflows.
+
+## What the proposal actually contains
+
+`schemas/chapter-catalog.json` is the canonical superset: **14 body chapters** plus front matter and
+annexes, 105 render keys, 24 tables. It filters into three document weights — **A** quotation
+(4-8 pp), **B** standard proposal (15-25 pp), **C** tender response (30-60 pp + annexes) — and the
+same request's scope of supply prunes it further.
+
+Roughly half of a real proposal is contract boilerplate, a tenth is calculated from data, and only
+about a third is genuinely written. Cifral treats those differently: **boilerplate goes from the
+client's spreadsheet to the paper with no model anywhere in between**, prices and tables are computed,
+and the agents write the part that is actually specific to the project.
+
+Each client's chapter selection, clause library and house style live in a **Proposal Config Google
+Sheet** in their own Drive folder — see [`docs/CLIENT-DRIVE-SETUP.md`](docs/CLIENT-DRIVE-SETUP.md).
+Renaming a chapter, adding an exclusion or banning a word is a spreadsheet edit, not a deployment.
 
 ## The four modules ↔ the website's public positioning
 
@@ -32,7 +48,7 @@ The website still tells a four-module story (the internal building blocks). Each
 | # | Website module | Workflow file | What it does |
 |---|----------------|---------------|--------------|
 | 1 | **Data collection & validation** — capture the request, extract key variables, flag missing information before anyone writes | `workflows/01-data-collection-validation.json` | RFQ text → structured JSON; flags `missing_fields` and marks the RFQ `complete`/`incomplete`. |
-| 2 | **Technical content generation** — draft scope and technical sections from the client's approved docs | `workflows/02-technical-content-generation.json` | Generates the 3 narrative sections, grounded in that client's reference documents. |
+| 2 | **Technical content generation** — draft scope and technical sections from the client's approved docs | `workflows/02-technical-content-generation.json` | Five stages: resolves the chapter set and the client's clause library, then three writing agents by discipline, then a QA review. Grounded in that client's reference documents. |
 | 3 | **Pricing & commercial logic** — run the client's cost, margin, and configuration rules automatically | `workflows/03-pricing-commercial-logic.json` | Computes subtotal/total/terms and the price-table line breakdown via the tested pricing core. |
 | 4 | **Proposal assembly** — assemble the complete document in the client's own template | `workflows/04-proposal-assembly.json` | Renders the client's own `.docx` template (real Word headings, native lists, price table), exports a PDF, **replies in-thread to the client's own commercial contact** from the client's send-as alias with both files attached, and sends a Telegram alert. |
 | — | **Full end-to-end pipeline** | `workflows/00-orchestrator-end-to-end.json` | Thin orchestrator: Notion client lookup → M1 → (M2 ∥ M3) → M4. |
@@ -64,17 +80,25 @@ Every module accepts and returns the same envelope; the module-specific payload 
 
 ```
 workflows/   the 4 module workflows + 00-orchestrator (n8n JSON, git-tracked source of truth)
-schemas/     JSON Schema for each module's I/O envelope + scope-catalog.json (scope-of-supply items)
-modules/pricing/   pricing_core.js — the reference pricing formula (data lives in Google Sheets)
-modules/proposal/  render_context.js — how proposal data is shaped for the .docx template
+schemas/     I/O envelopes + chapter-catalog.json (the chapter superset) + scope-catalog.json
+modules/pricing/   pricing_core.js      — the pricing formula (numbers live in Google Sheets)
+modules/proposal/  chapter_catalog.js   — resolves the catalog against a request and a client
+                   render_context.js    — how proposal data is shaped for the .docx template
+templates/   build-templates.js + the seed .docx templates it generates from the catalog
+scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check)
+seed/        demo_client's Proposal Config CSVs — the starting point for a new client's sheet
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
-docs/        ARCHITECTURE, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
+docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
              PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE, TESTING-MANUAL
 ```
 
-Pricing **data** and proposal **templates** are not in the repo — they live in each client's Google
-Drive folder (a pricing Sheet + a master `.docx` template), so they change without a deploy. The repo
-owns the workflows, contracts, the pricing formula and the document render context.
+**The repo owns structure; Drive owns content.** Pricing numbers, chapter selection, clause libraries
+and the actual `.docx` templates live in each client's Google Drive folder so they change without a
+deploy. The repo owns the workflows, the contracts, the pricing formula, the chapter catalog and the
+render context.
+
+Three logic cores live in this repo *and* inside n8n, because a Code node cannot `require` a file.
+`npm run mirror` copies them in the one safe direction; `npm run check` fails if they have drifted.
 
 ## What's different from the legacy demo
 
@@ -95,12 +119,17 @@ pruning, incomplete-RFQ handling, recipient safety, sending alias, in-thread rep
 > in the Notion registry to hold delivery while you test — see
 > [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md).
 
-For a quick offline sanity check of the pricing math only:
+Most of what can break is checkable offline in a few seconds:
 
 ```bash
-node modules/pricing/pricing_core.js     # pricing formula + price-table line breakdown
-node modules/proposal/render_context.js  # the document's render context
+npm install
+npm run check
 ```
+
+That runs the three core self-checks, verifies the n8n Code nodes have not drifted from the repo, and
+performs four real docxtemplater renders (tiers A/B/C in Spanish, tier B in English) against the real
+templates and the real seed config — failing on the two things that reach a customer silently, the
+literal word `undefined` and unrendered braces.
 
 ## Deploying to n8n
 
@@ -110,4 +139,5 @@ Import `workflows/*.json` into n8n by hand and link credentials — there is no 
 ## Onboarding a new client
 
 See [`docs/ONBOARDING.md`](docs/ONBOARDING.md): create the Notion registry row, build the pricing
-Google Sheet, build the master `.docx` template, and (optionally) gather past proposals for grounding.
+Google Sheet, create the Proposal Config sheet from the seed CSVs, restyle a seed `.docx` template,
+and (optionally) gather past proposals for grounding. No code changes for a standard client.

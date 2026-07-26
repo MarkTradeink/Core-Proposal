@@ -4,6 +4,71 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 12 — Chapter catalog, five-stage generation, and per-client config in Drive (2026-07-26)
+Seven narrative sections covered roughly 40% of a real capital-modernization proposal. The reference
+document — a 26-page airport baggage-handling modernization — has 9 top-level chapters and three
+levels of hierarchy; Cifral produced 4-8 flat pages. Worse, the structure was baked into two places
+at once (a hardcoded `NARRATIVE_SECTIONS` array, mirrored, plus whatever chapters the client's `.docx`
+happened to contain), so adding a chapter took five coordinated edits.
+
+- **`schemas/chapter-catalog.json` — the closed vocabulary.** 14 body chapters plus front matter and
+  annexes; 105 render keys, 24 tables. Each entry declares its tier, owning agent, content type and
+  scope gate. Chapter ids *are* render keys, so the Phase 11 tag contract is unchanged — there are
+  just more of them. **New chapters**: executive summary, background, technical solution, operational
+  continuity / safety / risk, scope boundaries, next steps. **Split**: scope of supply (deliverables)
+  from project execution (services) — they are read by different people for different reasons.
+- **Three tiers over one structure.** A quotation (4-8 pp), B standard proposal (15-25 pp), C tender
+  (30-60 pp + annexes). Not three documents: one catalog, three filters.
+- **Per-client configuration moved to Google Drive.** A `Proposal Config` sheet in the client's own
+  folder holds their chapter selection, renames and ordering (`Chapters`), their clause library,
+  exclusions, assumptions and client obligations (`Content`), and their house style (`Rules`). Same
+  split already used for pricing: the repo owns the formula, Drive owns the data. n8n cannot read
+  repo files at runtime, and a salesperson should not need a deployment to add an exclusion. Clients
+  with no sheet keep working on catalog defaults, with a warning on the run.
+  New registry column `proposal_config_sheet_id`; full reference in `docs/CLIENT-DRIVE-SETUP.md`.
+- **Boilerplate stopped going through the LLM.** About half of a proposal is contract text —
+  warranty, liability, exclusions, general conditions. It used to be generated, which is
+  hallucinating a contractual commitment for no benefit. It now travels from the client's spreadsheet
+  into the same paragraph stream as generated text, through the same parser, with no model in
+  between. The QA agent sees it as read-only and a patch aimed at it is refused.
+- **Module 2 became five stages.** The single agent had `maxTokensToSample: 8192` and had to return
+  seven JSON keys; a 20-30 page document does not fit in one reply, so the ceiling was arithmetic,
+  not prompting. Now: **A5** resolves chapters and clauses (deterministic — a token matcher, because
+  this stage decides which liability text ships), then **A1** technical → **A2** execution and risk →
+  **A3** executive and commercial, each with its own budget, then **A4** reviews the assembled draft
+  for contradictions, invented commitments and uncovered RFQ requirements. A1→A2→A3 run in sequence
+  rather than in parallel: the execution plan must match the architecture, and a summary must
+  summarise rather than guess.
+- **Grounding widened.** Was 1 500 characters per document and 6 000 total — about a thousand words
+  to ground a document that should run to eight thousand. Now 6 000 / 24 000 across up to 10
+  documents, split per agent.
+- **Gapless numbering.** Chapter numbers are assigned *after* empty and out-of-scope chapters are
+  dropped, and the headings use Word multilevel numbering rather than typed numbers, so a proposal
+  that omits chapters still reads 1, 2, 3. The contents list is a deterministic loop over what
+  actually rendered, not a Word TOC field — the PDF leg runs through headless LibreOffice, which does
+  not refresh field TOCs, so a field-based one would ship empty.
+- **Version control is calculated** from the same date as the cover and footer. In the reference
+  document these had drifted apart (footer 03/02, version table 16/02) — the kind of defect only
+  manual assembly produces. The duplicated payment-terms block in the reference master is likewise
+  one clause now.
+- **Seed `.docx` templates, generated from the catalog** (`npm run templates`). A superset of 105
+  conditional blocks that has to agree with the render context key for key is not a thing to maintain
+  by hand. Onboarding copies a seed and restyles it; templates still live per-client in Drive.
+- **Module 1 extracts what the new chapters need**: current situation, objectives, operational
+  constraints, tender requirements with clause references (for the compliance matrix), risks, hot
+  buttons, reference documents, and a tier hint. Also `phone`, which the template has had a tag for
+  since Phase 11 and never had data for.
+- **`scope-catalog.json` v2**: `narrative_section` (one string) → `sections` (an array). The old
+  one-to-one mapping is what fused deliverables with execution.
+- **`npm run check`** runs everything offline: three core self-checks, the mirror drift check, and
+  four real docxtemplater renders reading the real seed config. **`npm run mirror`** copies the three
+  logic cores into the five n8n Code nodes that run them — the drift checker used to only detect
+  divergence, never fix it.
+
+> **Templates must be rebuilt.** Chapter ids changed, so Phase 11 templates no longer match. There is
+> no automatic migration, same as the Google Docs → docxtemplater move; `chapter-catalog.json`
+> carries a `legacy_key_map` and `docs/TEMPLATE-GUIDE.md` is rewritten.
+
 ### Phase 11 — Document engine: Google Docs text replacement → .docx rendering (2026-07-25)
 The proposal came out flat, and not by accident: `replaceAll` on a Google Doc can only swap *text
 for text*, so a generated chapter inherited the styling of the paragraph its token sat in — no real

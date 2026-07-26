@@ -880,19 +880,101 @@
             "missing_fields": []
           },
           "content": {
-            "grounded_on": [],
+            "sections": {
+              "solucion_tecnica_arquitectura": "El presente alcance comprende el diseño, fabricación, montaje, cableado y prueba en taller de un skid dúplex de bombeo de agua de refrigeración de proceso, destinado a la planta industrial de Tarragona. El conjunto se entregará como una unidad completamente integrada, lista para su conexión mecánica y eléctrica en planta, reduciendo al mínimo los trabajos de montaje en campo.\n\nEl skid incorpora dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100 % de la capacidad del sistema: caudal de diseño de 100 m³/h y altura manométrica aproximada de 34 m, trabajando con agua tratada de refrigeración de proceso en el rango de temperatura de 7 a 35 °C y presión de diseño de 10 bar(g). Cada bomba va accionada por un motor eléctrico trifásico de 400 VCA / 50 Hz con grado de protección IP55. La selección definitiva de las bombas, la potencia nominal de los motores y el diámetro exacto de las tuberías se confirmarán durante la fase de ingeniería de detalle.\n\nLa red de tuberías del skid se ejecuta en acero al carbono, con colectores de aspiración e impulsión de diámetro aproximado DN100. El bastidor estructural es una estructura soldada de acero al carbono, provista de puntos de elevación certificados y accesos para carretilla elevadora, que sirve de soporte rígido para todos los equipos, tuberías e instrumentación.\n\nEl cuadro de control, apto para instalación exterior, integra un PLC, una pantalla HMI y un variador de frecuencia independiente por bomba. Las funciones de control incluyen alternancia automática entre bomba principal y reserva, arranque automático de la bomba de reserva ante fallo de la activa, control local de marcha/paro y señal de alarma general. La instrumentación de proceso cubre indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas. Todas las conexiones mecánicas y eléctricas externas quedan agrupadas y claramente identificadas para facilitar la integración en planta.\n\nLa documentación técnica incluye, como mínimo, un plano preliminar de disposición general (General Arrangement), un P&ID del conjunto, las hipótesis de cálculo, las desviaciones respecto a especificación y las recomendaciones técnicas aplicables. Cualquier dato pendiente de confirmación por parte del cliente quedará explícitamente registrado en la documentación de ingeniería.",
+              "ejecucion_fases": "A continuación se indican las fases previstas para la ejecución del proyecto, con plazos orientativos sujetos a confirmación tras la firma del pedido y la recepción de los datos de proceso definitivos.\n\n•  Ingeniería de detalle — semanas 1 a 6: revisión de especificaciones, selección definitiva de equipos, elaboración de P&ID, plano de disposición general, hojas de datos y documentación de ingeniería para aprobación del cliente.\n\n•  Aprovisionamiento y fabricación — semanas 5 a 22: emisión de órdenes de compra de equipos principales (bombas, motores, variadores, instrumentación), fabricación del bastidor, montaje mecánico, cableado del cuadro de control e integración del skid en taller.\n\n•  Pruebas en taller (FAT) — semanas 22 a 25: prueba funcional del conjunto montado, verificación de lógicas de control, comprobación de estanqueidad y revisión de documentación as-built. Se invita al cliente a presenciar las pruebas.\n\n•  Transporte y entrega en planta — semanas 25 a 27: preparación para expedición, carga, transporte hasta la planta de Tarragona y descarga en el punto de entrega acordado.\n\n•  Instalación en campo — semanas 27 a 30: conexión mecánica y eléctrica de las acometidas externas, verificación de alineaciones y comprobaciones previas a la puesta en marcha.\n\n•  Puesta en marcha y arranque — semanas 30 a 32: verificación de parámetros de proceso, ajuste de lazos de control, pruebas de alternancia y alarmas, y entrega formal del sistema al cliente.\n\nEl plazo global orientativo sitúa la puesta en marcha en el segundo trimestre de 2027, en línea con el requerimiento del cliente. El cronograma detallado se acordará y formalizará durante la fase de ingeniería de detalle.",
+              "ejecucion_transporte": "El transporte del skid desde las instalaciones de fabricación hasta la planta de Tarragona se gestionará de acuerdo con las condiciones de entrega acordadas en el contrato. A continuación se indican los aspectos logísticos principales:\n\n•  El skid se expedirá completamente montado, cableado y probado, protegido con los medios de embalaje y sujeción adecuados para transporte por carretera.\n•  Se realizará una inspección de carga previa a la expedición para verificar el estado del conjunto y la correcta fijación de todos los componentes.\n•  El transporte se efectuará mediante vehículo de plataforma de las dimensiones adecuadas a las medidas y peso del skid, determinados durante la fase de ingeniería de detalle.\n•  Las condiciones de entrega (Incoterm aplicable, punto de entrega, responsabilidad de descarga en destino) se definirán y formalizarán en el contrato.\n•  Se facilitará documentación de expedición completa: albarán de entrega, lista de embalaje, certificados de prueba y documentación técnica asociada.\n•  Cualquier requisito especial de transporte (permisos de transporte especial, escolta, restricciones horarias en planta) deberá ser comunicado por el cliente con antelación suficiente para su gestión.",
+              "garantia_soporte_alcance": "El suministro objeto de la presente propuesta queda cubierto por una garantía estándar frente a defectos de materiales y mano de obra, contada a partir de la fecha de puesta en marcha o, en su defecto, desde la fecha de entrega en planta, conforme a los plazos y condiciones que se establezcan en el contrato. Durante el período de garantía, el suministrador atenderá, sin coste adicional para el cliente, la reparación o sustitución de aquellos componentes que presenten defectos imputables a la fabricación o al montaje realizado en taller.\n\nQuedan expresamente excluidos de la garantía los daños derivados de un uso incorrecto del equipo, modificaciones no autorizadas, desgaste normal de consumibles y piezas de desgaste, condiciones de operación fuera de los parámetros de diseño acordados, o intervenciones realizadas por personal ajeno al suministrador sin su consentimiento previo. Las condiciones detalladas de garantía, incluyendo el procedimiento de notificación de incidencias y los tiempos de respuesta comprometidos, se recogerán en el contrato de suministro.",
+              "resumen_ejecutivo_solucion": "La presente propuesta recoge las condiciones comerciales aplicables al suministro del skid dúplex de bombeo de agua de refrigeración de proceso para la planta de Tarragona, sobre la base de los requisitos técnicos facilitados por Sistemas de Bombeo del Golfo, S.L.\n\n•  Validez de la oferta: la presente propuesta tiene una validez de 60 días naturales a partir de la fecha de emisión.\n•  Plazo de entrega indicativo: puesta en marcha prevista en el segundo trimestre de 2027, condicionada a la firma del pedido y recepción de datos de proceso definitivos antes del 30 de septiembre de 2026.\n•  Condiciones de pago: estructura de hitos vinculada al avance del proyecto (anticipo a la firma del pedido, hito intermedio a la aprobación de ingeniería, hito a la FAT y saldo a la entrega); condiciones exactas a negociar y formalizar en el contrato.\n•  Precio desglosado: la oferta económica detalla, como mínimo, los capítulos de ingeniería, equipos principales, fabricación y montaje en taller, controles y cuadro eléctrico, pruebas en taller (FAT), transporte y servicios de puesta en marcha en campo.\n•  Exclusiones principales: obra civil, cimentaciones y anclajes, acometidas eléctricas externas al cuadro de control, tuberías de proceso externas al skid, permisos y licencias, y cualquier trabajo no descrito explícitamente en el alcance técnico.\n•  Hipótesis y pendientes: la selección definitiva de bombas, potencia de motores y dimensiones del skid se confirmarán en ingeniería de detalle; cualquier desviación que afecte al precio será comunicada y acordada con el cliente antes de su ejecución.\n•  Próximo paso: para proceder con la adjudicación, se solicita la emisión de la orden de compra o carta de intención, junto con la confirmación de los datos de proceso definitivos."
+            },
+            "tables": {
+              "tabla_fases": [
+                {
+                  "fase": "Ingeniería de detalle",
+                  "descripcion": "Revisión de especificaciones y selección de equipos",
+                  "duracion": "6 semanas",
+                  "entregable": "P&ID y plano de disposición general"
+                },
+                {
+                  "fase": "Aprovisionamiento y fabricación",
+                  "descripcion": "Compra de equipos principales y montaje en taller",
+                  "duracion": "18 semanas",
+                  "entregable": "Skid montado y cableado"
+                },
+                {
+                  "fase": "Pruebas en taller (FAT)",
+                  "descripcion": "Prueba funcional y verificación de lógicas de control",
+                  "duracion": "3 semanas",
+                  "entregable": "Protocolo FAT firmado"
+                },
+                {
+                  "fase": "Transporte y entrega",
+                  "descripcion": "Expedición y descarga en planta",
+                  "duracion": "2 semanas",
+                  "entregable": "Albarán de entrega"
+                },
+                {
+                  "fase": "Instalación y puesta en marcha",
+                  "descripcion": "Conexionado, ajuste de lazos y arranque",
+                  "duracion": "5 semanas",
+                  "entregable": "Acta de recepción"
+                }
+              ],
+              "tabla_materiales": [
+                {
+                  "posicion": "1",
+                  "descripcion": "Bomba centrífuga horizontal 100 m³/h · 34 m",
+                  "cantidad": "2",
+                  "observaciones": "Configuración servicio/reserva, 100 % capacidad cada una"
+                },
+                {
+                  "posicion": "2",
+                  "descripcion": "Motor eléctrico trifásico 400 VCA / 50 Hz",
+                  "cantidad": "2",
+                  "observaciones": "IP55"
+                },
+                {
+                  "posicion": "3",
+                  "descripcion": "Variador de frecuencia",
+                  "cantidad": "2",
+                  "observaciones": "Uno por bomba"
+                },
+                {
+                  "posicion": "4",
+                  "descripcion": "Cuadro de control con PLC y HMI",
+                  "cantidad": "1",
+                  "observaciones": "Apto para instalación exterior"
+                },
+                {
+                  "posicion": "5",
+                  "descripcion": "Bastidor estructural de acero al carbono",
+                  "cantidad": "1",
+                  "observaciones": "Puntos de elevación certificados"
+                }
+              ]
+            },
             "sections_generated": [
-              "alcance_tecnico",
-              "plan_implantacion",
-              "transporte",
-              "garantia",
-              "resumen_comercial"
+              "solucion_tecnica_arquitectura",
+              "ejecucion_fases",
+              "ejecucion_transporte",
+              "garantia_soporte_alcance",
+              "resumen_ejecutivo_solucion"
             ],
-            "alcance_tecnico": "El presente alcance comprende el diseño, fabricación, montaje, cableado y prueba en taller de un skid dúplex de bombeo de agua de refrigeración de proceso, destinado a la planta industrial de Tarragona. El conjunto se entregará como una unidad completamente integrada, lista para su conexión mecánica y eléctrica en planta, reduciendo al mínimo los trabajos de montaje en campo.\n\nEl skid incorpora dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100 % de la capacidad del sistema: caudal de diseño de 100 m³/h y altura manométrica aproximada de 34 m, trabajando con agua tratada de refrigeración de proceso en el rango de temperatura de 7 a 35 °C y presión de diseño de 10 bar(g). Cada bomba va accionada por un motor eléctrico trifásico de 400 VCA / 50 Hz con grado de protección IP55. La selección definitiva de las bombas, la potencia nominal de los motores y el diámetro exacto de las tuberías se confirmarán durante la fase de ingeniería de detalle.\n\nLa red de tuberías del skid se ejecuta en acero al carbono, con colectores de aspiración e impulsión de diámetro aproximado DN100. El bastidor estructural es una estructura soldada de acero al carbono, provista de puntos de elevación certificados y accesos para carretilla elevadora, que sirve de soporte rígido para todos los equipos, tuberías e instrumentación.\n\nEl cuadro de control, apto para instalación exterior, integra un PLC, una pantalla HMI y un variador de frecuencia independiente por bomba. Las funciones de control incluyen alternancia automática entre bomba principal y reserva, arranque automático de la bomba de reserva ante fallo de la activa, control local de marcha/paro y señal de alarma general. La instrumentación de proceso cubre indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas. Todas las conexiones mecánicas y eléctricas externas quedan agrupadas y claramente identificadas para facilitar la integración en planta.\n\nLa documentación técnica incluye, como mínimo, un plano preliminar de disposición general (General Arrangement), un P&ID del conjunto, las hipótesis de cálculo, las desviaciones respecto a especificación y las recomendaciones técnicas aplicables. Cualquier dato pendiente de confirmación por parte del cliente quedará explícitamente registrado en la documentación de ingeniería.",
-            "plan_implantacion": "A continuación se indican las fases previstas para la ejecución del proyecto, con plazos orientativos sujetos a confirmación tras la firma del pedido y la recepción de los datos de proceso definitivos.\n\n•  Ingeniería de detalle — semanas 1 a 6: revisión de especificaciones, selección definitiva de equipos, elaboración de P&ID, plano de disposición general, hojas de datos y documentación de ingeniería para aprobación del cliente.\n\n•  Aprovisionamiento y fabricación — semanas 5 a 22: emisión de órdenes de compra de equipos principales (bombas, motores, variadores, instrumentación), fabricación del bastidor, montaje mecánico, cableado del cuadro de control e integración del skid en taller.\n\n•  Pruebas en taller (FAT) — semanas 22 a 25: prueba funcional del conjunto montado, verificación de lógicas de control, comprobación de estanqueidad y revisión de documentación as-built. Se invita al cliente a presenciar las pruebas.\n\n•  Transporte y entrega en planta — semanas 25 a 27: preparación para expedición, carga, transporte hasta la planta de Tarragona y descarga en el punto de entrega acordado.\n\n•  Instalación en campo — semanas 27 a 30: conexión mecánica y eléctrica de las acometidas externas, verificación de alineaciones y comprobaciones previas a la puesta en marcha.\n\n•  Puesta en marcha y arranque — semanas 30 a 32: verificación de parámetros de proceso, ajuste de lazos de control, pruebas de alternancia y alarmas, y entrega formal del sistema al cliente.\n\nEl plazo global orientativo sitúa la puesta en marcha en el segundo trimestre de 2027, en línea con el requerimiento del cliente. El cronograma detallado se acordará y formalizará durante la fase de ingeniería de detalle.",
-            "transporte": "El transporte del skid desde las instalaciones de fabricación hasta la planta de Tarragona se gestionará de acuerdo con las condiciones de entrega acordadas en el contrato. A continuación se indican los aspectos logísticos principales:\n\n•  El skid se expedirá completamente montado, cableado y probado, protegido con los medios de embalaje y sujeción adecuados para transporte por carretera.\n•  Se realizará una inspección de carga previa a la expedición para verificar el estado del conjunto y la correcta fijación de todos los componentes.\n•  El transporte se efectuará mediante vehículo de plataforma de las dimensiones adecuadas a las medidas y peso del skid, determinados durante la fase de ingeniería de detalle.\n•  Las condiciones de entrega (Incoterm aplicable, punto de entrega, responsabilidad de descarga en destino) se definirán y formalizarán en el contrato.\n•  Se facilitará documentación de expedición completa: albarán de entrega, lista de embalaje, certificados de prueba y documentación técnica asociada.\n•  Cualquier requisito especial de transporte (permisos de transporte especial, escolta, restricciones horarias en planta) deberá ser comunicado por el cliente con antelación suficiente para su gestión.",
-            "garantia": "El suministro objeto de la presente propuesta queda cubierto por una garantía estándar frente a defectos de materiales y mano de obra, contada a partir de la fecha de puesta en marcha o, en su defecto, desde la fecha de entrega en planta, conforme a los plazos y condiciones que se establezcan en el contrato. Durante el período de garantía, el suministrador atenderá, sin coste adicional para el cliente, la reparación o sustitución de aquellos componentes que presenten defectos imputables a la fabricación o al montaje realizado en taller.\n\nQuedan expresamente excluidos de la garantía los daños derivados de un uso incorrecto del equipo, modificaciones no autorizadas, desgaste normal de consumibles y piezas de desgaste, condiciones de operación fuera de los parámetros de diseño acordados, o intervenciones realizadas por personal ajeno al suministrador sin su consentimiento previo. Las condiciones detalladas de garantía, incluyendo el procedimiento de notificación de incidencias y los tiempos de respuesta comprometidos, se recogerán en el contrato de suministro.",
-            "resumen_comercial": "La presente propuesta recoge las condiciones comerciales aplicables al suministro del skid dúplex de bombeo de agua de refrigeración de proceso para la planta de Tarragona, sobre la base de los requisitos técnicos facilitados por Sistemas de Bombeo del Golfo, S.L.\n\n•  Validez de la oferta: la presente propuesta tiene una validez de 60 días naturales a partir de la fecha de emisión.\n•  Plazo de entrega indicativo: puesta en marcha prevista en el segundo trimestre de 2027, condicionada a la firma del pedido y recepción de datos de proceso definitivos antes del 30 de septiembre de 2026.\n•  Condiciones de pago: estructura de hitos vinculada al avance del proyecto (anticipo a la firma del pedido, hito intermedio a la aprobación de ingeniería, hito a la FAT y saldo a la entrega); condiciones exactas a negociar y formalizar en el contrato.\n•  Precio desglosado: la oferta económica detalla, como mínimo, los capítulos de ingeniería, equipos principales, fabricación y montaje en taller, controles y cuadro eléctrico, pruebas en taller (FAT), transporte y servicios de puesta en marcha en campo.\n•  Exclusiones principales: obra civil, cimentaciones y anclajes, acometidas eléctricas externas al cuadro de control, tuberías de proceso externas al skid, permisos y licencias, y cualquier trabajo no descrito explícitamente en el alcance técnico.\n•  Hipótesis y pendientes: la selección definitiva de bombas, potencia de motores y dimensiones del skid se confirmarán en ingeniería de detalle; cualquier desviación que afecte al precio será comunicada y acordada con el cliente antes de su ejecución.\n•  Próximo paso: para proceder con la adjudicación, se solicita la emisión de la orden de compra o carta de intención, junto con la confirmación de los datos de proceso definitivos."
+            "agents_run": [
+              "A5",
+              "A1",
+              "A2",
+              "A3",
+              "A4"
+            ],
+            "clauses_applied": [],
+            "qa": {
+              "reviewed": true,
+              "findings": [],
+              "patches_applied": 0,
+              "blockers": 0
+            },
+            "grounded_on": []
           },
           "pricing": {
             "subtotal": 14525,

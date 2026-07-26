@@ -31,35 +31,60 @@ its id into `pricing_sheet_id`. **Do not invent rates** — get them signed off 
 
 Sanity-check the math locally if you like: `node modules/pricing/pricing_core.js`.
 
-## 3. Build the master proposal template(s)
+## 3. Create the Proposal Config sheet
 
-Build the client's proposal template in **Word** and save it as a **`.docx`** — ideally starting
-from a proposal they already send, so their own styles, headers, footers and logo carry over
-untouched. Replace the variable parts with the tags from `docs/TEMPLATE-GUIDE.md`: value tags
-(`{cliente.empresa}`, `{numero_propuesta}`, …), loops for lists and tables, and `{#has_*}` blocks
-around each optional chapter.
+This is the sheet that makes the client's proposals *theirs*: which chapters they use, what those
+chapters are called, their contract clauses and exclusions, and their house style. Full reference:
+`docs/CLIENT-DRIVE-SETUP.md`.
 
-It is a **superset**: include every chapter the client might offer; each request drops the ones out
-of scope, heading and all. Upload it to the client's Drive folder and record the file id as
-`template_id_en` (and `template_id_es` for a Spanish variant). Set `proposals_folder_id` to the
-output folder.
+Create a Google Sheet in the client's folder with three tabs named exactly **`Chapters`**,
+**`Content`** and **`Rules`**, and import `seed/demo_client/proposal-config/{chapters,content,rules}.csv`
+into them as a starting point. Then **replace the seed clauses with the client's own** — the seed is
+generic on purpose. Share it with the Google account n8n uses and record the id as
+`proposal_config_sheet_id`.
 
-Read the "one rule that decides whether lists work" section of the template guide before you start —
-loop tags written inline instead of on their own lines silently collapse every list into one
-paragraph, and it looks like a data bug rather than a template one.
+You can validate the content offline before any of it reaches Drive: drop the CSVs in
+`seed/<client_id>/proposal-config/` and run `npm run check`, which resolves them against the catalog
+and renders real documents in all three tiers, failing on any warning.
 
-## 4. (Optional) Reference docs for grounding
+Leaving this step out is allowed — the proposal falls back to the catalog structure with no
+client-specific text. It is the difference between a well-organised generic document and theirs.
 
-Module 2 grounds generated sections in the client's real prior work. Put 3–5 approved past proposals
-in a Drive folder and record its id as `reference_docs_folder_id`. More/better reference material =
-more on-brand, less generic output. Leave empty to have Module 2 write conservatively.
+## 4. Build the master proposal template(s)
 
-## 5. Verify
+**Start from the seed, not from a blank page.** `templates/proposal-template-es.docx` and `-en.docx`
+already contain all 105 conditional blocks correctly tagged; regenerate them with `npm run templates`
+if the catalog has changed.
+
+Copy one, then apply the client's fonts, colours, cover page, header, footer, logo and page setup —
+ideally lifted from a proposal they already send. Leave the tags and the loop-tag placement alone.
+
+Upload it to the client's Drive folder and record the file id as `template_id_en` (and
+`template_id_es` for a Spanish variant). Set `proposals_folder_id` to the output folder.
+
+Read the "one rule that decides whether lists work" section of `docs/TEMPLATE-GUIDE.md` before you
+edit anything — loop tags written inline instead of on their own lines silently collapse every list
+into one paragraph, and it looks like a data bug rather than a template one.
+
+## 5. (Optional) Reference docs for grounding
+
+Module 2 grounds generated sections in the client's real prior work. Put 5–10 approved past proposals
+in a Drive folder and record its id as `reference_docs_folder_id`. More and better reference material
+means more on-brand, less generic output. Leave empty to have Module 2 write conservatively.
+
+This is separate from the Proposal Config sheet and does a different job: the sheet supplies text
+that is used **verbatim**, the reference folder supplies examples the agents **learn tone from**.
+Contract language belongs in the sheet, never here.
+
+## 6. Verify
 
 Run the manual test scenarios in `docs/TESTING-MANUAL.md` against the new `client_id`. Confirm at
 minimum:
 - a `full_pipeline` request produces a priced proposal to the **commercial contact** (not the end
-  customer), with the right sections present and out-of-scope sections absent;
+  customer), with the right chapters present and out-of-scope chapters absent;
+- the client's own clauses appear (search the document for a phrase only their sheet contains) and
+  the Telegram alert reports `config_source: sheet` with no config warnings;
+- changing a title in the `Chapters` tab and re-running changes the document, with nothing deployed;
 - a `pricing_only` request produces just a price estimate;
 - an incomplete RFQ is flagged for review instead of producing a document.
 
@@ -68,7 +93,9 @@ minimum:
 - [ ] Registry row: `client_id`, status, `service_tier`, `send_mode`.
 - [ ] `commercial_contact_email` set to the reseller, not the end customer.
 - [ ] Pricing Google Sheet created, shared, `pricing_sheet_id` recorded.
-- [ ] Master `.docx` template(s) with docxtemplater tags; `template_id_en`/`_es` recorded.
+- [ ] Proposal Config sheet created from the seed CSVs, **clauses replaced with the client's own**,
+      shared, `proposal_config_sheet_id` recorded.
+- [ ] Master `.docx` template(s) copied from the seed and restyled; `template_id_en`/`_es` recorded.
 - [ ] `proposals_folder_id` and `notification_chat_id` recorded.
 - [ ] (Optional) reference-docs folder; `reference_docs_folder_id` recorded.
 - [ ] Manual test scenarios pass; the reply goes to the right recipient, from the right alias, in

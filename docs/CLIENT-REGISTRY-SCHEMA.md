@@ -49,6 +49,7 @@ Registry-specific properties the workflows read:
 | `proposals_folder_id` | Rich text | Google Drive folder to drop generated proposals into. |
 | `reference_docs_folder_id` | Rich text | Google Drive folder of the client's approved docs / past proposals for Module 2 grounding. |
 | `pricing_sheet_id` | Rich text | Google Sheet id holding this client's rate card (see `docs/PRICING-SHEET-TEMPLATE.md`). |
+| `proposal_config_sheet_id` | Rich text | Google Sheet id holding this client's **Proposal Config** — which chapters they use, their clause library and their writing rules (see `docs/CLIENT-DRIVE-SETUP.md`). Empty is valid: the proposal falls back to the catalog defaults and the run records a warning. |
 | `notification_chat_id` | Rich text | Telegram chat id for the "draft ready" / "needs review" alerts. |
 | `Contract Start Date` | Date | Contract start. |
 | `notes` | Rich text | Free-form notes. |
@@ -56,10 +57,13 @@ Registry-specific properties the workflows read:
 The DB's pre-existing `Customer Type`, `Tags`, `End Date`, and native `Status` properties are left in
 place but are **not read by any workflow**.
 
-> Neither the **rate card** nor a **template section list** is a Notion column. The rate card lives
-> in the client's **pricing Google Sheet** (`pricing_sheet_id`). Which sections appear in a proposal
-> is decided **per request** by its scope of supply (extracted by Module 1 against
-> `schemas/scope-catalog.json`), not per client — so there is no per-client section column.
+> Neither the **rate card** nor the **chapter list** is a Notion column, and neither is a column's
+> worth of text. Both live in Google Sheets in the client's Drive folder — `pricing_sheet_id` for the
+> rate card, `proposal_config_sheet_id` for the chapter selection, clause library and writing rules —
+> because they have to be editable by whoever owns the content, without a deployment.
+>
+> Which chapters appear in a given proposal is decided **per request** (scope of supply extracted by
+> Module 1, plus the tier), filtered through that client's standing preferences from the sheet.
 
 ## Client identification & status gating
 
@@ -116,8 +120,10 @@ template_id_en/_es         → templates.{en,es}
 proposals_folder_id        → proposals_folder_id
 reference_docs_folder_id   → reference_docs_folder_id
 pricing_sheet_id           → pricing_sheet_id
+proposal_config_sheet_id   → proposal_config_sheet_id
 notification_chat_id       → notification_chat_id
-(pricing Google Sheet)     → rate_card  (read at runtime by Module 3, not from Notion)
+(pricing Google Sheet)     → rate_card         (read at runtime by Module 3, not from Notion)
+(Proposal Config Sheet)    → proposal_config   (read at runtime by the orchestrator, not from Notion)
 ```
 
 ## DDL applied (Phase 7)
@@ -145,7 +151,11 @@ DROP COLUMN "plan_tier";
 
 ```sql
 ADD COLUMN "send_mode" SELECT('send':green,'draft':yellow);
+ADD COLUMN "proposal_config_sheet_id" RICH_TEXT;
 ```
+
+`proposal_config_sheet_id` is safe to add at any time: until a client has a value in it, proposals
+resolve from the catalog defaults exactly as they did before.
 
 Because the default is `send`, adding the column is not what turns delivery on — deploying the
 updated workflows is. If you want a staged rollout, add the column **first** and set every existing
@@ -161,6 +171,7 @@ The `demo_client` row (page `3a4fe158-febb-816c-af5c-fd4f8e78efe0`) already exis
 | `service_tier` | `full_pipeline` |
 | `send_mode` | `draft` while verifying the alias and threading; `send` once the checks in `docs/TESTING-MANUAL.md` pass |
 | `pricing_sheet_id` | id of the client's pricing Google Sheet (create per `docs/PRICING-SHEET-TEMPLATE.md`) |
+| `proposal_config_sheet_id` | id of the client's Proposal Config sheet (create per `docs/CLIENT-DRIVE-SETUP.md`, importing `seed/demo_client/proposal-config/*.csv`) |
 | `commercial_contact_email` | the real reseller/commercial contact (currently a placeholder) |
 | `template_id_en` | already set (`1szdkO1M…`) — update the doc to the master-template tokens (`docs/TEMPLATE-GUIDE.md`) |
 | `reference_docs_folder_id` | optional — Drive folder of past proposals for grounding |
