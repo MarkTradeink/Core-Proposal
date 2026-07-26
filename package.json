@@ -1,0 +1,14 @@
+{
+  "name": "cifral-core-proposal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cifral proposal pipeline — versioned logic cores, schemas and seed .docx templates for the n8n workflows.",
+  "scripts": {
+    "check": "node modules/pricing/pricing_core.js && node modules/proposal/chapter_catalog.js && node modules/proposal/render_context.js && node scripts/mirror-cores.js --check",
+    "mirror": "node scripts/mirror-cores.js",
+    "templates": "node templates/build-templates.js"
+  },
+  "devDependencies": {
+    "docx": "^9.5.1"
+  }
+}

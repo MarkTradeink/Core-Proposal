@@ -77,6 +77,10 @@ const CLAUSE_TABLES = {
 // though Module 3 produced a price. Presence follows the pricing payload instead.
 const PRICING_DRIVEN = ['oferta_economica', 'oferta_economica_resumen', 'oferta_economica_pago', 'resumen_ejecutivo_economico'];
 
+// Chapters that are always present when selected, because their body is computed rather than
+// written: dropping them for "emptiness" would lose the version table and the contents list.
+const ALWAYS_PRESENT = ['control_version', 'indice', 'portada'];
+
 const BULLET_RE = /^[•‣◦⁃∙*\-–—]\s+/;
 
 function pickLanguage(value) {
@@ -310,7 +314,7 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
       has_bullets: parsed.has_bullets,
     };
     const priced = !!pricing && PRICING_DRIVEN.includes(key);
-    return { entry, own: parsed.has_parrafos || parsed.has_bullets || hasTable || priced };
+    return { entry, own: parsed.has_parrafos || parsed.has_bullets || hasTable || priced || ALWAYS_PRESENT.includes(key) };
   };
 
   const plan = [];
@@ -344,14 +348,16 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
     context[key].numero = numero;
     context[`has_${key}`] = true;
     sections_rendered.push(key);
-    indice.push({ numero, titulo: context[key].titulo, nivel: '1' });
+    // Front matter carries no number and does not belong in the contents list — a table of
+    // contents that lists itself is noise.
+    if (numero) indice.push({ numero, titulo: context[key].titulo, nivel: '1' });
 
     kids.forEach((kid, i) => {
       const sub = numero ? `${numero}.${i + 1}` : '';
       context[kid.entry.id].numero = sub;
       context[`has_${kid.entry.id}`] = true;
       sections_rendered.push(kid.entry.id);
-      indice.push({ numero: sub, titulo: context[kid.entry.id].titulo, nivel: '2' });
+      if (sub) indice.push({ numero: sub, titulo: context[kid.entry.id].titulo, nivel: '2' });
     });
   }
 
@@ -366,6 +372,19 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
       return out;
     });
     context[`has_${name}`] = context[name].length > 0;
+  }
+
+  // Version control is a calculated table, not something an agent writes. Building it here from
+  // the same `fecha` the cover and the footer use is what stops the document doing what the real
+  // reference offer did: a footer dated 03/02 next to a version table dated 16/02.
+  if (!tableRows.tabla_versiones || !tableRows.tabla_versiones.length) {
+    context.tabla_versiones = [{
+      version: context.documento.version,
+      fecha: context.fecha,
+      autor: textOf(cfg.author),
+      cambios: lang === 'es' ? 'Emisión inicial' : 'Initial issue',
+    }];
+    context.has_tabla_versiones = true;
   }
 
   context.indice = indice;
@@ -536,10 +555,14 @@ if (require.main === module) {
   if (context.has_tabla_riesgos !== false) problems.push('an unused table must be present and flagged false');
 
   // Index is built from what actually rendered, so it can never disagree with the document.
+  if (context.has_control_version !== true) problems.push('version control is calculated and must always render');
+  if (context.tabla_versiones.length !== 1) problems.push('version table should carry one initial-issue row');
+  if (context.tabla_versiones[0].fecha !== context.fecha) problems.push('version table date must match the document date');
   if (context.has_oferta_economica !== true) problems.push('a priced request must render the economic chapter even though its body is a table');
   if (context.has_oferta_economica_resumen !== true) problems.push('the price summary section must render when there is pricing');
   if (!context.indice.length) problems.push('indice should not be empty');
   if (context.indice[0].numero !== '1') problems.push('indice should start at chapter 1');
+  if (context.indice.some((e) => !e.numero)) problems.push('unnumbered front matter must not appear in the contents list');
   const idxIds = context.indice.map((e) => e.titulo);
   if (idxIds.includes('Alternativas evaluadas y justificación')) problems.push('indice must not list a section that was dropped');
 
