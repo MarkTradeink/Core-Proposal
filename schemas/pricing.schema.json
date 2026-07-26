@@ -27,6 +27,22 @@
           "type": "array",
           "description": "Optional. Labour categories actually priced for this request (after scope filtering). Categories out of scope are omitted from the quote.",
           "items": { "type": "string" }
+        },
+        "lines": {
+          "type": "array",
+          "description": "Per-line breakdown feeding the proposal's price table. `sell_amount` values sum EXACTLY to `total` (per-line rounding residue is absorbed by the largest line). Module 4 renders sell_amount, never amount: `amount` is the pre-margin cost basis and the document is forwarded to the end customer.",
+          "items": {
+            "type": "object",
+            "required": ["category", "amount", "sell_amount"],
+            "additionalProperties": true,
+            "properties": {
+              "category": { "type": "string", "description": "Cost category, or 'materials' for the materials line." },
+              "hours": { "type": ["number", "null"], "description": "Null on the materials line." },
+              "rate": { "type": ["number", "null"], "description": "Null on the materials line." },
+              "amount": { "type": "number", "minimum": 0, "description": "Internal cost basis (hours * rate, or materials_cost). Sums to `subtotal`." },
+              "sell_amount": { "type": "number", "minimum": 0, "description": "Customer-facing price: amount scaled by (1+risk)(1+margin)(1-discount). Sums to `total`." }
+            }
+          }
         }
       }
     }

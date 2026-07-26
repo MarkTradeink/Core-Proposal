@@ -4,6 +4,97 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Phase 11 — Document engine: Google Docs text replacement → .docx rendering (2026-07-25)
+The proposal came out flat, and not by accident: `replaceAll` on a Google Doc can only swap *text
+for text*, so a generated chapter inherited the styling of the paragraph its token sat in — no real
+headings, bullets faked with a `•` character, the price summary as three bullet lines. Headings,
+lists and tables are **structure**, and structure cannot travel through a text placeholder. Module 4
+now renders the client's own **`.docx`** with docxtemplater instead.
+
+- **Templates are Word files.** `template_id_en` / `_es` now point at a `.docx` in the client's Drive
+  folder rather than a Google Doc. The client's styles, headers, footers, logo and page setup are
+  preserved byte-for-byte instead of being degraded by a Docs conversion on the way in. **Existing
+  templates must be rebuilt — there is no automatic migration** (`docs/TEMPLATE-GUIDE.md` is rewritten
+  from scratch).
+- **Structured render context.** `Compute Proposal Fields` stopped emitting pre-formatted strings and
+  now emits paragraphs, bullet arrays and table rows. Module 2 is untouched: a deterministic parser
+  turns its plain-text sections (whose format its prompt already pins) into that structure, which
+  keeps the inter-module contract stable and costs no extra tokens.
+- **Out-of-scope chapters vanish with their headings** via `{#has_*}` blocks — the thing the old
+  token scheme explicitly could not do, and the reason `TEMPLATE-GUIDE.md` used to tell authors to
+  type headings in UPPERCASE inside the generated text.
+- **Real price table.** Module 3 gained `lines[]` (`modules/pricing/pricing_core.js` + its mirrored
+  node), one row per priced category. Lines carry both the internal cost basis and the customer-facing
+  `sell_amount`; per-line rounding residue is absorbed into the largest line so **the column sums to
+  the total exactly**.
+- **The subtotal is no longer printed in the document.** It is the pre-margin cost basis, and this
+  document is forwarded by the reseller to their own end customer — printing it beside the total
+  handed the customer the reseller's margin. The reseller still sees it in the quote email.
+- **Money is localised.** `12345.6 EUR` became `12.345,60 €` / `€12,345.60` via `Intl.NumberFormat`,
+  matching the proposal's language rather than the server's locale.
+- **Both files are attached** — the editable `.docx` the reseller tweaks, and the PDF they forward.
+  PDF conversion moved to **Gotenberg** (LibreOffice), which also fixes the pre-existing bug where
+  `Convert to PDF` was a plain Drive download with no conversion, producing a Google Doc export named
+  `.pdf`.
+- **New `modules/proposal/render_context.js`**, mirrored into the node between `PROPOSAL RENDER CORE`
+  markers exactly like the pricing core, checkable offline with `node modules/proposal/render_context.js`.
+  `schemas/scope-catalog.json`'s dead `template_block` field (`MATERIALS`, `INSTALLATION`, … read by
+  nothing) is repopulated with the real docxtemplater flags.
+
+> ⚠️ **Before deploying:** install the community node `n8n-nodes-docxtemplater` (Settings → Community
+> Nodes) and add a `gotenberg/gotenberg:8` service beside n8n. Both are covered in `DEPLOYMENT.md`,
+> which also gains a Module 4 troubleshooting table.
+
+Two constraints of the render node shaped the design and are worth knowing before editing a template:
+it exposes no `nullGetter`, so a tag with no matching key prints the literal word `undefined` (the
+context is therefore total — every key always present); and it parses tags as **Jexl** expressions, so
+key names avoid `-` and loops iterate named objects rather than bare strings.
+
+**The trap to know about:** loop tags written *inline* (`{#items}{texto}{/items}`) repeat only the
+content inside the paragraph and concatenate every item into one run-on paragraph. Tags must sit
+**alone on their own lines** for `paragraphLoop` to repeat the whole styled paragraph. This is the
+difference between a native bullet list and the exact flat text this phase set out to eliminate, and
+it is the first thing to check when a list looks wrong.
+
+### Phase 10 — Live sending: send-as alias + in-thread replies (2026-07-25)
+Quotes and proposals are now **delivered**, not parked as Gmail drafts, and they come from a Cifral
+address instead of the personal mailbox that receives the RFQs:
+
+- **Send-as alias.** `Map Client Config` derives `client_config.from_alias` from `Client Status` —
+  `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io` — and Module 4 / the quote
+  branch pass it as the Gmail node's `fromAlias`. This finally gives `trial` behaviour of its own;
+  it was cosmetic before.
+- **Draft-then-send, not send.** The Gmail node's *Send Message* operation rebuilds `From` from the
+  authenticated mailbox and silently discards any alias, while *Create Draft* honours `fromAlias`
+  and `threadId`. Delivery is therefore `Create Draft` → new **`Send Draft`** / **`Send Quote`** HTTP
+  node calling `gmail/v1/users/me/drafts/send`.
+- **Replies land in the RFQ thread.** `Build Envelope` now keeps the trigger's `threadId`,
+  `Message-ID` and a `Re: <original subject>` line in a new per-request `email_context`, carried
+  beside `client_config` into Module 4. Gmail threads only when the thread id *and* the subject
+  match, so the synthetic `Proposal PROP-… — Company` subject is now a fallback for runs with no
+  thread (chat trigger, standalone module calls) rather than the default.
+- **`send_mode` kill switch.** New per-client Notion column (`send` | `draft`, default `send`).
+  `draft` skips the send step and restores exactly the previous behaviour — the per-client rollback
+  for the first production deploy. DDL is in `CLIENT-REGISTRY-SCHEMA.md` and **not yet applied**.
+- **`appendAttribution: false`** on both mail nodes — outgoing client mail was carrying n8n's own
+  promotional footer.
+- **Output records delivery.** `proposal-assembly.schema.json` gains `sent`, `sent_message_id`,
+  `from_alias`, `thread_id`; the Telegram alerts now say `SENT ✅` / `drafted 📝` with the From and
+  To addresses instead of always claiming a draft was created. `sent: false` always means
+  "deliberately not sent" — a genuine send failure fails the node and the run.
+- **Recipient guard hardened.** Gap G1 ("never the extracted end customer") now protects a real
+  send, and Module 4 additionally throws if no `from_alias` resolved rather than falling back to the
+  raw mailbox address. `TESTING-MANUAL.md` gains scenarios 13–15 (alias by status, in-thread reply,
+  live sending + rollback) and promotes the recipient-safety check to every regression pass.
+
+> ⚠️ **Before deploying:** verify `demo@cifral.io` and `proposal@cifral.io` as "Send mail as"
+> addresses on the Gmail account (`DEPLOYMENT.md`), and link the Gmail OAuth2 credential to the two
+> new HTTP Request nodes. Gmail rejects an unverified alias at send time, not at draft time.
+
+Known unrelated defect, left for the document-engine work: Module 4's `Convert to PDF` node is a
+plain Drive download with no `googleFileConversion` option, so the "PDF" attachment is the raw Google
+Doc export with a `.pdf` name.
+
 ### Phase 9.1 — Extractor truncation + wider boolean coercion (2026-07-25)
 Manual test with a real, detailed RFQ (12 technical requirements + full Included/Excluded scope
 list) failed at the Information Extractor with `OUTPUT_PARSING_FAILURE` (`` ```json {...` `` not

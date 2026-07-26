@@ -38,7 +38,7 @@ function computePricing({
   riskPct,
   discountPct,
   paymentTerms,
-  currency = null,
+  currency = null
 }) {
   hoursByCategory = hoursByCategory ?? {};
   rateByCategory = rateByCategory ?? {};
@@ -58,15 +58,37 @@ function computePricing({
   }
 
   const subtotal = materialsCost + labor;
-  const total = subtotal * (1 + riskPct) * (1 + marginPct) * (1 - discountPct);
+  const multiplier = (1 + riskPct) * (1 + marginPct) * (1 - discountPct);
+  const total = subtotal * multiplier;
+
+  // Per-line breakdown, so the proposal can show a price table instead of a bare total.
+  // Each line carries BOTH the internal cost basis (`amount`) and the customer-facing price
+  // (`sell_amount` = amount scaled by the same multiplier that produces the total). A quotation
+  // shows sell prices only — margin and risk are baked in, never itemised for the customer.
+  const lines = [];
+  if (materialsCost > 0) lines.push({ category: 'materials', hours: null, rate: null, amount: roundMoney(materialsCost) });
+  for (const [category, hours] of Object.entries(hoursByCategory)) {
+    lines.push({ category, hours, rate: rateByCategory[category], amount: roundMoney(hours * rateByCategory[category]) });
+  }
+  for (const line of lines) line.sell_amount = roundMoney(line.amount * multiplier);
+
+  // Rounding each line independently can leave the column a cent or two off the total. Absorb the
+  // residual into the largest line: a price table that doesn't add up is worse than no table.
+  const roundedTotal = roundMoney(total);
+  const residual = roundMoney(roundedTotal - lines.reduce((sum, l) => sum + l.sell_amount, 0));
+  if (residual !== 0 && lines.length > 0) {
+    const largest = lines.reduce((a, b) => (b.sell_amount > a.sell_amount ? b : a));
+    largest.sell_amount = roundMoney(largest.sell_amount + residual);
+  }
 
   const result = {
     subtotal: roundMoney(subtotal),
     margin_pct: marginPct,
     risk_pct: riskPct,
     discount_pct: discountPct,
-    total: roundMoney(total),
+    total: roundedTotal,
     payment_terms: paymentTerms,
+    lines
   };
   if (currency) result.currency = currency;
   return result;
@@ -87,6 +109,14 @@ if (require.main === module) {
     currency: 'EUR',
   });
   console.log(JSON.stringify(out, null, 2));
+
+  // The price table must add up: the sell column has to equal the total exactly.
+  const sellSum = roundMoney(out.lines.reduce((s, l) => s + l.sell_amount, 0));
+  if (sellSum !== out.total) {
+    console.error(`FAIL: lines sum to ${sellSum} but total is ${out.total}`);
+    process.exit(1);
+  }
+  console.log(`\nOK — ${out.lines.length} lines sum to ${sellSum}, matching the total.`);
 }
 
 module.exports = { computePricing, isNumber, roundMoney };

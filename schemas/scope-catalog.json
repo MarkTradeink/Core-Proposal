@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cifral.io/schemas/scope-catalog.json",
   "title": "Cifral — Scope-of-Supply catalog",
-  "description": "The canonical, versioned list of scope-of-supply items a proposal can contain. Scope is decided PER REQUEST (not per client): the same reseller may send a full-scope modernization RFQ today and a materials-and-engineering-only RFQ tomorrow. Module 1 extracts a `scope_of_supply` map (item key -> boolean) against these keys; that one map then drives pricing lines (Module 3), narrative sections (Module 2), and template blocks (Module 4). To add or rename a scope item, edit THIS file, then update the LLM extraction hints in Module 1, the section prompts in Module 2, and the template block markers documented in docs/TEMPLATE-GUIDE.md.",
+  "description": "The canonical, versioned list of scope-of-supply items a proposal can contain. Scope is decided PER REQUEST (not per client): the same reseller may send a full-scope modernization RFQ today and a materials-and-engineering-only RFQ tomorrow. Module 1 extracts a `scope_of_supply` map (item key -> boolean) against these keys; that one map then drives pricing lines (Module 3), narrative sections (Module 2), and template blocks (Module 4). To add or rename a scope item, edit THIS file, then update the LLM extraction hints in Module 1, the section prompts in Module 2, and the template block flags documented in docs/TEMPLATE-GUIDE.md. `template_block` is the docxtemplater boolean flag that gates the section in the .docx template ({#has_x} ... {/has_x}); several scope items share one flag because they share a narrative section.",
   "version": 1,
   "items": [
     {
@@ -11,7 +11,7 @@
       "label_es": "Suministro de materiales y equipos",
       "cost_category": "materials",
       "narrative_section": "alcance_tecnico",
-      "template_block": "MATERIALS",
+      "template_block": "has_alcance_tecnico",
       "default_included": true,
       "description": "Physical goods / equipment supplied. Priced via materials_cost (not an hourly category)."
     },
@@ -21,7 +21,7 @@
       "label_es": "Ingeniería y diseño",
       "cost_category": "engineering",
       "narrative_section": "alcance_tecnico",
-      "template_block": "ENGINEERING",
+      "template_block": "has_alcance_tecnico",
       "default_included": true,
       "description": "Design/engineering hours."
     },
@@ -31,7 +31,7 @@
       "label_es": "Instalación / Montaje",
       "cost_category": "assembly",
       "narrative_section": "plan_implantacion",
-      "template_block": "INSTALLATION",
+      "template_block": "has_plan_implantacion",
       "default_included": false,
       "description": "On-site assembly/installation labour. Often excluded when the end customer installs themselves."
     },
@@ -41,7 +41,7 @@
       "label_es": "Puesta en marcha",
       "cost_category": "commissioning",
       "narrative_section": "plan_implantacion",
-      "template_block": "COMMISSIONING",
+      "template_block": "has_plan_implantacion",
       "default_included": false,
       "description": "Commissioning / start-up labour."
     },
@@ -51,7 +51,7 @@
       "label_es": "Gestión de proyecto",
       "cost_category": "project_management",
       "narrative_section": "plan_implantacion",
-      "template_block": "PROJECT_MANAGEMENT",
+      "template_block": "has_plan_implantacion",
       "default_included": false,
       "description": "PM / coordination hours."
     },
@@ -61,7 +61,7 @@
       "label_es": "Repuestos",
       "cost_category": "materials",
       "narrative_section": "repuestos",
-      "template_block": "SPARE_PARTS",
+      "template_block": "has_repuestos",
       "default_included": false,
       "description": "Recommended spare-parts package. Its cost, if any, is folded into materials_cost."
     },
@@ -71,7 +71,7 @@
       "label_es": "Transporte y logística",
       "cost_category": "materials",
       "narrative_section": "transporte",
-      "template_block": "SHIPPING",
+      "template_block": "has_transporte",
       "default_included": false,
       "description": "Transport to site. Cost, if any, folded into materials_cost."
     },
@@ -81,7 +81,7 @@
       "label_es": "Formación",
       "cost_category": "commissioning",
       "narrative_section": "formacion",
-      "template_block": "TRAINING",
+      "template_block": "has_formacion",
       "default_included": false,
       "description": "Operator/maintenance training hours."
     },
@@ -91,7 +91,7 @@
       "label_es": "Garantía",
       "cost_category": null,
       "narrative_section": "garantia",
-      "template_block": "WARRANTY",
+      "template_block": "has_garantia",
       "default_included": true,
       "description": "Warranty clause. Narrative-only; no direct cost line."
     }
