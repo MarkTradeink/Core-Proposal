@@ -90,6 +90,28 @@ for (const mirror of MIRRORS) {
     }
 
     const code = node.parameters.jsCode || '';
+    const WRAPPER = '// --- n8n wrapper ---';
+
+    // A freshly added node has only its wrapper. Seed the core above it rather than making
+    // someone paste 200 lines by hand — that paste is exactly how drift starts.
+    if (!code.includes(`// === ${mirror.marker} START ===`)) {
+      if (!code.includes(WRAPPER)) {
+        console.error(`  !!  ${wfRel} :: ${nodeName} — no core markers and no '${WRAPPER}' line to seed above`);
+        drifted += 1;
+        continue;
+      }
+      if (check) {
+        console.error(`  XX  ${wfRel} :: ${nodeName} has no core yet`);
+        drifted += 1;
+        continue;
+      }
+      node.parameters.jsCode = `${core}\n\n${code}`;
+      fs.writeFileSync(wfPath, `${JSON.stringify(wf, null, 2)}\n`);
+      console.log(`  +>  ${wfRel} :: ${nodeName} seeded from ${mirror.module}`);
+      changed += 1;
+      continue;
+    }
+
     let current;
     try {
       current = extractCore(code, mirror.marker, `${wfRel}::${nodeName}`);
