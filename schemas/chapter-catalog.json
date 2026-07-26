@@ -286,7 +286,9 @@
           ],
           "tables": [
             "tabla_normativa"
-          ]
+          ],
+          "content_type": "generated",
+          "agent": "A1"
         },
         {
           "id": "bases_oferta_premisas",
@@ -1300,7 +1302,9 @@
           ],
           "tables": [
             "tabla_servicios"
-          ]
+          ],
+          "content_type": "generated",
+          "agent": "A3"
         }
       ]
     },
@@ -1667,9 +1671,7 @@
       "agent": "A5",
       "requires_scope": [],
       "sections": [],
-      "tables": [
-        "tabla_referencias"
-      ]
+      "tables": []
     },
     {
       "id": "anexo_cvs",
@@ -2025,19 +2027,6 @@
         "observaciones"
       ],
       "source": "A1"
-    },
-    "tabla_referencias": {
-      "title": {
-        "es": "Referencias",
-        "en": "References"
-      },
-      "columns": [
-        "cliente",
-        "proyecto",
-        "anio",
-        "alcance"
-      ],
-      "source": "boilerplate"
     }
   },
   "legacy_key_map": {
@@ -2298,18 +2287,6 @@
     "cumple": {
       "es": "Cumple",
       "en": "Complies"
-    },
-    "cliente": {
-      "es": "Cliente",
-      "en": "Client"
-    },
-    "proyecto": {
-      "es": "Proyecto",
-      "en": "Project"
-    },
-    "anio": {
-      "es": "Año",
-      "en": "Year"
     },
     "_comment": "Header labels for table columns, shared across every table that uses the column. templates/build-templates.js renders these as the header row; docs/TEMPLATE-GUIDE.md documents them."
   }

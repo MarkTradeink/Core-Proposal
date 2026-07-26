@@ -47,20 +47,35 @@ function jexlParser(tagName) {
 
 const scope = { materials: true, engineering: true, installation: true, commissioning: true, spare_parts: true, shipping: true, training: true, warranty: true, project_management: true };
 
+// The client's Proposal Config sheet. Read from the demo_client seed CSVs so this check exercises
+// the real boilerplate that ships with the product, not a toy fixture — if a clause points at a
+// chapter that no longer exists, this is where it surfaces.
+function readCsv(file) {
+  const text = fs.readFileSync(file, 'utf8');
+  const rows = [];
+  let row = [], field = '', quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false; }
+      else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') { row.push(field); field = ''; }
+    else if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; }
+    else if (c !== '\r') field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  const header = rows.shift();
+  return rows.filter((r) => r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] === undefined ? '' : r[i]])));
+}
+
+const SEED = path.join(ROOT, 'seed/demo_client/proposal-config');
 const sheet = {
-  chapters: [],
-  content: [
-    { kind: 'clause', id: 'gar_alcance', chapter_id: 'garantia_soporte_alcance', lang, applies_when: 'always', title: '', body: 'Periodo de garantía de 24 meses desde la aceptación final.\n\nCubre defectos de material y de fabricación en los equipos suministrados.' },
-    { kind: 'clause', id: 'cg_marco', chapter_id: 'condiciones_generales_marco', lang, applies_when: 'always', title: '', body: 'Aplican las condiciones generales Orgalime SI 24, salvo lo expresamente modificado en esta oferta.' },
-    { kind: 'premise', id: 'pre_01', chapter_id: 'limites_alcance_premisas', lang, applies_when: 'always', title: '', body: 'La documentación facilitada refleja la instalación actual.' },
-    { kind: 'premise', id: 'pre_02', chapter_id: 'limites_alcance_premisas', lang, applies_when: 'scope:installation', title: '', body: 'Se dispone de acceso al área de trabajo en las ventanas acordadas.' },
-    { kind: 'exclusion', id: 'exc_01', chapter_id: 'limites_alcance_exclusiones', lang, applies_when: 'always', title: '', body: 'Obra civil de cualquier naturaleza.' },
-    { kind: 'exclusion', id: 'exc_02', chapter_id: 'limites_alcance_exclusiones', lang, applies_when: 'always', title: '', body: 'Suministro eléctrico hasta el cuadro general.' },
-    { kind: 'obligation', id: 'obl_01', chapter_id: 'condiciones_sitio_obligaciones', lang, applies_when: 'always', title: '', body: 'Facilitar acceso y acreditaciones al personal asignado.' },
-    { kind: 'term', id: 'gl_01', chapter_id: 'glosario', lang, applies_when: 'always', title: 'SATE', body: 'Sistema Automático de Tratamiento de Equipaje.' },
-  ],
-  rules: [{ key: 'default_tier', value: tier }, { key: 'tone', value: 'técnico y sobrio' }],
+  chapters: readCsv(path.join(SEED, 'chapters.csv')),
+  content: readCsv(path.join(SEED, 'content.csv')),
+  rules: readCsv(path.join(SEED, 'rules.csv')),
 };
+sheet.rules = sheet.rules.filter((r) => r.key !== 'default_tier').concat([{ key: 'default_tier', value: tier }]);
 
 const proposalConfig = resolveProposalConfig({
   catalog, sheet, tier, language: lang, scope, has_pricing: true, sheet_id: 'demo-sheet',
@@ -141,7 +156,12 @@ if (leftover) problems.push(`${leftover.length} unrendered brace(s) left in the 
 
 console.log(`rendered ${path.relative(ROOT, out)}`);
 console.log(`tier ${tier} / ${lang} — ${proposalConfig.chapters.length} chapters selected, ${sections_rendered.length} keys rendered, ${context.indice.length} index entries`);
-console.log(`clauses applied: ${proposalConfig.clauses.length}${proposalConfig.warnings.length ? ` | warnings: ${proposalConfig.warnings.length}` : ''}`);
+console.log(`clauses applied: ${proposalConfig.clauses.length} of ${sheet.content.length} rows in the sheet`);
+if (proposalConfig.warnings.length) {
+  console.error(`\nFAIL — the client config produced ${proposalConfig.warnings.length} warning(s):`);
+  for (const w of proposalConfig.warnings) console.error(`  ${w}`);
+  process.exit(1);
+}
 if (problems.length) {
   console.error(`\nFAIL:\n  ${problems.join('\n  ')}`);
   process.exit(1);
