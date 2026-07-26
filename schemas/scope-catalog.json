@@ -2,16 +2,19 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cifral.io/schemas/scope-catalog.json",
   "title": "Cifral — Scope-of-Supply catalog",
-  "description": "The canonical, versioned list of scope-of-supply items a proposal can contain. Scope is decided PER REQUEST (not per client): the same reseller may send a full-scope modernization RFQ today and a materials-and-engineering-only RFQ tomorrow. Module 1 extracts a `scope_of_supply` map (item key -> boolean) against these keys; that one map then drives pricing lines (Module 3), narrative sections (Module 2), and template blocks (Module 4). To add or rename a scope item, edit THIS file, then update the LLM extraction hints in Module 1, the section prompts in Module 2, and the template block flags documented in docs/TEMPLATE-GUIDE.md. `template_block` is the docxtemplater boolean flag that gates the section in the .docx template ({#has_x} ... {/has_x}); several scope items share one flag because they share a narrative section.",
-  "version": 1,
+  "description": "The canonical, versioned list of scope-of-supply items a proposal can contain. Scope is decided PER REQUEST (not per client): the same reseller may send a full-scope modernization RFQ today and a materials-and-engineering-only RFQ tomorrow. Module 1 extracts a `scope_of_supply` map (item key -> boolean) against these keys; that one map then drives pricing lines (Module 3), which agents run and what they write (Module 2), and which template blocks survive (Module 4). To add or rename a scope item, edit THIS file, then update the extraction hints in Module 1 and the block list in docs/TEMPLATE-GUIDE.md.",
+  "version": 2,
+  "changelog": {
+    "2": "Chapter-catalog rework. `narrative_section` (one string) became `sections` (an array of schemas/chapter-catalog.json ids) and `template_block` was dropped — the flag is now derivable as 'has_' + each section id. The old one-narrative-section-per-scope-item mapping FUSED deliverables with execution: `materials`+`engineering` both collapsed into `alcance_tecnico`, and `installation`+`commissioning`+`project_management` all collapsed into `plan_implantacion`. That fusion is why a reader could not tell what is delivered from how it is executed. Splitting it is the point of the rework.",
+    "1": "Initial catalog: one narrative section per scope item."
+  },
   "items": [
     {
       "key": "materials",
       "label_en": "Materials & Equipment Supply",
       "label_es": "Suministro de materiales y equipos",
       "cost_category": "materials",
-      "narrative_section": "alcance_tecnico",
-      "template_block": "has_alcance_tecnico",
+      "sections": ["solucion_tecnica", "alcance_suministro_hardware"],
       "default_included": true,
       "description": "Physical goods / equipment supplied. Priced via materials_cost (not an hourly category)."
     },
@@ -20,8 +23,7 @@
       "label_en": "Engineering & Design",
       "label_es": "Ingeniería y diseño",
       "cost_category": "engineering",
-      "narrative_section": "alcance_tecnico",
-      "template_block": "has_alcance_tecnico",
+      "sections": ["solucion_tecnica", "alcance_suministro_ingenieria"],
       "default_included": true,
       "description": "Design/engineering hours."
     },
@@ -30,8 +32,7 @@
       "label_en": "Installation / Assembly",
       "label_es": "Instalación / Montaje",
       "cost_category": "assembly",
-      "narrative_section": "plan_implantacion",
-      "template_block": "has_plan_implantacion",
+      "sections": ["ejecucion_instalacion"],
       "default_included": false,
       "description": "On-site assembly/installation labour. Often excluded when the end customer installs themselves."
     },
@@ -40,8 +41,7 @@
       "label_en": "Commissioning & Start-up",
       "label_es": "Puesta en marcha",
       "cost_category": "commissioning",
-      "narrative_section": "plan_implantacion",
-      "template_block": "has_plan_implantacion",
+      "sections": ["ejecucion_puesta_marcha"],
       "default_included": false,
       "description": "Commissioning / start-up labour."
     },
@@ -50,18 +50,16 @@
       "label_en": "Project Management",
       "label_es": "Gestión de proyecto",
       "cost_category": "project_management",
-      "narrative_section": "plan_implantacion",
-      "template_block": "has_plan_implantacion",
+      "sections": ["gestion_proyecto_organizacion", "anexo_cvs"],
       "default_included": false,
-      "description": "PM / coordination hours."
+      "description": "PM / coordination hours. Note the schedule (gestion_proyecto_planificacion) is NOT gated on this — the client always needs to know when things land, even when they manage the project themselves."
     },
     {
       "key": "spare_parts",
       "label_en": "Spare Parts",
       "label_es": "Repuestos",
       "cost_category": "materials",
-      "narrative_section": "repuestos",
-      "template_block": "has_repuestos",
+      "sections": ["alcance_suministro_recambios"],
       "default_included": false,
       "description": "Recommended spare-parts package. Its cost, if any, is folded into materials_cost."
     },
@@ -70,8 +68,7 @@
       "label_en": "Shipping & Logistics",
       "label_es": "Transporte y logística",
       "cost_category": "materials",
-      "narrative_section": "transporte",
-      "template_block": "has_transporte",
+      "sections": ["ejecucion_transporte"],
       "default_included": false,
       "description": "Transport to site. Cost, if any, folded into materials_cost."
     },
@@ -80,8 +77,7 @@
       "label_en": "Training",
       "label_es": "Formación",
       "cost_category": "commissioning",
-      "narrative_section": "formacion",
-      "template_block": "has_formacion",
+      "sections": ["ejecucion_formacion"],
       "default_included": false,
       "description": "Operator/maintenance training hours."
     },
@@ -90,10 +86,9 @@
       "label_en": "Warranty",
       "label_es": "Garantía",
       "cost_category": null,
-      "narrative_section": "garantia",
-      "template_block": "has_garantia",
+      "sections": ["garantia_soporte_alcance"],
       "default_included": true,
-      "description": "Warranty clause. Narrative-only; no direct cost line."
+      "description": "Warranty clause. Boilerplate-only; no direct cost line."
     }
   ]
 }

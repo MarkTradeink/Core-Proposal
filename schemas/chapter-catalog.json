@@ -1,0 +1,364 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/chapter-catalog.json",
+  "title": "Cifral — Proposal chapter catalog",
+  "description": "The canonical, versioned superset of chapters a Cifral proposal can contain. This is the CLOSED VOCABULARY shared by the Module 2 agents, the render context (modules/proposal/render_context.js) and the .docx template tags — an id that is not in here has no agent that knows how to write it and no template block to render it. Per-client customization does NOT happen in this file: it happens in the client's 'Proposal Config' Google Sheet (docs/CLIENT-DRIVE-SETUP.md), which selects, reorders, renames and supplies text OVER this vocabulary. Same split as pricing: the repo owns the formula, Drive owns the numbers. Every chapter id and section id is also a RENDER KEY: it produces {#has_<id>}, {#<id>.parrafos} and {#<id>.bullets} in the template, exactly like the seven narrative sections did before. Ids must be valid Jexl identifiers — ASCII, lowercase, underscores only, no accents and no '-' (Jexl reads '-' as subtraction).",
+  "version": 1,
+
+  "tiers": {
+    "A": { "label": { "es": "Cotización", "en": "Quotation" }, "pages": "4-8" },
+    "B": { "label": { "es": "Propuesta estándar", "en": "Standard proposal" }, "pages": "15-25" },
+    "C": { "label": { "es": "Licitación", "en": "Tender" }, "pages": "30-60 + anexos" }
+  },
+
+  "agents": {
+    "A1": { "role": { "es": "Ingeniería / solución técnica", "en": "Engineering / technical solution" } },
+    "A2": { "role": { "es": "Ejecución y planificación", "en": "Execution and planning" } },
+    "A3": { "role": { "es": "Comercial / ejecutivo", "en": "Commercial / executive" } },
+    "A4": { "role": { "es": "Revisor QA (no escribe capítulos)", "en": "QA reviewer (writes no chapters)" } },
+    "A5": { "role": { "es": "Selector de cláusulas (motor de reglas determinista)", "en": "Clause selector (deterministic rules engine)" } }
+  },
+
+  "content_types": {
+    "generated": "Written by an LLM agent, specific to this project.",
+    "boilerplate": "Selected from the client's clause library (Proposal Config sheet, tab 'Content'). Never LLM-written — this is contract text.",
+    "calculated": "Derived deterministically from RFQ / pricing data. Never LLM-written.",
+    "mixed": "A generated body plus boilerplate clauses merged into the same paragraph stream."
+  },
+
+  "front_matter": [
+    { "id": "portada", "order": 1, "numbered": false, "title": { "es": "Portada", "en": "Cover" }, "tiers": ["A", "B", "C"], "content_type": "calculated", "agent": null, "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "carta_presentacion", "order": 2, "numbered": false, "default_included": false, "title": { "es": "Carta de presentación", "en": "Cover letter" }, "tiers": ["B", "C"], "content_type": "generated", "agent": "A3", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "control_version", "order": 3, "numbered": false, "title": { "es": "Control de versión", "en": "Version control" }, "tiers": ["B", "C"], "content_type": "calculated", "agent": null, "requires_scope": [], "sections": [], "tables": ["tabla_versiones"] },
+    { "id": "indice", "order": 4, "numbered": false, "title": { "es": "Índice", "en": "Table of contents" }, "tiers": ["B", "C"], "content_type": "calculated", "agent": null, "requires_scope": [], "sections": [], "tables": ["tabla_indice"] },
+    { "id": "glosario", "order": 5, "numbered": false, "title": { "es": "Glosario y abreviaturas", "en": "Glossary and abbreviations" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": ["tabla_glosario"] }
+  ],
+
+  "chapters": [
+    {
+      "id": "resumen_ejecutivo",
+      "order": 10,
+      "numbered": true,
+      "title": { "es": "Resumen ejecutivo", "en": "Executive summary" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "generated",
+      "agent": "A3",
+      "requires_scope": [],
+      "guidance": "Must read standalone: someone who reads only this page knows what is being bought, why, what it costs and when it lands. No jargon, no acronyms without expansion, client's language not ours. Written LAST, from A1+A2 output.",
+      "tables": [],
+      "sections": [
+        { "id": "resumen_ejecutivo_necesidad", "title": { "es": "La necesidad", "en": "The need" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "resumen_ejecutivo_solucion", "title": { "es": "La solución propuesta", "en": "The proposed solution" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "resumen_ejecutivo_beneficios", "title": { "es": "Beneficios e indicadores", "en": "Benefits and KPIs" }, "tiers": ["B", "C"], "tables": ["tabla_beneficios"] },
+        { "id": "resumen_ejecutivo_economico", "title": { "es": "Resumen económico y plazo", "en": "Commercial and schedule summary" }, "tiers": ["A", "B", "C"], "content_type": "calculated", "tables": [] }
+      ]
+    },
+    {
+      "id": "bases_oferta",
+      "order": 20,
+      "numbered": true,
+      "title": { "es": "Bases de la oferta", "en": "Basis of offer" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "mixed",
+      "agent": "A5",
+      "requires_scope": [],
+      "guidance": "What this offer is built on. Reference documents must be dated and revision-stamped — this is what protects against 'but the spec said'.",
+      "tables": [],
+      "sections": [
+        { "id": "bases_oferta_documentos", "title": { "es": "Documentos de referencia", "en": "Reference documents" }, "tiers": ["A", "B", "C"], "tables": ["tabla_documentos_ref"] },
+        { "id": "bases_oferta_normativa", "title": { "es": "Normativa y estándares aplicables", "en": "Applicable standards and regulations" }, "tiers": ["B", "C"], "tables": ["tabla_normativa"] },
+        { "id": "bases_oferta_premisas", "title": { "es": "Premisas generales", "en": "General assumptions" }, "tiers": ["A", "B", "C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "antecedentes",
+      "order": 30,
+      "numbered": true,
+      "title": { "es": "Antecedentes y situación actual", "en": "Background and current situation" },
+      "tiers": ["B", "C"],
+      "content_type": "generated",
+      "agent": "A3",
+      "requires_scope": [],
+      "guidance": "Prove we understood the problem before proposing anything. Quantify the pain with the client's own numbers (downtime, obsolescence, spares lead time). Never invent figures the RFQ did not provide.",
+      "tables": [],
+      "sections": [
+        { "id": "antecedentes_instalacion", "title": { "es": "Instalación existente", "en": "Existing installation" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "antecedentes_problematica", "title": { "es": "Problemática y obsolescencia", "en": "Problem statement and obsolescence" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "antecedentes_objetivos", "title": { "es": "Objetivos y criterios de éxito", "en": "Objectives and success criteria" }, "tiers": ["B", "C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "solucion_tecnica",
+      "order": 40,
+      "numbered": true,
+      "title": { "es": "Solución técnica propuesta", "en": "Proposed technical solution" },
+      "tiers": ["B", "C"],
+      "content_type": "generated",
+      "agent": "A1",
+      "requires_scope": ["materials", "engineering"],
+      "guidance": "The engineering argument. Architecture first, then what physically changes, then how it is controlled. Name component categories, never invent brands, part numbers or performance figures.",
+      "tables": [],
+      "sections": [
+        { "id": "solucion_tecnica_arquitectura", "title": { "es": "Concepto y arquitectura", "en": "Concept and architecture" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "solucion_tecnica_funcional", "title": { "es": "Descripción funcional y cambios respecto a la instalación actual", "en": "Functional description and changes to the existing installation" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "solucion_tecnica_control", "title": { "es": "Control y comunicaciones", "en": "Control and communications" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "solucion_tecnica_ciberseguridad", "title": { "es": "Ciberseguridad OT y acceso remoto", "en": "OT cybersecurity and remote access" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "solucion_tecnica_alternativas", "title": { "es": "Alternativas evaluadas y justificación", "en": "Alternatives considered and rationale" }, "tiers": ["C"], "tables": ["tabla_alternativas"] }
+      ]
+    },
+    {
+      "id": "alcance_suministro",
+      "order": 50,
+      "numbered": true,
+      "title": { "es": "Alcance de suministro", "en": "Scope of supply" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "generated",
+      "agent": "A1",
+      "requires_scope": [],
+      "guidance": "DELIVERABLES ONLY — what physically or digitally changes hands. Everything about HOW it gets done belongs in 'ejecucion'. Procurement reads this line by line against the tender, so be enumerable, not narrative.",
+      "tables": [],
+      "sections": [
+        { "id": "alcance_suministro_resumen", "title": { "es": "Resumen de lo incluido y no incluido", "en": "Summary of what is and is not included" }, "tiers": ["A", "B", "C"], "content_type": "calculated", "tables": [] },
+        { "id": "alcance_suministro_hardware", "title": { "es": "Hardware y equipos", "en": "Hardware and equipment" }, "tiers": ["A", "B", "C"], "requires_scope": ["materials"], "tables": ["tabla_materiales"] },
+        { "id": "alcance_suministro_software", "title": { "es": "Software y licencias", "en": "Software and licences" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "alcance_suministro_scada", "title": { "es": "SCADA / HMI y visualización", "en": "SCADA / HMI and visualisation" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "alcance_suministro_ingenieria", "title": { "es": "Ingeniería y diseño", "en": "Engineering and design" }, "tiers": ["A", "B", "C"], "requires_scope": ["engineering"], "tables": [] },
+        { "id": "alcance_suministro_recambios", "title": { "es": "Recambios recomendados", "en": "Recommended spare parts" }, "tiers": ["A", "B", "C"], "requires_scope": ["spare_parts"], "tables": ["tabla_recambios"] },
+        { "id": "alcance_suministro_documentacion", "title": { "es": "Documentación técnica entregable", "en": "Technical documentation deliverables" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] }
+      ]
+    },
+    {
+      "id": "ejecucion",
+      "order": 60,
+      "numbered": true,
+      "title": { "es": "Ejecución del proyecto", "en": "Project execution" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "generated",
+      "agent": "A2",
+      "requires_scope": [],
+      "guidance": "SERVICES ONLY — how the deliverables get installed, tested and handed over. Engineering evaluates risk here, so be concrete about sequence, duration and who does what.",
+      "tables": [],
+      "sections": [
+        { "id": "ejecucion_inspeccion", "title": { "es": "Inspección previa y toma de datos", "en": "Site survey and data capture" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "ejecucion_fases", "title": { "es": "Fases de ejecución", "en": "Execution phases" }, "tiers": ["A", "B", "C"], "tables": ["tabla_fases"] },
+        { "id": "ejecucion_instalacion", "title": { "es": "Instalación y montaje", "en": "Installation and assembly" }, "tiers": ["A", "B", "C"], "requires_scope": ["installation"], "tables": [] },
+        { "id": "ejecucion_puesta_marcha", "title": { "es": "Puesta en marcha", "en": "Commissioning and start-up" }, "tiers": ["A", "B", "C"], "requires_scope": ["commissioning"], "tables": [] },
+        { "id": "ejecucion_pruebas", "title": { "es": "Plan de pruebas y criterios de aceptación", "en": "Test plan and acceptance criteria" }, "tiers": ["B", "C"], "tables": ["tabla_pruebas"] },
+        { "id": "ejecucion_demostracion", "title": { "es": "Periodo de demostración", "en": "Demonstration period" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "ejecucion_formacion", "title": { "es": "Formación", "en": "Training" }, "tiers": ["A", "B", "C"], "requires_scope": ["training"], "tables": [] },
+        { "id": "ejecucion_transporte", "title": { "es": "Transporte, embalaje y entrega", "en": "Transport, packing and delivery" }, "tiers": ["A", "B", "C"], "requires_scope": ["shipping"], "tables": [] },
+        { "id": "ejecucion_recepcion", "title": { "es": "Recepción y aceptación", "en": "Handover and acceptance" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] }
+      ]
+    },
+    {
+      "id": "gestion_proyecto",
+      "order": 70,
+      "numbered": true,
+      "title": { "es": "Gestión de proyecto", "en": "Project management" },
+      "tiers": ["B", "C"],
+      "content_type": "mixed",
+      "agent": "A2",
+      "requires_scope": [],
+      "guidance": "How the project is run and controlled. The schedule lives here even when project management is out of scope — the client always needs to know when things land.",
+      "tables": [],
+      "sections": [
+        { "id": "gestion_proyecto_organizacion", "title": { "es": "Organización y equipo", "en": "Organisation and team" }, "tiers": ["B", "C"], "requires_scope": ["project_management"], "tables": ["tabla_equipo"] },
+        { "id": "gestion_proyecto_metodologia", "title": { "es": "Metodología y control del proyecto", "en": "Methodology and project control" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "gestion_proyecto_comunicacion", "title": { "es": "Comunicación y reporting", "en": "Communication and reporting" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "gestion_proyecto_cambios", "title": { "es": "Gestión de cambios", "en": "Change management" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "gestion_proyecto_calidad", "title": { "es": "Calidad y plan de puntos de inspección", "en": "Quality and inspection test plan" }, "tiers": ["C"], "tables": [] },
+        { "id": "gestion_proyecto_planificacion", "title": { "es": "Planificación, hitos y plazo", "en": "Schedule, milestones and lead time" }, "tiers": ["B", "C"], "tables": ["tabla_hitos"] }
+      ]
+    },
+    {
+      "id": "continuidad_riesgos",
+      "order": 80,
+      "numbered": true,
+      "title": { "es": "Continuidad operativa, seguridad y riesgos", "en": "Operational continuity, safety and risk" },
+      "tiers": ["B", "C"],
+      "content_type": "mixed",
+      "agent": "A2",
+      "requires_scope": [],
+      "guidance": "THE brownfield differentiator. The client's number one fear is 'will you stop my plant'. Answer it explicitly: what keeps running, what the fallback is if a step fails, how the old system stays available until the new one is proven.",
+      "tables": [],
+      "sections": [
+        { "id": "continuidad_riesgos_estrategia", "title": { "es": "Estrategia de continuidad operativa", "en": "Operational continuity strategy" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "continuidad_riesgos_contingencia", "title": { "es": "Contingencia y reversión", "en": "Contingency and rollback" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "continuidad_riesgos_registro", "title": { "es": "Registro de riesgos", "en": "Risk register" }, "tiers": ["B", "C"], "tables": ["tabla_riesgos"] },
+        { "id": "continuidad_riesgos_prl", "title": { "es": "Seguridad y salud", "en": "Health and safety" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "continuidad_riesgos_ambiental", "title": { "es": "Medio ambiente y gestión de residuos", "en": "Environment and waste management" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "tables": [] }
+      ]
+    },
+    {
+      "id": "condiciones_sitio",
+      "order": 90,
+      "numbered": true,
+      "title": { "es": "Condiciones técnicas y requisitos del emplazamiento", "en": "Site conditions and requirements" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "boilerplate",
+      "agent": "A5",
+      "requires_scope": [],
+      "guidance": "What the client must provide for the offered price to hold. Numbered obligations, because each one is a change order if unmet.",
+      "tables": [],
+      "sections": [
+        { "id": "condiciones_sitio_area", "title": { "es": "Área de trabajo y accesibilidad", "en": "Work area and accessibility" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "condiciones_sitio_jornadas", "title": { "es": "Jornadas de trabajo y disponibilidad del sistema", "en": "Working hours and system availability" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "condiciones_sitio_accesos", "title": { "es": "Accesos, permisos y acreditaciones", "en": "Access, permits and clearances" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "condiciones_sitio_suministros", "title": { "es": "Suministros a cargo del cliente", "en": "Client-supplied services" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "condiciones_sitio_obligaciones", "title": { "es": "Obligaciones del cliente", "en": "Client obligations" }, "tiers": ["A", "B", "C"], "tables": ["tabla_obligaciones"] },
+        { "id": "condiciones_sitio_entorno", "title": { "es": "Condiciones ambientales del entorno", "en": "Environmental operating conditions" }, "tiers": ["C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "limites_alcance",
+      "order": 100,
+      "numbered": true,
+      "title": { "es": "Límites del alcance", "en": "Scope boundaries" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "boilerplate",
+      "agent": "A5",
+      "requires_scope": [],
+      "guidance": "The commercial shield, consolidated in ONE place instead of scattered across four. Every assumption and exclusion is numbered so a change order can cite it.",
+      "tables": [],
+      "sections": [
+        { "id": "limites_alcance_premisas", "title": { "es": "Premisas e hipótesis", "en": "Assumptions" }, "tiers": ["A", "B", "C"], "tables": ["tabla_premisas"] },
+        { "id": "limites_alcance_exclusiones", "title": { "es": "Exclusiones", "en": "Exclusions" }, "tiers": ["A", "B", "C"], "tables": ["tabla_exclusiones"] },
+        { "id": "limites_alcance_interfaces", "title": { "es": "Interfaces y límites de suministro", "en": "Interfaces and battery limits" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "limites_alcance_cambios", "title": { "es": "Condiciones que originan una orden de cambio", "en": "Conditions triggering a change order" }, "tiers": ["A", "B", "C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "oferta_economica",
+      "order": 110,
+      "numbered": true,
+      "title": { "es": "Oferta económica", "en": "Commercial offer" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "calculated",
+      "agent": null,
+      "requires_scope": [],
+      "gated_by": "has_pricing",
+      "guidance": "Never LLM-written. Prices come from Module 3, terms from the client's clause library. A proposal_only request drops this whole chapter.",
+      "tables": [],
+      "sections": [
+        { "id": "oferta_economica_resumen", "title": { "es": "Resumen de precios", "en": "Price summary" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "oferta_economica_opciones", "title": { "es": "Opciones cotizadas aparte", "en": "Separately quoted options" }, "tiers": ["B", "C"], "tables": ["tabla_opciones"] },
+        { "id": "oferta_economica_tarifas", "title": { "es": "Tarifas para trabajos adicionales", "en": "Rates for additional work" }, "tiers": ["B", "C"], "tables": ["tabla_tarifas"] },
+        { "id": "oferta_economica_no_incluido", "title": { "es": "Conceptos no incluidos en el precio", "en": "Not included in the price" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "oferta_economica_pago", "title": { "es": "Condiciones de pago", "en": "Payment terms" }, "tiers": ["A", "B", "C"], "tables": ["tabla_hitos_pago"] },
+        { "id": "oferta_economica_moneda", "title": { "es": "Moneda", "en": "Currency" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "oferta_economica_revision", "title": { "es": "Revisión de precios", "en": "Price revision" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "tables": [] },
+        { "id": "oferta_economica_validez", "title": { "es": "Validez de la oferta", "en": "Offer validity" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "oferta_economica_plazo", "title": { "es": "Plazo de entrega", "en": "Delivery lead time" }, "tiers": ["A", "B", "C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "garantia_soporte",
+      "order": 120,
+      "numbered": true,
+      "title": { "es": "Garantía y soporte post-venta", "en": "Warranty and after-sales support" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "boilerplate",
+      "agent": "A5",
+      "requires_scope": [],
+      "guidance": "Contract text, never generated. The recurring-services subsection is the upsell hook — it is the only place in the document that talks about life after handover.",
+      "tables": [],
+      "sections": [
+        { "id": "garantia_soporte_alcance", "title": { "es": "Alcance y periodo de garantía", "en": "Warranty scope and period" }, "tiers": ["A", "B", "C"], "requires_scope": ["warranty"], "tables": [] },
+        { "id": "garantia_soporte_exclusiones", "title": { "es": "Exclusiones de la garantía", "en": "Warranty exclusions" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "garantia_soporte_sla", "title": { "es": "Soporte técnico y niveles de servicio", "en": "Technical support and service levels" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "garantia_soporte_recurrentes", "title": { "es": "Servicios recurrentes recomendados", "en": "Recommended recurring services" }, "tiers": ["B", "C"], "tables": ["tabla_servicios"] }
+      ]
+    },
+    {
+      "id": "condiciones_generales",
+      "order": 130,
+      "numbered": true,
+      "title": { "es": "Condiciones generales y reservas", "en": "General terms and reservations" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "boilerplate",
+      "agent": "A5",
+      "requires_scope": [],
+      "guidance": "Pure contract text from the client's clause library. An LLM must never write or paraphrase this chapter.",
+      "tables": [],
+      "sections": [
+        { "id": "condiciones_generales_marco", "title": { "es": "Marco contractual", "en": "Contractual framework" }, "tiers": ["A", "B", "C"], "tables": [] },
+        { "id": "condiciones_generales_responsabilidad", "title": { "es": "Responsabilidad y limitaciones", "en": "Liability and limitations" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "condiciones_generales_pi", "title": { "es": "Propiedad intelectual", "en": "Intellectual property" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "condiciones_generales_confidencialidad", "title": { "es": "Confidencialidad", "en": "Confidentiality" }, "tiers": ["B", "C"], "tables": [] },
+        { "id": "condiciones_generales_fuerza_mayor", "title": { "es": "Fuerza mayor", "en": "Force majeure" }, "tiers": ["C"], "tables": [] }
+      ]
+    },
+    {
+      "id": "proximos_pasos",
+      "order": 140,
+      "numbered": true,
+      "title": { "es": "Próximos pasos y aceptación", "en": "Next steps and acceptance" },
+      "tiers": ["A", "B", "C"],
+      "content_type": "mixed",
+      "agent": "A3",
+      "requires_scope": [],
+      "guidance": "Tell the reader exactly how to say yes: who to contact, what to send, what happens in the first two weeks after the order. One short page.",
+      "tables": ["tabla_pasos"],
+      "sections": []
+    },
+
+    { "id": "custom_1", "order": 200, "numbered": true, "default_included": false, "title": { "es": "Capítulo personalizado 1", "en": "Custom chapter 1" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [], "guidance": "Escape hatch: title and body come entirely from the client's Proposal Config sheet. No agent writes it." },
+    { "id": "custom_2", "order": 210, "numbered": true, "default_included": false, "title": { "es": "Capítulo personalizado 2", "en": "Custom chapter 2" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "custom_3", "order": 220, "numbered": true, "default_included": false, "title": { "es": "Capítulo personalizado 3", "en": "Custom chapter 3" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "custom_4", "order": 230, "numbered": true, "default_included": false, "title": { "es": "Capítulo personalizado 4", "en": "Custom chapter 4" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "custom_5", "order": 240, "numbered": true, "default_included": false, "title": { "es": "Capítulo personalizado 5", "en": "Custom chapter 5" }, "tiers": ["A", "B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] }
+  ],
+
+  "annexes": [
+    { "id": "anexo_cumplimiento", "order": 300, "numbered": "annex", "title": { "es": "Matriz de cumplimiento del pliego", "en": "Tender compliance matrix" }, "tiers": ["C"], "content_type": "generated", "agent": "A1", "requires_scope": [], "sections": [], "tables": ["tabla_cumplimiento"], "guidance": "Requirement -> where it is answered -> complies / deviation. This is what scores points in a public tender and what a human under time pressure skips." },
+    { "id": "anexo_cronograma", "order": 310, "numbered": "annex", "default_included": false, "title": { "es": "Cronograma detallado", "en": "Detailed schedule" }, "tiers": ["C"], "content_type": "calculated", "agent": null, "requires_scope": [], "sections": [], "tables": ["tabla_hitos"] },
+    { "id": "anexo_bom", "order": 320, "numbered": "annex", "default_included": false, "title": { "es": "Lista de materiales", "en": "Bill of materials" }, "tiers": ["C"], "content_type": "generated", "agent": "A1", "requires_scope": ["materials"], "sections": [], "tables": ["tabla_bom"] },
+    { "id": "anexo_pruebas", "order": 330, "numbered": "annex", "default_included": false, "title": { "es": "Protocolos de prueba FAT/SAT", "en": "FAT/SAT test protocols" }, "tiers": ["C"], "content_type": "generated", "agent": "A2", "requires_scope": [], "sections": [], "tables": ["tabla_pruebas"] },
+    { "id": "anexo_planos", "order": 340, "numbered": "annex", "default_included": false, "title": { "es": "Planos y esquemas", "en": "Drawings and diagrams" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "anexo_fichas", "order": 350, "numbered": "annex", "default_included": false, "title": { "es": "Fichas técnicas de equipos", "en": "Equipment datasheets" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": ["materials"], "sections": [], "tables": [] },
+    { "id": "anexo_riesgos", "order": 360, "numbered": "annex", "default_included": false, "title": { "es": "Registro de riesgos completo", "en": "Full risk register" }, "tiers": ["C"], "content_type": "generated", "agent": "A2", "requires_scope": [], "sections": [], "tables": ["tabla_riesgos"] },
+    { "id": "anexo_referencias", "order": 370, "numbered": "annex", "default_included": false, "title": { "es": "Referencias de proyectos similares", "en": "Comparable project references" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": ["tabla_referencias"] },
+    { "id": "anexo_cvs", "order": 380, "numbered": "annex", "default_included": false, "title": { "es": "CVs del equipo asignado", "en": "Assigned team CVs" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": ["project_management"], "sections": [], "tables": [] },
+    { "id": "anexo_condiciones", "order": 390, "numbered": "annex", "default_included": false, "title": { "es": "Condiciones generales de venta", "en": "General conditions of sale" }, "tiers": ["B", "C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] },
+    { "id": "anexo_certificados", "order": 400, "numbered": "annex", "default_included": false, "title": { "es": "Certificados y homologaciones", "en": "Certificates and approvals" }, "tiers": ["C"], "content_type": "boilerplate", "agent": "A5", "requires_scope": [], "sections": [], "tables": [] }
+  ],
+
+  "tables": {
+    "tabla_indice": { "title": { "es": "Índice", "en": "Contents" }, "columns": ["numero", "titulo"], "source": "calculated" },
+    "tabla_versiones": { "title": { "es": "Control de versión", "en": "Version control" }, "columns": ["version", "fecha", "autor", "cambios"], "source": "calculated" },
+    "tabla_glosario": { "title": { "es": "Glosario", "en": "Glossary" }, "columns": ["termino", "definicion"], "source": "boilerplate" },
+    "tabla_beneficios": { "title": { "es": "Beneficios e indicadores", "en": "Benefits and KPIs" }, "columns": ["indicador", "actual", "objetivo"], "source": "A3" },
+    "tabla_documentos_ref": { "title": { "es": "Documentos de referencia", "en": "Reference documents" }, "columns": ["referencia", "titulo", "fecha", "revision"], "source": "A0" },
+    "tabla_normativa": { "title": { "es": "Normativa aplicable", "en": "Applicable standards" }, "columns": ["norma", "titulo", "aplicacion"], "source": "boilerplate" },
+    "tabla_alternativas": { "title": { "es": "Alternativas evaluadas", "en": "Alternatives considered" }, "columns": ["alternativa", "ventajas", "inconvenientes", "decision"], "source": "A1" },
+    "tabla_materiales": { "title": { "es": "Materiales y equipos", "en": "Materials and equipment" }, "columns": ["posicion", "descripcion", "cantidad", "observaciones"], "source": "A1" },
+    "tabla_recambios": { "title": { "es": "Recambios recomendados", "en": "Recommended spares" }, "columns": ["posicion", "descripcion", "cantidad", "criticidad"], "source": "A1" },
+    "tabla_bom": { "title": { "es": "Lista de materiales", "en": "Bill of materials" }, "columns": ["posicion", "descripcion", "categoria", "cantidad", "observaciones"], "source": "A1" },
+    "tabla_fases": { "title": { "es": "Fases de ejecución", "en": "Execution phases" }, "columns": ["fase", "descripcion", "duracion", "entregable"], "source": "A2" },
+    "tabla_pruebas": { "title": { "es": "Plan de pruebas", "en": "Test plan" }, "columns": ["prueba", "criterio", "responsable", "momento"], "source": "A2" },
+    "tabla_equipo": { "title": { "es": "Equipo de proyecto", "en": "Project team" }, "columns": ["rol", "responsabilidad", "dedicacion"], "source": "A2" },
+    "tabla_hitos": { "title": { "es": "Hitos y planificación", "en": "Milestones and schedule" }, "columns": ["hito", "descripcion", "plazo"], "source": "A2" },
+    "tabla_riesgos": { "title": { "es": "Registro de riesgos", "en": "Risk register" }, "columns": ["riesgo", "probabilidad", "impacto", "mitigacion"], "source": "A2" },
+    "tabla_obligaciones": { "title": { "es": "Obligaciones del cliente", "en": "Client obligations" }, "columns": ["numero", "obligacion"], "source": "boilerplate" },
+    "tabla_premisas": { "title": { "es": "Premisas e hipótesis", "en": "Assumptions" }, "columns": ["numero", "premisa"], "source": "boilerplate" },
+    "tabla_exclusiones": { "title": { "es": "Exclusiones", "en": "Exclusions" }, "columns": ["numero", "exclusion"], "source": "boilerplate" },
+    "tabla_opciones": { "title": { "es": "Opciones cotizadas aparte", "en": "Separately quoted options" }, "columns": ["opcion", "descripcion", "importe"], "source": "calculated" },
+    "tabla_tarifas": { "title": { "es": "Tarifas para trabajos adicionales", "en": "Rates for additional work" }, "columns": ["concepto", "unidad", "importe"], "source": "calculated" },
+    "tabla_hitos_pago": { "title": { "es": "Hitos de pago", "en": "Payment milestones" }, "columns": ["hito", "porcentaje", "importe", "condicion"], "source": "calculated" },
+    "tabla_servicios": { "title": { "es": "Servicios recurrentes", "en": "Recurring services" }, "columns": ["servicio", "alcance", "periodicidad"], "source": "boilerplate" },
+    "tabla_pasos": { "title": { "es": "Próximos pasos", "en": "Next steps" }, "columns": ["paso", "accion", "responsable", "plazo"], "source": "A3" },
+    "tabla_cumplimiento": { "title": { "es": "Matriz de cumplimiento", "en": "Compliance matrix" }, "columns": ["requisito", "apartado", "cumple", "observaciones"], "source": "A1" },
+    "tabla_referencias": { "title": { "es": "Referencias", "en": "References" }, "columns": ["cliente", "proyecto", "anio", "alcance"], "source": "boilerplate" }
+  },
+
+  "legacy_key_map": {
+    "_comment": "Phase-11 render keys -> catalog ids. Old .docx templates must be rebuilt; there is no automatic migration (same as the Google Docs -> docxtemplater move).",
+    "alcance_tecnico": ["solucion_tecnica", "alcance_suministro"],
+    "plan_implantacion": ["ejecucion", "gestion_proyecto"],
+    "resumen_comercial": ["resumen_ejecutivo"],
+    "repuestos": ["alcance_suministro_recambios"],
+    "transporte": ["ejecucion_transporte"],
+    "formacion": ["ejecucion_formacion"],
+    "garantia": ["garantia_soporte"]
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cifral.io/schemas/proposal-config.schema.json",
+  "title": "Cifral — Per-client proposal configuration (resolved)",
+  "description": "The shape of `proposal_config` once the orchestrator has read the client's 'Proposal Config' Google Sheet and merged it over schemas/chapter-catalog.json. The sheet has three tabs — Chapters, Content, Rules — documented in docs/CLIENT-DRIVE-SETUP.md; this schema describes the RESOLVED object that travels in the shared envelope alongside `client_config`. Same split as pricing: the repo owns the catalog (structure), Drive owns the selection and the text. When a client has no `proposal_config_sheet_id`, the orchestrator resolves this object from the catalog defaults alone and everything still works.",
+  "type": "object",
+  "required": ["tier", "language", "chapters"],
+  "additionalProperties": true,
+  "properties": {
+    "source": {
+      "type": "string",
+      "enum": ["sheet", "catalog_default"],
+      "description": "Where the configuration came from. 'catalog_default' means the client has no Proposal Config sheet."
+    },
+    "sheet_id": { "type": ["string", "null"], "description": "Drive id of the Proposal Config sheet, for traceability." },
+    "tier": {
+      "type": "string",
+      "enum": ["A", "B", "C"],
+      "description": "Resolved document tier. Request override > Rules tab `default_tier` > 'B'."
+    },
+    "language": { "type": "string", "enum": ["es", "en"] },
+
+    "chapters": {
+      "type": "array",
+      "description": "Chapters to render, already filtered by tier + scope + client include/exclude, and already ordered. Only chapters present here get rendered.",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "numero", "content_type"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "description": "Catalog id — also the render key ({#has_<id>})." },
+          "title": { "type": "string", "description": "Resolved title in the proposal's language: client override if the Chapters tab set one, else the catalog title." },
+          "numero": { "type": "string", "description": "Final chapter number as it appears in the document, computed AFTER exclusions so there are no gaps. Empty for unnumbered front matter; 'A', 'B', … for annexes." },
+          "order": { "type": "number" },
+          "content_type": { "type": "string", "enum": ["generated", "boilerplate", "calculated", "mixed"] },
+          "agent": { "type": ["string", "null"], "enum": ["A1", "A2", "A3", "A5", null] },
+          "group": { "type": "string", "enum": ["front_matter", "body", "annex"] },
+          "sections": {
+            "type": "array",
+            "description": "Resolved subsections, same shape minus nesting.",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "numero"],
+              "properties": {
+                "id": { "type": "string" },
+                "title": { "type": "string" },
+                "numero": { "type": "string" },
+                "content_type": { "type": "string" },
+                "agent": { "type": ["string", "null"] },
+                "tables": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          },
+          "tables": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+
+    "clauses": {
+      "type": "array",
+      "description": "Boilerplate snippets from the sheet's Content tab whose `applies_when` matched this request, already filtered by language. Module 2's A5 stage attaches each to its chapter; the render core merges the body into that chapter's paragraph/bullet stream through the same parseNarrative() the LLM output goes through, so the template cannot tell them apart.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id", "chapter_id", "body"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["clause", "exclusion", "premise", "obligation", "term"],
+            "description": "clause -> prose merged into the chapter. exclusion/premise/obligation -> a numbered row in tabla_exclusiones / tabla_premisas / tabla_obligaciones. term -> a row in tabla_glosario."
+          },
+          "id": { "type": "string", "description": "Stable id, so a change order can cite 'premise 7'." },
+          "chapter_id": { "type": "string", "description": "Catalog chapter or section id this attaches to." },
+          "lang": { "type": "string", "enum": ["es", "en"] },
+          "title": { "type": "string", "description": "Optional heading for the snippet. Rendered as a lead-in, not a Word heading." },
+          "body": { "type": "string", "description": "Plain text, same convention as Module 2 output: paragraphs separated by a blank line, list items as '•  item'." },
+          "applies_when": { "type": "string", "description": "Raw token list from the sheet, kept for traceability." }
+        }
+      }
+    },
+
+    "rules": {
+      "type": "object",
+      "description": "Writing rules from the sheet's Rules tab, injected verbatim into the A1/A2/A3 system prompts. Unknown keys are passed through — a client can add their own and reference them in a custom chapter.",
+      "additionalProperties": true,
+      "properties": {
+        "tone": { "type": "string", "description": "e.g. 'técnico, sobrio, sin superlativos'." },
+        "person": { "type": "string", "description": "e.g. 'primera persona del plural' or 'impersonal'." },
+        "units": { "type": "string", "description": "e.g. 'SI, decimal con coma'." },
+        "date_format": { "type": "string" },
+        "forbidden_words": { "type": "array", "items": { "type": "string" } },
+        "must_mention": { "type": "array", "items": { "type": "string" } },
+        "default_tier": { "type": "string", "enum": ["A", "B", "C"] },
+        "incoterm": { "type": "string" },
+        "warranty_months": { "type": "number" },
+        "validity_days": { "type": "number" },
+        "terminology": {
+          "type": "object",
+          "description": "Preferred wording, from Rules rows keyed 'term:<source>'. e.g. { 'cliente final': 'Cliente' }.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+
+    "warnings": {
+      "type": "array",
+      "description": "Non-fatal problems found while resolving the sheet (unknown chapter_id, unparseable applies_when, clause with no matching chapter). Surfaced in the Telegram alert so a config typo is visible without failing the proposal.",
+      "items": { "type": "string" }
+    }
+  }
+}
