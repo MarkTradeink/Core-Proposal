@@ -1,136 +1,291 @@
 {
-  "name": "03-pricing-commercial-logic",
-  "settings": {
-    "executionOrder": "v1",
-    "callerPolicy": "workflowsFromSameOwner"
-  },
-  "meta": {
-    "description": "Module 3 — Pricing & commercial logic. Prices an RFQ estimate using the client's rate card, read at runtime from the client's pricing Google Sheet (client_config.pricing_sheet_id). The Compute Pricing node is plain JavaScript (self-hosted n8n has no Python/Pyodide). Formula reference: modules/pricing/pricing_core.js. Schema: schemas/pricing.schema.json. Sheet layout: docs/PRICING-SHEET-TEMPLATE.md."
-  },
   "nodes": [
     {
-      "id": "b3000000-0000-4000-8000-000000000001",
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -128,
+        672
+      ],
+      "id": "5a0dccb3-304b-41c0-bf1c-dd77847ca5a0",
+      "name": "When chat message received",
+      "webhookId": "6cdee61f-dd54-4866-8724-2f0c956a7b64"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "6fe89d3b-69de-49d3-b3b2-0c9f5109733e",
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
-      "position": [-360, 0],
-      "parameters": { "inputSource": "passthrough" }
+      "position": [
+        -112,
+        368
+      ]
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000002",
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-config-present",
+              "leftValue": "={{ !!$json.client_config }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "417d0668-e968-4c9b-803f-2601b2a01346",
       "name": "Config Provided?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [-140, 0],
+      "position": [
+        96,
+        368
+      ]
+    },
+    {
       "parameters": {
-        "conditions": {
-          "options": { "caseSensitive": true, "typeValidation": "loose", "version": 2 },
-          "combinator": "and",
-          "conditions": [
-            { "id": "cond-config-present", "leftValue": "={{ !!$json.client_config }}", "rightValue": "", "operator": { "type": "boolean", "operation": "true", "singleValue": true } }
-          ]
+        "resource": "databasePage",
+        "operation": "getAll",
+        "databaseId": {
+          "__rl": true,
+          "value": "2d7fe158-febb-8121-a687-d1d1595c9eee",
+          "mode": "list",
+          "cachedResultName": "Projects",
+          "cachedResultUrl": "https://app.notion.com/p/2d7fe158febb8121a687d1d1595c9eee"
+        },
+        "returnAll": true,
+        "options": {}
+      },
+      "id": "b9a472e5-e390-4293-9def-5e727c2640ac",
+      "name": "Load Client Registry",
+      "type": "n8n-nodes-base.notion",
+      "typeVersion": 2.2,
+      "position": [
+        320,
+        544
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "VsM5JpC7L0fyBwHt",
+          "name": "Cifral Notion"
         }
       }
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000003",
-      "name": "Load Client Registry",
-      "type": "n8n-nodes-base.notion",
-      "typeVersion": 2.2,
-      "position": [80, 180],
       "parameters": {
-        "resource": "databasePage",
-        "operation": "getAll",
-        "databaseId": { "__rl": true, "value": "2d7fe158-febb-8189-8ca1-000b610efd7d", "mode": "id", "cachedResultName": "Projects (Client Registry)" },
-        "returnAll": true,
-        "options": {}
-      }
-    },
-    {
-      "id": "b3000000-0000-4000-8000-000000000004",
+        "jsCode": "// Standalone fallback: resolve the pricing-relevant client_config from Notion by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(p===undefined||p===null) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+      },
+      "id": "1dff03e2-fb1f-442e-acb2-354a348f72fa",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [300, 180],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Standalone fallback: resolve the pricing-relevant client_config from Notion by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(p===undefined||p===null) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
-      }
+      "position": [
+        544,
+        544
+      ]
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000005",
+      "parameters": {
+        "jsCode": "// Single merge point for both branches (config passed in vs looked up standalone).\n// Emits a uniform { client_id, client_config, data } that downstream nodes reference by name.\nconst j = $json;\nconst client_config = j.client_config || {};\nif (!client_config.pricing_sheet_id && !client_config.rate_card) {\n  throw new Error(`No pricing source for client '${j.client_id}': set 'pricing_sheet_id' in the Notion registry (the client's pricing Google Sheet) or pass client_config.rate_card. See docs/PRICING-SHEET-TEMPLATE.md.`);\n}\nreturn [{ json: { client_id: j.client_id, client_config, data: j.data || {} } }];"
+      },
+      "id": "79573987-1d4c-48e3-84c4-bc66e2398433",
       "name": "Resolve Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [560, 0],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Single merge point for both branches (config passed in vs looked up standalone).\n// Emits a uniform { client_id, client_config, data } that downstream nodes reference by name.\nconst j = $json;\nconst client_config = j.client_config || {};\nif (!client_config.pricing_sheet_id && !client_config.rate_card) {\n  throw new Error(`No pricing source for client '${j.client_id}': set 'pricing_sheet_id' in the Notion registry (the client's pricing Google Sheet) or pass client_config.rate_card. See docs/PRICING-SHEET-TEMPLATE.md.`);\n}\nreturn [{ json: { client_id: j.client_id, client_config, data: j.data || {} } }];"
-      }
+      "position": [
+        800,
+        368
+      ]
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000006",
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.client_config.pricing_sheet_id }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Pricing",
+          "mode": "name"
+        },
+        "options": {}
+      },
+      "id": "66c559a1-c232-4ce5-91ad-f906e095df98",
       "name": "Read Pricing Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
-      "position": [800, 0],
-      "parameters": {
-        "documentId": { "__rl": true, "value": "={{ $json.client_config.pricing_sheet_id }}", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "Pricing", "mode": "name" },
-        "options": {}
+      "position": [
+        1040,
+        368
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
       }
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000007",
+      "parameters": {
+        "jsCode": "// Assemble the rate_card object from the client's pricing sheet rows.\n// Expected sheet columns (tab named 'Pricing'): type | key | value  (docs/PRICING-SHEET-TEMPLATE.md).\n//   type='rate'  -> key is a labour category, value is its hourly rate.\n//   type='param' -> key is one of margin_pct, risk_pct, discount_pct, payment_terms, currency.\n// An inline client_config.rate_card (if provided) overrides the sheet entirely.\nconst env = $('Resolve Config').first().json;\nconst cfg = env.client_config || {};\n\nlet rate_card;\nif (cfg.rate_card) {\n  rate_card = cfg.rate_card;\n} else {\n  const rows = $('Read Pricing Sheet').all().map(i => i.json);\n  const rate_by_category = {};\n  let margin_pct = 0, risk_pct = 0, discount_pct = 0, payment_terms = '', currency = null;\n  for (const r of rows) {\n    const type = String(r.type ?? '').trim().toLowerCase();\n    const key = String(r.key ?? '').trim();\n    const val = r.value;\n    if (!key) continue;\n    if (type === 'rate') { rate_by_category[key] = Number(val); }\n    else if (type === 'param') {\n      if (key === 'margin_pct') margin_pct = Number(val);\n      else if (key === 'risk_pct') risk_pct = Number(val);\n      else if (key === 'discount_pct') discount_pct = Number(val);\n      else if (key === 'payment_terms') payment_terms = String(val);\n      else if (key === 'currency') currency = String(val);\n    }\n  }\n  if (Object.keys(rate_by_category).length === 0) {\n    throw new Error(`Pricing sheet for '${env.client_id}' produced no rate rows. Check the 'Pricing' tab has columns type|key|value and at least one type='rate' row. See docs/PRICING-SHEET-TEMPLATE.md.`);\n  }\n  rate_card = { rate_by_category, margin_pct, risk_pct, discount_pct, payment_terms, currency };\n}\nreturn [{ json: { client_id: env.client_id, client_config: cfg, data: env.data, rate_card } }];"
+      },
+      "id": "de573613-6f02-40f0-a38a-84a13aee515a",
       "name": "Build Rate Card",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1040, 0],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Assemble the rate_card object from the client's pricing sheet rows.\n// Expected sheet columns (tab named 'Pricing'): type | key | value  (docs/PRICING-SHEET-TEMPLATE.md).\n//   type='rate'  -> key is a labour category, value is its hourly rate.\n//   type='param' -> key is one of margin_pct, risk_pct, discount_pct, payment_terms, currency.\n// An inline client_config.rate_card (if provided) overrides the sheet entirely.\nconst env = $('Resolve Config').first().json;\nconst cfg = env.client_config || {};\n\nlet rate_card;\nif (cfg.rate_card) {\n  rate_card = cfg.rate_card;\n} else {\n  const rows = $('Read Pricing Sheet').all().map(i => i.json);\n  const rate_by_category = {};\n  let margin_pct = 0, risk_pct = 0, discount_pct = 0, payment_terms = '', currency = null;\n  for (const r of rows) {\n    const type = String(r.type ?? '').trim().toLowerCase();\n    const key = String(r.key ?? '').trim();\n    const val = r.value;\n    if (!key) continue;\n    if (type === 'rate') { rate_by_category[key] = Number(val); }\n    else if (type === 'param') {\n      if (key === 'margin_pct') margin_pct = Number(val);\n      else if (key === 'risk_pct') risk_pct = Number(val);\n      else if (key === 'discount_pct') discount_pct = Number(val);\n      else if (key === 'payment_terms') payment_terms = String(val);\n      else if (key === 'currency') currency = String(val);\n    }\n  }\n  if (Object.keys(rate_by_category).length === 0) {\n    throw new Error(`Pricing sheet for '${env.client_id}' produced no rate rows. Check the 'Pricing' tab has columns type|key|value and at least one type='rate' row. See docs/PRICING-SHEET-TEMPLATE.md.`);\n  }\n  rate_card = { rate_by_category, margin_pct, risk_pct, discount_pct, payment_terms, currency };\n}\nreturn [{ json: { client_id: env.client_id, client_config: cfg, data: env.data, rate_card } }];"
-      }
+      "position": [
+        1280,
+        368
+      ]
     },
     {
-      "id": "b3000000-0000-4000-8000-000000000008",
+      "parameters": {
+        "jsCode": "// Cifral pricing logic — SOURCE OF TRUTH mirrored in modules/pricing/pricing_core.js.\n// Plain JavaScript (self-hosted n8n has no Python). If the formula changes, change both.\n// Pricing DATA (rates/margins) comes from the client's Google Sheet, not from here.\n// === PRICING CORE START ===\nfunction isNumber(value) { return typeof value === 'number' && Number.isFinite(value); }\nfunction roundMoney(value) { return Math.round((value + Number.EPSILON) * 100) / 100; }\n\nfunction computePricing({ materialsCost, hoursByCategory, rateByCategory, marginPct, riskPct, discountPct, paymentTerms, currency = null }) {\n  hoursByCategory = hoursByCategory ?? {};\n  rateByCategory = rateByCategory ?? {};\n  if (!isNumber(materialsCost) || materialsCost < 0) throw new Error('materials_cost must be a number >= 0');\n  if (!isNumber(marginPct) || marginPct < 0) throw new Error('margin_pct must be a number >= 0');\n  if (!isNumber(riskPct) || riskPct < 0) throw new Error('risk_pct must be a number >= 0');\n  if (!isNumber(discountPct) || discountPct < 0 || discountPct > 1) throw new Error('discount_pct must be a number between 0 and 1');\n  let labor = 0;\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    if (!isNumber(hours) || hours < 0) throw new Error(`hours for '${category}' must be a number >= 0`);\n    if (!Object.prototype.hasOwnProperty.call(rateByCategory, category)) throw new Error(`no rate configured for category '${category}'`);\n    const rate = rateByCategory[category];\n    if (!isNumber(rate) || rate < 0) throw new Error(`rate for '${category}' must be a number >= 0`);\n    labor += hours * rate;\n  }\n  const subtotal = materialsCost + labor;\n  const multiplier = (1 + riskPct) * (1 + marginPct) * (1 - discountPct);\n  const total = subtotal * multiplier;\n\n  // Per-line breakdown, so the proposal can show a price table instead of a bare total. Each line\n  // carries the internal cost basis (amount) AND the customer-facing price (sell_amount = amount\n  // scaled by the same multiplier as the total). A quotation shows sell prices only — margin and\n  // risk are baked in, never itemised for the customer.\n  const lines = [];\n  if (materialsCost > 0) lines.push({ category: 'materials', hours: null, rate: null, amount: roundMoney(materialsCost) });\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    lines.push({ category, hours, rate: rateByCategory[category], amount: roundMoney(hours * rateByCategory[category]) });\n  }\n  for (const line of lines) line.sell_amount = roundMoney(line.amount * multiplier);\n  // Absorb per-line rounding into the largest line: a price table that doesn't add up is worse\n  // than no table.\n  const roundedTotal = roundMoney(total);\n  const residual = roundMoney(roundedTotal - lines.reduce((sum, l) => sum + l.sell_amount, 0));\n  if (residual !== 0 && lines.length > 0) {\n    const largest = lines.reduce((a, b) => (b.sell_amount > a.sell_amount ? b : a));\n    largest.sell_amount = roundMoney(largest.sell_amount + residual);\n  }\n\n  const result = { subtotal: roundMoney(subtotal), margin_pct: marginPct, risk_pct: riskPct, discount_pct: discountPct, total: roundedTotal, payment_terms: paymentTerms, lines };\n  if (currency) result.currency = currency;\n  return result;\n}\n// === PRICING CORE END ===\n\n// --- n8n wrapper ---\nconst output = [];\nfor (const item of $input.all()) {\n  const src = item.json ?? {};\n  const data = src.data ?? {};\n  const rateCard = src.rate_card ?? {};\n  const hours = data.hours_by_category ?? {};\n  const result = computePricing({\n    materialsCost: data.materials_cost ?? 0,\n    hoursByCategory: hours,\n    rateByCategory: rateCard.rate_by_category ?? {},\n    marginPct: rateCard.margin_pct ?? 0,\n    riskPct: rateCard.risk_pct ?? 0,\n    discountPct: rateCard.discount_pct ?? 0,\n    paymentTerms: rateCard.payment_terms ?? '',\n    currency: rateCard.currency ?? null,\n  });\n  result.priced_categories = Object.keys(hours);\n  output.push({ json: { client_id: src.client_id ?? null, client_config: src.client_config ?? null, status: 'ok', errors: [], data: result } });\n}\nreturn output;"
+      },
+      "id": "5481d71b-262a-4edb-8c00-ce1afb13eb8c",
       "name": "Compute Pricing",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1280, 0],
-      "parameters": {
-        "mode": "runOnceForAllItems",
-        "language": "javaScript",
-        "jsCode": "// Cifral pricing logic — SOURCE OF TRUTH mirrored in modules/pricing/pricing_core.js.\n// Plain JavaScript (self-hosted n8n has no Python). If the formula changes, change both.\n// Pricing DATA (rates/margins) comes from the client's Google Sheet, not from here.\n// === PRICING CORE START ===\nfunction isNumber(value) { return typeof value === 'number' && Number.isFinite(value); }\nfunction roundMoney(value) { return Math.round((value + Number.EPSILON) * 100) / 100; }\n\nfunction computePricing({ materialsCost, hoursByCategory, rateByCategory, marginPct, riskPct, discountPct, paymentTerms, currency = null }) {\n  hoursByCategory = hoursByCategory ?? {};\n  rateByCategory = rateByCategory ?? {};\n  if (!isNumber(materialsCost) || materialsCost < 0) throw new Error('materials_cost must be a number >= 0');\n  if (!isNumber(marginPct) || marginPct < 0) throw new Error('margin_pct must be a number >= 0');\n  if (!isNumber(riskPct) || riskPct < 0) throw new Error('risk_pct must be a number >= 0');\n  if (!isNumber(discountPct) || discountPct < 0 || discountPct > 1) throw new Error('discount_pct must be a number between 0 and 1');\n  let labor = 0;\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    if (!isNumber(hours) || hours < 0) throw new Error(`hours for '${category}' must be a number >= 0`);\n    if (!Object.prototype.hasOwnProperty.call(rateByCategory, category)) throw new Error(`no rate configured for category '${category}'`);\n    const rate = rateByCategory[category];\n    if (!isNumber(rate) || rate < 0) throw new Error(`rate for '${category}' must be a number >= 0`);\n    labor += hours * rate;\n  }\n  const subtotal = materialsCost + labor;\n  const multiplier = (1 + riskPct) * (1 + marginPct) * (1 - discountPct);\n  const total = subtotal * multiplier;\n\n  // Per-line breakdown, so the proposal can show a price table instead of a bare total. Each line\n  // carries the internal cost basis (amount) AND the customer-facing price (sell_amount = amount\n  // scaled by the same multiplier as the total). A quotation shows sell prices only — margin and\n  // risk are baked in, never itemised for the customer.\n  const lines = [];\n  if (materialsCost > 0) lines.push({ category: 'materials', hours: null, rate: null, amount: roundMoney(materialsCost) });\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    lines.push({ category, hours, rate: rateByCategory[category], amount: roundMoney(hours * rateByCategory[category]) });\n  }\n  for (const line of lines) line.sell_amount = roundMoney(line.amount * multiplier);\n  // Absorb per-line rounding into the largest line: a price table that doesn't add up is worse\n  // than no table.\n  const roundedTotal = roundMoney(total);\n  const residual = roundMoney(roundedTotal - lines.reduce((sum, l) => sum + l.sell_amount, 0));\n  if (residual !== 0 && lines.length > 0) {\n    const largest = lines.reduce((a, b) => (b.sell_amount > a.sell_amount ? b : a));\n    largest.sell_amount = roundMoney(largest.sell_amount + residual);\n  }\n\n  const result = { subtotal: roundMoney(subtotal), margin_pct: marginPct, risk_pct: riskPct, discount_pct: discountPct, total: roundedTotal, payment_terms: paymentTerms, lines };\n  if (currency) result.currency = currency;\n  return result;\n}\n// === PRICING CORE END ===\n\n// --- n8n wrapper ---\nconst output = [];\nfor (const item of $input.all()) {\n  const src = item.json ?? {};\n  const data = src.data ?? {};\n  const rateCard = src.rate_card ?? {};\n  const hours = data.hours_by_category ?? {};\n  const result = computePricing({\n    materialsCost: data.materials_cost ?? 0,\n    hoursByCategory: hours,\n    rateByCategory: rateCard.rate_by_category ?? {},\n    marginPct: rateCard.margin_pct ?? 0,\n    riskPct: rateCard.risk_pct ?? 0,\n    discountPct: rateCard.discount_pct ?? 0,\n    paymentTerms: rateCard.payment_terms ?? '',\n    currency: rateCard.currency ?? null,\n  });\n  result.priced_categories = Object.keys(hours);\n  output.push({ json: { client_id: src.client_id ?? null, client_config: src.client_config ?? null, status: 'ok', errors: [], data: result } });\n}\nreturn output;"
-      }
+      "position": [
+        1520,
+        368
+      ]
     },
     {
-      "id": "b3000000-0000-4000-8000-0000000000f1",
+      "parameters": {
+        "content": "## Module 3 — Pricing & commercial logic\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ materials_cost, hours_by_category } }`.\n\n**Read Pricing Sheet** loads the client's rate card at runtime from their **pricing Google Sheet** (`client_config.pricing_sheet_id`, tab named `Pricing`) — pricing data lives in each client's Drive folder, not the repo. Sheet layout (`type | key | value`): `docs/PRICING-SHEET-TEMPLATE.md`. **Build Rate Card** turns the rows into the rate_card object (an inline `client_config.rate_card` overrides the sheet).\n\n**Compute Pricing** is plain **JavaScript** (self-hosted n8n has no Python). Formula mirrored in `modules/pricing/pricing_core.js`. It prices only the categories in `hours_by_category` (already filtered to the request's scope by the orchestrator). Negative / out-of-range inputs raise — never a silent wrong quote.\n\n⚠️ After import: open **Read Pricing Sheet**, link the Google Sheets credential and confirm the tab (`Pricing`).",
+        "height": 260,
+        "width": 900
+      },
+      "id": "e1cc08c4-ab20-4a8d-9fac-c15b8274773b",
       "name": "Note — Module 3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
-      "position": [-380, -300],
-      "parameters": {
-        "width": 900,
-        "height": 260,
-        "content": "## Module 3 — Pricing & commercial logic\nEntry: **Execute Workflow Trigger** receiving `{ client_id, client_config?, data:{ materials_cost, hours_by_category } }`.\n\n**Read Pricing Sheet** loads the client's rate card at runtime from their **pricing Google Sheet** (`client_config.pricing_sheet_id`, tab named `Pricing`) — pricing data lives in each client's Drive folder, not the repo. Sheet layout (`type | key | value`): `docs/PRICING-SHEET-TEMPLATE.md`. **Build Rate Card** turns the rows into the rate_card object (an inline `client_config.rate_card` overrides the sheet).\n\n**Compute Pricing** is plain **JavaScript** (self-hosted n8n has no Python). Formula mirrored in `modules/pricing/pricing_core.js`. It prices only the categories in `hours_by_category` (already filtered to the request's scope by the orchestrator). Negative / out-of-range inputs raise — never a silent wrong quote.\n\n⚠️ After import: open **Read Pricing Sheet**, link the Google Sheets credential and confirm the tab (`Pricing`)."
-      }
+      "position": [
+        -144,
+        64
+      ]
     }
   ],
   "connections": {
-    "Execute Workflow Trigger": { "main": [[{ "node": "Config Provided?", "type": "main", "index": 0 }]] },
-    "Config Provided?": {
+    "When chat message received": {
       "main": [
-        [{ "node": "Resolve Config", "type": "main", "index": 0 }],
-        [{ "node": "Load Client Registry", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Config Provided?",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Load Client Registry": { "main": [[{ "node": "Map Client Config", "type": "main", "index": 0 }]] },
-    "Map Client Config": { "main": [[{ "node": "Resolve Config", "type": "main", "index": 0 }]] },
-    "Resolve Config": { "main": [[{ "node": "Read Pricing Sheet", "type": "main", "index": 0 }]] },
-    "Read Pricing Sheet": { "main": [[{ "node": "Build Rate Card", "type": "main", "index": 0 }]] },
-    "Build Rate Card": { "main": [[{ "node": "Compute Pricing", "type": "main", "index": 0 }]] }
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config Provided?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config Provided?": {
+      "main": [
+        [
+          {
+            "node": "Resolve Config",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Load Client Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Client Registry": {
+      "main": [
+        [
+          {
+            "node": "Map Client Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Map Client Config": {
+      "main": [
+        [
+          {
+            "node": "Resolve Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Config": {
+      "main": [
+        [
+          {
+            "node": "Read Pricing Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Pricing Sheet": {
+      "main": [
+        [
+          {
+            "node": "Build Rate Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Rate Card": {
+      "main": [
+        [
+          {
+            "node": "Compute Pricing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6cf691ae4b818c0fa5987ac19eaf2f8dd5a147702425d4e31b1029a1cf278c82"
   }
 }
