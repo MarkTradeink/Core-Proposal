@@ -4,6 +4,16 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — PDF attachment had Gotenberg's internal trace id as its filename (2026-07-26)
+`Convert To PDF` called Gotenberg with no filename hint, so the response's `Content-Disposition`
+carried Gotenberg's own trace id (a UUID-looking string) instead of the proposal's name — it showed
+up as the PDF's filename wherever it landed, which read as unpolished next to the correctly-named
+`.docx`. Two fixes, so the result does not depend on Gotenberg's behaviour alone: the request now
+sends a `Gotenberg-Output-Filename` header with `doc_name`, and `Collect Artifacts` explicitly sets
+`binary.pdf.fileName` (and `docx.fileName`, defensively) to the computed `pdf_file_name` /
+`docx_file_name` before either reaches Gmail — the actual attachment name always comes from the
+binary object's own property, not from whatever an intermediate service decided to call it.
+
 ### Phase 12 — Chapter catalog, five-stage generation, and per-client config in Drive (2026-07-26)
 Seven narrative sections covered roughly 40% of a real capital-modernization proposal. The reference
 document — a 26-page airport baggage-handling modernization — has 9 top-level chapters and three

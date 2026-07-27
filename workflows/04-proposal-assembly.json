@@ -216,6 +216,15 @@
               "outputPropertyName": "pdf"
             }
           }
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Gotenberg-Output-Filename",
+              "value": "={{ $('Compute Proposal Fields').item.json.doc_name }}"
+            }
+          ]
         }
       },
       "id": "4bdb56d2-b872-42f5-9533-6871b3cb00d7",
@@ -230,7 +239,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Reassemble both attachments onto one item: the editable .docx (what the reseller tweaks before\n// forwarding) and the PDF (what they forward as-is). Pulled straight from the two nodes that\n// produced them, so no intermediate node's binary handling can drop one.\nconst fields = $('Compute Proposal Fields').first().json;\nconst docx = $('Render Docx').first().binary.docx;\nconst pdf = $('Convert To PDF').first().binary.pdf;\nconst uploaded = $('Upload Docx To Drive').first().json;\nreturn [{\n  json: { ...fields, document_id: uploaded.id || null, document_url: uploaded.webViewLink || null },\n  binary: { docx, pdf }\n}];"
+        "jsCode": "// Reassemble both attachments onto one item: the editable .docx (what the reseller tweaks before\n// forwarding) and the PDF (what they forward as-is). Pulled straight from the two nodes that\n// produced them, so no intermediate node's binary handling can drop one.\nconst fields = $('Compute Proposal Fields').first().json;\nconst docx = $('Render Docx').first().binary.docx;\nconst pdf = $('Convert To PDF').first().binary.pdf;\nconst uploaded = $('Upload Docx To Drive').first().json;\n\n// Force both attachment names explicitly. The upstream nodes usually get this right\n// (Render Docx sets docx via outputFileName; Gotenberg now gets a Gotenberg-Output-Filename\n// header), but Gmail attaches whatever the binary object's OWN fileName property says — so this\n// is the one place that guarantees a professional attachment name no matter what an\n// intermediate service does.\ndocx.fileName = fields.docx_file_name;\ndocx.mimeType = docx.mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';\npdf.fileName = fields.pdf_file_name;\npdf.mimeType = pdf.mimeType || 'application/pdf';\nreturn [{\n  json: { ...fields, document_id: uploaded.id || null, document_url: uploaded.webViewLink || null },\n  binary: { docx, pdf }\n}];"
       },
       "id": "6bd3f7ba-3a94-4c87-bdb1-894e7a414fba",
       "name": "Collect Artifacts",
