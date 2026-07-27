@@ -4,6 +4,28 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — Module 2's agent chain lost Plan Chapters' data past the first agent (2026-07-26)
+Two independent reference bugs compounded into "A1 writes something, A2 and A3 write nothing."
+
+`A2` and `A3` read Plan Chapters' fields (`langName`, `tier`, `rfq`, `briefs`, `tables_*`,
+`rules_text`) through bare `$json`. That only works for `A1`, whose immediate predecessor really
+is Plan Chapters - `$json` always means "the node right before this one," and for A2 that is A1,
+for A3 that is A2. Neither carries those fields, so the expressions silently resolved to
+`undefined`. Editing them by hand in the n8n UI to `$('Plan Chapters').item.json...` traded that
+bug for a second one: `.item` needs n8n to trace paired-item lineage back through the Agent nodes
+in between, which those nodes don't reliably preserve, so the field showed stuck on the unresolved
+literal instead of the interpolated prompt. Both are now `$('Plan Chapters').first().json...`,
+which needs no lineage - it just reads that node's last output - matching what A4, Assemble Draft
+and Apply QA Patches already did correctly.
+
+Separately, `Plan Chapters` itself read `proposal_config` from `$json`, but `Aggregate Grounding`
+and `No Grounding` each rebuild their item from scratch (`{ grounding, grounded_on }` only) and
+drop everything upstream, `proposal_config` included. Every brief came back empty, A1 was asked to
+write zero sections, and correctly wrote zero sections - the symptom looked like a broken agent
+but the agent was doing exactly what an empty brief told it to. `Plan Chapters` now reads
+`proposal_config` via `$('Build Proposal Config').first().json`; `grounding` was already correct,
+since that field really does come from the immediate predecessor.
+
 ### Fix — PDF attachment had Gotenberg's internal trace id as its filename (2026-07-26)
 `Convert To PDF` called Gotenberg with no filename hint, so the response's `Content-Disposition`
 carried Gotenberg's own trace id (a UUID-looking string) instead of the proposal's name — it showed
