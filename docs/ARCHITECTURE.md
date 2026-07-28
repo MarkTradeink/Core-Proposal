@@ -62,13 +62,61 @@ Module 1 also extracts a `scope_of_supply` map (item → boolean) against the fi
 and that single map drives three modules in lockstep:
 
 - **Module 3** prices only the in-scope labour categories,
-- **Module 2** writes only the in-scope narrative sections,
+- **Module 2** writes only the in-scope chapters,
 - **Module 4** renders only the in-scope template blocks (an out-of-scope chapter is dropped whole,
   heading included).
 
 Because pricing lines, narrative and document sections all read the same map, they never drift. This
 is why there are **no per-client workflows**: client and request variation is expressed as data
-(Notion config, pricing sheet, scope map), not as forked code.
+(Notion config, pricing sheet, Proposal Config sheet, scope map), not as forked code.
+
+A scope item maps to one or more chapter ids (`sections` in the scope catalog). It used to map to
+exactly one narrative section, which forced `materials` and `engineering` to share a chapter with
+`installation` and `commissioning` — fusing *what is delivered* with *how it is executed*. Those are
+read by different people for different reasons, so they are now separate chapters.
+
+## The chapter catalog — structure in the repo, selection in Drive
+
+`schemas/chapter-catalog.json` is the **closed vocabulary** of everything a proposal can contain:
+14 body chapters, front matter, annexes, 105 render keys, 24 tables. Each entry declares its tier,
+its owning agent, its content type and its scope gate. It is closed on purpose — an id that is not
+in it has no agent that knows how to write it and no template block to render it.
+
+What the catalog does *not* decide is which of those a given client uses. That lives in the client's
+**Proposal Config** Google Sheet (`docs/CLIENT-DRIVE-SETUP.md`): chapters to include, rename and
+reorder; their own clauses, exclusions and assumptions; and their writing rules. The split is the one
+already used for pricing:
+
+| | Repo (mirrored into Code nodes) | Drive (no deploy) |
+|---|---|---|
+| Price | `pricing_core.js` — the formula | `Pricing Rules` sheet — the numbers |
+| Proposal | `chapter-catalog.json` — the structure | `Proposal Config` sheet — the selection and the text |
+
+n8n cannot read repo files at runtime, so anything a salesperson must be able to change without a
+deployment has to live in Drive. A client with no sheet still works: the catalog defaults apply and
+the run records a warning saying the client's own boilerplate was not used.
+
+The resolved result (`schemas/proposal-config.schema.json`) travels in the envelope beside
+`client_config`, resolved once by the orchestrator after routing — it needs both the extracted scope
+and whether the route produces a price.
+
+### Three content types, three risk profiles
+
+| Type | Share | Produced by |
+|---|---|---|
+| **Boilerplate** | ~50-60% | The client's clause library, selected by rules |
+| **Calculated** | ~10% | RFQ + pricing data, deterministically |
+| **Generated** | ~30-35% | LLM agents |
+
+Contract text — warranty, liability, exclusions, general conditions — goes from the client's
+spreadsheet to the paper without a model anywhere in between. It used to be LLM-written, which is
+hallucinating a contractual commitment in exchange for nothing.
+
+### Tiers
+
+One structure filtered three ways: **A** quotation (4-8 pp), **B** standard proposal (15-25 pp),
+**C** tender (30-60 pp + annexes). A request can ask for a tier; otherwise the client's
+`default_tier` decides. Renaming a chapter or writing a clause applies to all three.
 
 ## Module boundaries and I/O contracts
 
@@ -77,9 +125,16 @@ is why there are **no per-client workflows**: client and request variation is ex
 - **Out `data`:**
   ```json
   {
-    "client": { "company", "contact_name", "contact_last_name", "email" },
-    "project": { "type", "location|null", "desired_deadline|null" },
+    "client": { "company", "contact_name", "contact_last_name", "email", "phone|null" },
+    "project": { "type", "location|null", "country|null", "desired_deadline|null" },
     "technical_requirements": [ { "item", "quantity|null", "spec|null" } ],
+    "current_situation": "string|null",
+    "objectives": ["string"],
+    "operational_constraints": ["string"],
+    "tender_requirements": [ { "ref|null", "requirement" } ],
+    "risks": ["string"], "hot_buttons": ["string"],
+    "reference_documents": [ { "reference", "title|null", "date|null", "revision|null" } ],
+    "tier": "A|B|C|null",
     "notes": "string|null",
     "language": "es|en",
     "status": "complete|incomplete",
@@ -89,19 +144,40 @@ is why there are **no per-client workflows**: client and request variation is ex
 - **Nodes:** trigger → Information Extractor (snake_case schema) → **Validate (Code node)**. The Code
   node is deterministic — it does the missing-field flagging the website promises, *not* the LLM.
   Required fields: `company`, `contact_name`, `email`, `project.type`, ≥1 `technical_requirement`.
+  The remaining fields feed the narrative chapters — `tender_requirements` becomes the compliance
+  matrix, `operational_constraints` and `risks` feed the continuity chapter, `hot_buttons` steers the
+  executive summary. Every one of them is null or empty when the email does not support it: an
+  invented constraint is worse than a missing one.
 - Schema: `schemas/data-collection.schema.json`.
 
 ### Module 2 — Technical content generation (`02-technical-content-generation.json`)
-- **In:** Module 1 output + `client_id`.
-- **Out `data`:** `alcance_tecnico` + `resumen_comercial` (always), plus any of `plan_implantacion`,
-  `repuestos`, `transporte`, `formacion`, `garantia` that are **in scope** for the request. A
-  `sections_generated` array records which were written.
-- **Scope-aware:** a "Plan Sections" node reads `data.scope_of_supply` and asks the agent to write
-  only the in-scope sections (others come back empty and are dropped).
-- **Grounding:** a "Load reference docs" step reads `client_config.reference_docs_folder_id` and
-  injects excerpts of the client's approved docs / past proposals into the agent context, so the
-  sections reflect that client's real prior work rather than generic boilerplate.
+- **In:** Module 1 output + `client_id` (+ `proposal_config` on the orchestrated path).
+- **Out `data`:** `sections` (render key → plain text) and `tables` (table id → row objects), plus
+  `sections_generated`, `agents_run`, `clauses_applied`, `qa` and `grounded_on`.
 - Schema: `schemas/content-generation.schema.json`.
+
+**Five stages, not one agent.** The old single call had `maxTokensToSample: 8192` and had to return
+seven keys; a 20-30 page document does not fit in one reply, so the ceiling was arithmetic, not
+prompting.
+
+| Stage | Does |
+|---|---|
+| **A5 · Build Proposal Config** | Resolves the catalog against the request and the client's sheet; selects which clauses apply. **Deterministic** — a token matcher, never a model. This stage decides which warranty and liability text ships. |
+| **A1 · Technical** | Technical solution, scope of supply, applicable standards, materials and spares tables |
+| **A2 · Execution & risk** | Execution, project management, operational continuity, phases, tests, risk register |
+| **A3 · Executive & commercial** | Executive summary, background, next steps, recurring services |
+| **A4 · QA review** | Reads the assembled draft for contradictions between chapters, invented commitments and uncovered RFQ requirements |
+
+A1 → A2 → A3 run **in sequence, not in parallel**. The ordering is load-bearing: the execution plan
+has to match the architecture A1 chose, and an executive summary has to summarise what was written
+rather than guess at it. That costs latency and buys coherence.
+
+A4 may patch generated sections. A patch aimed at a boilerplate section is refused and downgraded to
+a finding — the client's contract text is not an agent's to rewrite.
+
+- **Grounding:** "Search Reference Docs" reads `client_config.reference_docs_folder_id` and injects
+  excerpts of the client's approved past proposals, up to 10 documents at 6 000 characters each
+  (24 000 total), split per agent.
 
 ### Module 3 — Pricing & commercial logic (`03-pricing-commercial-logic.json`)
 - **In `data`:** `{ materials_cost: number, hours_by_category: { category: number } }` + `client_id`.
@@ -190,3 +266,22 @@ lookup, so behavior is identical either way.
 - **Pricing stays parametric.** No historical-hours estimation or benchmarking engine.
 - **The existing "Customers Manager" CRM is untouched.** The client registry is a *separate* Notion
   database (see `CLIENT-REGISTRY-SCHEMA.md`).
+- **The chapter catalog is closed.** Clients customise by selecting, renaming and reordering what is
+  in it, plus five reserved `custom_*` slots whose content comes entirely from their sheet. Adding a
+  new agent-written chapter is a repo change, deliberately.
+- **Boilerplate never passes through a model.** Contract text travels spreadsheet → render context
+  → document, and the QA agent sees it as read-only.
+
+## Keeping the mirrored cores honest
+
+Three pieces of logic live in this repo *and* inside n8n, because a Code node cannot `require` a
+file: `pricing_core.js`, `render_context.js` and `chapter_catalog.js` (the last one with the catalog
+JSON inlined, in three nodes).
+
+```bash
+npm run mirror              # copy repo -> n8n workflow JSON
+npm run check               # self-checks + drift check + four real renders
+```
+
+`scripts/mirror-cores.js` only touches the region between the `CORE START`/`CORE END` markers; each
+node's own wrapper is left alone.

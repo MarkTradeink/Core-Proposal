@@ -251,43 +251,89 @@ generated `.docx` from the proposals folder.
 
 ---
 
-## Quick offline check (formula only, no n8n)
+## Scenario 18 — Tiers produce three different documents
 
-You can sanity-check the pricing math without n8n:
+Send the same RFQ three times, changing only the tier (set `default_tier` in the client's `Rules`
+tab, or have the RFQ state that it answers a tender).
+
+- **A** — around 11 chapters, no background, no technical-solution chapter, no continuity chapter.
+- **B** — 14 chapters.
+- **C** — adds the glossary and the tender compliance matrix annex.
+
+In all three, chapter numbers run 1, 2, 3… with **no gaps**, and the contents list matches the
+chapters actually present. A gap means numbering was assigned before chapters were dropped.
+
+## Scenario 19 — The client's own text reaches the document
+
+The point of the Proposal Config sheet is that a non-developer changes the output.
+
+1. In the client's `Content` tab, change a warranty clause — add a distinctive phrase.
+2. Re-run the same RFQ. **Deploy nothing.**
+3. The phrase appears in the warranty chapter, word for word.
+4. In the `Chapters` tab, rename a chapter and give it an `order` that moves it. Re-run: the heading,
+   the contents list and the numbering all follow.
+
+Then check the negative case, which matters more:
+
+- Point a clause at a `chapter_id` that does not exist. The proposal is still produced, the clause is
+  dropped, and the Telegram alert carries a config warning naming the row. A typo must cost one
+  clause loudly, never apply everything silently.
+- Clear `proposal_config_sheet_id` and re-run. The document still comes out — catalog structure, no
+  client clauses — and the alert says `config_source: catalog_default` with a warning saying so.
+
+## Scenario 20 — Boilerplate does not pass through an agent
+
+Contract text must be byte-identical to the sheet.
+
+1. Put an unusual, easily-searched sentence in a `condiciones_generales` clause.
+2. Run a `full_pipeline` RFQ.
+3. Search the output for that sentence. It must appear **exactly**, not paraphrased, not "improved".
+
+Then confirm the QA agent respects the boundary: check `data.qa.findings` in the Module 2 output. If
+A4 tried to patch a boilerplate section, there is a warning finding saying the patch was ignored —
+and the document still has the original text.
+
+## Scenario 21 — The agent chain stays consistent with itself
+
+This is what the sequential A1 → A2 → A3 ordering buys, so it is worth checking once.
+
+Run a brownfield RFQ ("the line cannot stop", staged replacement). Then read the document and ask:
+
+- Does the execution plan's phasing match the architecture the technical chapter proposed?
+- Does the executive summary describe *that* solution, rather than a generic one?
+- Does the continuity chapter answer "will you stop my plant?" in plain words?
+
+Then check `data.qa.findings` for `blocker` entries. A blocker means A4 found an invented commitment
+or an unanswered RFQ requirement — read it before the proposal goes out.
+
+## Quick offline check (no n8n)
+
+Most of what can break is checkable in one command, in a few seconds, before anything touches Drive
+or a customer:
 
 ```bash
-node modules/pricing/pricing_core.js     # pricing formula + the price-table line breakdown
-node modules/proposal/render_context.js  # the document's render context
+npm install
+npm run check
 ```
 
-The first prices a sample RFQ against an inline rate card, prints the subtotal/total, and asserts the
-price-table lines sum exactly to the total. (In production the numbers come from the client's Google
-Sheet, not from this file.)
+That runs, in order:
 
-The second builds the render context from a sample RFQ and asserts the invariant the renderer
-depends on: **every key exists**. The render node has no null handling, so a missing key becomes the
-literal word `undefined` in a customer's document — this check is what stops that reaching a
-template author.
+| Step | Asserts |
+|---|---|
+| `pricing_core.js` | The pricing formula, and that the price-table lines sum exactly to the total |
+| `chapter_catalog.js` | Every catalog id is a safe Jexl identifier and unique; every table is declared and used; every scope item points at a real chapter; tiers grow A < B ≤ C; numbering has no gaps; the client sheet's include / rename / reorder and `applies_when` filtering all behave |
+| `render_context.js` | **Totality** — every catalog key exists in the render context whether or not this request renders it. The render node has no null handling, so a missing key becomes the literal word `undefined` in a customer's document |
+| `mirror-cores.js --check` | The three logic cores in `modules/` still match the five n8n Code nodes that run them |
+| `render-sample.js` ×4 | Real docxtemplater renders of tiers A/B/C in Spanish and tier B in English, against the real templates, reading the real `demo_client` seed CSVs — failing on `undefined`, on stray braces, and on any config warning |
 
-Both files carry the same logic that runs inside the n8n nodes, between `=== … CORE START/END ===`
-markers. After editing either side, confirm the two copies still agree:
+When the cores and the nodes disagree, fix it in the one safe direction:
 
 ```bash
-node -e "
-const fs=require('fs');
-// Compare the logic, ignoring comments and layout — the node copies are compacted by hand.
-const norm = s => s.replace(/\/\*[\s\S]*?\*\//g,'').replace(/\/\/[^\n]*/g,'').replace(/\s+/g,' ').trim();
-for (const [mod, wf, node, mark] of [
-  ['modules/pricing/pricing_core.js','workflows/03-pricing-commercial-logic.json','Compute Pricing','PRICING CORE'],
-  ['modules/proposal/render_context.js','workflows/04-proposal-assembly.json','Compute Proposal Fields','PROPOSAL RENDER CORE'],
-]) {
-  const S='// === '+mark+' START ===', E='// === '+mark+' END ===';
-  const cut = s => s.slice(s.indexOf(S), s.indexOf(E)+E.length);
-  const a = norm(cut(fs.readFileSync(mod,'utf8')));
-  const b = norm(cut(require('./'+wf).nodes.find(n=>n.name===node).parameters.jsCode));
-  console.log((a===b ? 'in sync   ' : 'DRIFTED   ') + mod + ' <-> ' + node);
-}"
+npm run mirror     # repo -> n8n workflow JSON, core region only
 ```
+
+The mirror script leaves each node's own wrapper alone and inlines `chapter-catalog.json` into the
+Code nodes, which cannot read files.
 
 ## Regression checklist (after any workflow change)
 
@@ -295,6 +341,9 @@ for (const [mod, wf, node, mark] of [
 - [ ] Scenario 5 still blocks incomplete RFQs.
 - [ ] Scenario 10 recipient safety still holds. **Do this one every time** — it is the only check
       standing between a config slip and a proposal landing in the end customer's inbox.
-- [ ] Scope pruning (Scenario 4) still adds/removes sections and price lines together.
+- [ ] Scope pruning (Scenario 4) still adds/removes chapters and price lines together.
+- [ ] `npm run check` passes — cores, drift, and four real renders.
+- [ ] Scenario 19: a change in the client's sheet still reaches the document with nothing deployed.
+- [ ] Scenario 20: boilerplate is still verbatim and the QA agent still cannot patch it.
 - [ ] Scenario 13 alias still follows Client Status; Scenario 14 replies still thread.
 - [ ] Scenario 15 `send_mode` = `draft` still suppresses delivery.

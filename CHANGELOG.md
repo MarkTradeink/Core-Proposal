@@ -4,6 +4,170 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — parallel Sheets reads needed a Merge barrier, not three edges into one input (2026-07-26)
+The previous fix (below) parallelized the three Proposal Config reads by connecting all three
+directly into the same input index of `Build Proposal Config`, assuming n8n would wait for all
+three and run it once. Two live runs proved that assumption wrong: one run left the workflow
+"running" indefinitely, a second fired the entire downstream chain - PDF render, Drive upload,
+Gmail send - three times, once per branch.
+
+n8n's actual primitive for "wait for N independent branches, then continue once" is a **Merge**
+node: it exposes one input PORT per branch and only fires once every port has received data. Three
+separate connections into a single input index is a different thing n8n does not treat the same
+way, and can behave inconsistently depending on version and on whether an upstream node took an
+`onError` branch (all three reads have `onError: continueRegularOutput` set).
+
+Added a `Merge Config Tabs` node (mode `append`, 3 inputs) between the three reads and
+`Build Proposal Config` in all three workflows. Each read now connects to its own input port on the
+merge node; the merge node's single output feeds `Build Proposal Config`, guaranteeing it runs
+exactly once, after all three tabs have been read. The merged item's own shape is irrelevant -
+`Build Proposal Config` never reads `$json`/`$input` for the tab data, it pulls each tab back out by
+name (`$('Read Content Tab').all()`, etc.) - so `append` mode, the simplest option, is enough; there
+is no shared key to match rows on across three tabs with unrelated schemas and unrelated row counts.
+
+`scripts/check-workflow-graph.js` now asserts the three reads converge through `Merge Config Tabs`
+specifically, not into `Build Proposal Config` directly - the exact shape of this incident.
+
+### Fix — chained Sheets reads dropped the request envelope and quadrupled every clause (2026-07-26)
+First live test surfaced two bugs that turned out to be one root cause, reported independently by
+a different session working the same pipeline from the Module 4 side.
+
+The three Proposal Config reads (Chapters/Content/Rules) were wired as a CHAIN -
+`Has Config Sheet? -> Read Chapters Tab -> Read Content Tab -> Read Rules Tab -> Build Proposal
+Config` - across all three workflows (00, 02, 04), instead of three parallel branches off the same
+gate. A Google Sheets read node replaces its input item with however many rows it read and n8n
+executes a node once per incoming item, so chaining meant each read fed the next one N times, once
+per row of the tab before it. The seed `Chapters` tab has exactly 4 rows, so `Read Content Tab` was
+invoked 4 times and every distinct clause, exclusion, premise and obligation in the document -
+including pure static boilerplate typed straight into the template - came out duplicated exactly
+4x: a 6-row obligations table printed 24 rows, a 9-row exclusions table printed 36. The cover page,
+built from a different path, was untouched, which is what made the multiplier visible as clean 4x
+rather than an obvious crash.
+
+The same chaining broke `Build Proposal Config`'s output a second way: with the reads now merged
+into that node's own input, its bare `$json` was never the request envelope, only ever a
+spreadsheet row (a Chapters-tab row on the true branch, whatever fed it on the fallback). Both
+return statements did `{ ...$json, client_config, proposal_config }`, so the final envelope lost
+`data.rfq.client` / `data.rfq.project` entirely - the cover page, the email body and the Telegram
+alert all rendered blank client/project fields, even though Module 1's extraction was correct and
+`Build Proposal Config`'s own INPUT (before the merge) had it right.
+
+Fixed in all three workflows: the gate now fans out to three parallel connections, each read goes
+straight to `Build Proposal Config` (`scripts/mirror-cores.js`'s three targets already read each
+tab by node name, `$('Read Content Tab').all()` etc., so parallelizing needed no code change
+there). In Modules 2 and 4, `Build Proposal Config` now spreads `trig`
+(`$('Execute Workflow Trigger').first().json`) instead of `$json` - the orchestrator's copy was
+already doing this correctly, which is why its client/project data never broke.
+
+Also added, as defense in depth: `resolveProposalConfig()` now deduplicates clause rows by `id`,
+keeping the first occurrence and warning on the rest - `id` is documented as a stable, citable
+reference ("premise 7"), so two rows can never legitimately share one, regardless of whether the
+duplication comes from a wiring bug or someone pasting a sheet's contents in twice by hand.
+
+New: `scripts/check-workflow-graph.js`, wired into `npm run check`. It asserts no two row-reading
+nodes (Sheets, Notion) connect directly into one another anywhere in the workflow graph, and that
+`Build Proposal Config` never spreads bare `$json`. Neither of these bugs was catchable by the
+existing offline module self-checks - those call `resolveProposalConfig()` directly with an
+in-memory object and never exercise n8n's item-per-execution model - so this is a permanent guard
+against the exact shape of bug that only a live run exposes.
+
+### Fix — Module 2's agent chain lost Plan Chapters' data past the first agent (2026-07-26)
+Two independent reference bugs compounded into "A1 writes something, A2 and A3 write nothing."
+
+`A2` and `A3` read Plan Chapters' fields (`langName`, `tier`, `rfq`, `briefs`, `tables_*`,
+`rules_text`) through bare `$json`. That only works for `A1`, whose immediate predecessor really
+is Plan Chapters - `$json` always means "the node right before this one," and for A2 that is A1,
+for A3 that is A2. Neither carries those fields, so the expressions silently resolved to
+`undefined`. Editing them by hand in the n8n UI to `$('Plan Chapters').item.json...` traded that
+bug for a second one: `.item` needs n8n to trace paired-item lineage back through the Agent nodes
+in between, which those nodes don't reliably preserve, so the field showed stuck on the unresolved
+literal instead of the interpolated prompt. Both are now `$('Plan Chapters').first().json...`,
+which needs no lineage - it just reads that node's last output - matching what A4, Assemble Draft
+and Apply QA Patches already did correctly.
+
+Separately, `Plan Chapters` itself read `proposal_config` from `$json`, but `Aggregate Grounding`
+and `No Grounding` each rebuild their item from scratch (`{ grounding, grounded_on }` only) and
+drop everything upstream, `proposal_config` included. Every brief came back empty, A1 was asked to
+write zero sections, and correctly wrote zero sections - the symptom looked like a broken agent
+but the agent was doing exactly what an empty brief told it to. `Plan Chapters` now reads
+`proposal_config` via `$('Build Proposal Config').first().json`; `grounding` was already correct,
+since that field really does come from the immediate predecessor.
+
+### Fix — PDF attachment had Gotenberg's internal trace id as its filename (2026-07-26)
+`Convert To PDF` called Gotenberg with no filename hint, so the response's `Content-Disposition`
+carried Gotenberg's own trace id (a UUID-looking string) instead of the proposal's name — it showed
+up as the PDF's filename wherever it landed, which read as unpolished next to the correctly-named
+`.docx`. Two fixes, so the result does not depend on Gotenberg's behaviour alone: the request now
+sends a `Gotenberg-Output-Filename` header with `doc_name`, and `Collect Artifacts` explicitly sets
+`binary.pdf.fileName` (and `docx.fileName`, defensively) to the computed `pdf_file_name` /
+`docx_file_name` before either reaches Gmail — the actual attachment name always comes from the
+binary object's own property, not from whatever an intermediate service decided to call it.
+
+### Phase 12 — Chapter catalog, five-stage generation, and per-client config in Drive (2026-07-26)
+Seven narrative sections covered roughly 40% of a real capital-modernization proposal. The reference
+document — a 26-page airport baggage-handling modernization — has 9 top-level chapters and three
+levels of hierarchy; Cifral produced 4-8 flat pages. Worse, the structure was baked into two places
+at once (a hardcoded `NARRATIVE_SECTIONS` array, mirrored, plus whatever chapters the client's `.docx`
+happened to contain), so adding a chapter took five coordinated edits.
+
+- **`schemas/chapter-catalog.json` — the closed vocabulary.** 14 body chapters plus front matter and
+  annexes; 105 render keys, 24 tables. Each entry declares its tier, owning agent, content type and
+  scope gate. Chapter ids *are* render keys, so the Phase 11 tag contract is unchanged — there are
+  just more of them. **New chapters**: executive summary, background, technical solution, operational
+  continuity / safety / risk, scope boundaries, next steps. **Split**: scope of supply (deliverables)
+  from project execution (services) — they are read by different people for different reasons.
+- **Three tiers over one structure.** A quotation (4-8 pp), B standard proposal (15-25 pp), C tender
+  (30-60 pp + annexes). Not three documents: one catalog, three filters.
+- **Per-client configuration moved to Google Drive.** A `Proposal Config` sheet in the client's own
+  folder holds their chapter selection, renames and ordering (`Chapters`), their clause library,
+  exclusions, assumptions and client obligations (`Content`), and their house style (`Rules`). Same
+  split already used for pricing: the repo owns the formula, Drive owns the data. n8n cannot read
+  repo files at runtime, and a salesperson should not need a deployment to add an exclusion. Clients
+  with no sheet keep working on catalog defaults, with a warning on the run.
+  New registry column `proposal_config_sheet_id`; full reference in `docs/CLIENT-DRIVE-SETUP.md`.
+- **Boilerplate stopped going through the LLM.** About half of a proposal is contract text —
+  warranty, liability, exclusions, general conditions. It used to be generated, which is
+  hallucinating a contractual commitment for no benefit. It now travels from the client's spreadsheet
+  into the same paragraph stream as generated text, through the same parser, with no model in
+  between. The QA agent sees it as read-only and a patch aimed at it is refused.
+- **Module 2 became five stages.** The single agent had `maxTokensToSample: 8192` and had to return
+  seven JSON keys; a 20-30 page document does not fit in one reply, so the ceiling was arithmetic,
+  not prompting. Now: **A5** resolves chapters and clauses (deterministic — a token matcher, because
+  this stage decides which liability text ships), then **A1** technical → **A2** execution and risk →
+  **A3** executive and commercial, each with its own budget, then **A4** reviews the assembled draft
+  for contradictions, invented commitments and uncovered RFQ requirements. A1→A2→A3 run in sequence
+  rather than in parallel: the execution plan must match the architecture, and a summary must
+  summarise rather than guess.
+- **Grounding widened.** Was 1 500 characters per document and 6 000 total — about a thousand words
+  to ground a document that should run to eight thousand. Now 6 000 / 24 000 across up to 10
+  documents, split per agent.
+- **Gapless numbering.** Chapter numbers are assigned *after* empty and out-of-scope chapters are
+  dropped, and the headings use Word multilevel numbering rather than typed numbers, so a proposal
+  that omits chapters still reads 1, 2, 3. The contents list is a deterministic loop over what
+  actually rendered, not a Word TOC field — the PDF leg runs through headless LibreOffice, which does
+  not refresh field TOCs, so a field-based one would ship empty.
+- **Version control is calculated** from the same date as the cover and footer. In the reference
+  document these had drifted apart (footer 03/02, version table 16/02) — the kind of defect only
+  manual assembly produces. The duplicated payment-terms block in the reference master is likewise
+  one clause now.
+- **Seed `.docx` templates, generated from the catalog** (`npm run templates`). A superset of 105
+  conditional blocks that has to agree with the render context key for key is not a thing to maintain
+  by hand. Onboarding copies a seed and restyles it; templates still live per-client in Drive.
+- **Module 1 extracts what the new chapters need**: current situation, objectives, operational
+  constraints, tender requirements with clause references (for the compliance matrix), risks, hot
+  buttons, reference documents, and a tier hint. Also `phone`, which the template has had a tag for
+  since Phase 11 and never had data for.
+- **`scope-catalog.json` v2**: `narrative_section` (one string) → `sections` (an array). The old
+  one-to-one mapping is what fused deliverables with execution.
+- **`npm run check`** runs everything offline: three core self-checks, the mirror drift check, and
+  four real docxtemplater renders reading the real seed config. **`npm run mirror`** copies the three
+  logic cores into the five n8n Code nodes that run them — the drift checker used to only detect
+  divergence, never fix it.
+
+> **Templates must be rebuilt.** Chapter ids changed, so Phase 11 templates no longer match. There is
+> no automatic migration, same as the Google Docs → docxtemplater move; `chapter-catalog.json`
+> carries a `legacy_key_map` and `docs/TEMPLATE-GUIDE.md` is rewritten.
+
 ### Phase 11 — Document engine: Google Docs text replacement → .docx rendering (2026-07-25)
 The proposal came out flat, and not by accident: `replaceAll` on a Google Doc can only swap *text
 for text*, so a generated chapter inherited the styling of the paragraph its token sat in — no real

@@ -12,3 +12,9 @@ venv/
 
 # OS
 .DS_Store
+
+# Node
+node_modules/
+
+# Rendered samples from scripts/render-sample.js — regenerate, do not commit
+templates/sample-*.docx

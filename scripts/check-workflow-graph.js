@@ -1,0 +1,100 @@
+#!/usr/bin/env node
+// Structural sanity checks over the workflow JSON graphs — the class of bug that only shows up
+// once n8n actually executes a workflow, never in the offline module self-checks (those call
+// resolveProposalConfig() directly with an in-memory sheet object and never touch n8n's
+// item-per-execution model at all).
+//
+// Born from a real incident: the three "Proposal Config" Sheets reads (Chapters/Content/Rules)
+// were wired in a CHAIN (Chapters -> Content -> Rules -> Build Proposal Config) instead of in
+// PARALLEL off the same gate. A Google Sheets read node replaces its input item with however many
+// rows it read, so chaining meant each read fed the next N times (once per row of the previous
+// tab) - the Chapters tab has 4 rows, so Content got read 4 times and every clause in the document
+// came out duplicated exactly 4x. It also meant the second and third reads received a spreadsheet
+// row as $json instead of the request envelope, so `$json.client_config...` broke.
+//
+// The first fix connected all three reads directly into the same input index of
+// 'Build Proposal Config', assuming n8n would treat that as "wait for all three, run once." It
+// doesn't reliably: a live run hung indefinitely, and a second live run fired the downstream chain
+// (including the Gmail send) three times. n8n's actual primitive for "wait for N branches, then
+// continue once" is a Merge node - it has one input PORT per branch and only fires once every port
+// has data, which three edges into one input index does not guarantee.
+//
+//   node scripts/check-workflow-graph.js
+
+const fs = require('fs');
+const path = require('path');
+const glob = require('fs').readdirSync(path.join(__dirname, '../workflows')).filter((f) => f.endsWith('.json'));
+
+let problems = 0;
+const fail = (file, msg) => { console.error(`  FAIL  ${file}: ${msg}`); problems += 1; };
+const ok = (file, msg) => console.log(`  ok    ${file}: ${msg}`);
+
+for (const file of glob) {
+  const p = path.join(__dirname, '../workflows', file);
+  const wf = JSON.parse(fs.readFileSync(p, 'utf8'));
+  const nodeNames = new Set(wf.nodes.map((n) => n.name));
+  const conn = wf.connections || {};
+
+  // No two Sheets/Drive/Notion "read" nodes may feed one another directly. Those nodes execute
+  // once PER INPUT ITEM and replace the item with whatever they read, so chaining them multiplies
+  // rows geometrically instead of just running each read once off a shared trigger item.
+  const readTypes = new Set(['n8n-nodes-base.googleSheets', 'n8n-nodes-base.notion']);
+  const readNodes = wf.nodes.filter((n) => readTypes.has(n.type)).map((n) => n.name);
+  for (const name of readNodes) {
+    const targets = (conn[name] && conn[name].main || []).flat().map((l) => l.node);
+    for (const t of targets) {
+      if (readNodes.includes(t)) {
+        fail(file, `'${name}' connects directly into '${t}' - two row-reading nodes chained together will multiply rows on every real run, not just resolve one after the other. Fan both out from their shared upstream gate instead.`);
+      }
+    }
+  }
+
+  // If a "Build Proposal Config" node exists, all three Proposal Config reads must feed it in
+  // parallel through an explicit Merge barrier - not through each other (that's the chaining bug
+  // above), and not by connecting all three directly into the same input index on Build Proposal
+  // Config either. n8n does not reliably treat "three edges into one input" as "wait for all three,
+  // then run once" - depending on version and on whether the upstream nodes take an onError branch,
+  // it can run the downstream node multiple times (each real execution re-sending emails, PDFs,
+  // etc.) or never resolve the wait at all. A Merge node is the node built for this: it has one
+  // input PORT per branch, and only fires once every port has data.
+  const expectedFeeders = ['Read Chapters Tab', 'Read Content Tab', 'Read Rules Tab'].filter((n) => nodeNames.has(n));
+  if (nodeNames.has('Build Proposal Config') && expectedFeeders.length) {
+    const feedsDirectly = (conn['Merge Config Tabs'] && conn['Merge Config Tabs'].main || []).flat().map((l) => l.node);
+    if (!nodeNames.has('Merge Config Tabs')) {
+      fail(file, `no 'Merge Config Tabs' node found - the three Proposal Config reads must converge through a Merge barrier, not straight into 'Build Proposal Config'.`);
+    } else if (!feedsDirectly.includes('Build Proposal Config')) {
+      fail(file, `'Merge Config Tabs' does not connect to 'Build Proposal Config'.`);
+    } else {
+      for (const feeder of expectedFeeders) {
+        const targets = (conn[feeder] && conn[feeder].main || []).flat().map((l) => l.node);
+        if (!targets.every((t) => t === 'Merge Config Tabs') || !targets.length) {
+          fail(file, `'${feeder}' must connect only to 'Merge Config Tabs', not ${JSON.stringify(targets)}.`);
+        }
+        if (targets.includes('Build Proposal Config')) {
+          fail(file, `'${feeder}' connects directly into 'Build Proposal Config', bypassing the Merge barrier - three separate edges into one input is not a reliable wait-for-all in n8n.`);
+        }
+      }
+      ok(file, `all ${expectedFeeders.length} Proposal Config reads converge through 'Merge Config Tabs' before 'Build Proposal Config'`);
+    }
+  }
+
+  // 'Build Proposal Config' must never spread its own $json into its output — its own direct
+  // input is a merge of the three Sheets reads (or, on the fallback path, whatever fed it), never
+  // the request envelope. It must spread a named node reference (trig / env / a variable derived
+  // from one) instead, or the client/project fields the rest of the document depends on go empty.
+  const bpc = wf.nodes.find((n) => n.name === 'Build Proposal Config');
+  if (bpc) {
+    const code = bpc.parameters.jsCode || '';
+    if (/\.\.\.\s*\$json\b/.test(code)) {
+      fail(file, `'Build Proposal Config' spreads bare $json into its return value - that is a spreadsheet row here, not the request envelope. Spread a $('SomeNode').first().json - derived variable instead.`);
+    } else {
+      ok(file, `'Build Proposal Config' does not spread bare $json`);
+    }
+  }
+}
+
+if (problems) {
+  console.error(`\n${problems} problem(s) found.`);
+  process.exit(1);
+}
+console.log('\nOK — no chained row-reading nodes, no bare-$json envelope loss.');

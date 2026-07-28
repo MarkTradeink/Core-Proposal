@@ -2,35 +2,73 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://cifral.io/schemas/content-generation.schema.json",
   "title": "Module 2 — Technical content generation output",
-  "description": "Output envelope of 02-technical-content-generation. Narrative sections are grounded in the client's reference docs. Which sections are present depends on the request's scope_of_supply: alcance_tecnico and resumen_comercial are always written; plan_implantacion and the extra scope sections (repuestos, transporte, formacion, garantia, ...) appear only when their scope item is included.",
+  "description": "Output envelope of 02-technical-content-generation. Replaces the seven flat narrative keys with a keyed `sections` map plus a `tables` map, because the chapter catalog has ~60 render keys and ~25 tables and a flat top-level key per section stopped scaling. Which keys are present depends on the resolved proposal_config (tier + client profile) and the request's scope_of_supply. Content is produced by five stages — A1 engineering, A2 execution, A3 commercial, A5 clause selection (deterministic), A4 QA review — see docs/ARCHITECTURE.md.",
   "type": "object",
   "required": ["client_id", "data", "status"],
   "additionalProperties": true,
   "properties": {
     "client_id": { "type": "string", "minLength": 1 },
     "client_config": { "type": ["object", "null"] },
+    "proposal_config": { "type": ["object", "null"], "description": "The resolved per-client config this run used (schemas/proposal-config.schema.json). Passed through so Module 4 renders against exactly the same chapter set that Module 2 wrote for." },
     "status": { "type": "string", "enum": ["ok", "incomplete", "error"] },
     "errors": { "type": "array", "items": { "type": "string" } },
     "data": {
       "type": "object",
-      "required": ["alcance_tecnico", "resumen_comercial"],
+      "required": ["sections"],
       "additionalProperties": true,
       "properties": {
-        "alcance_tecnico": { "type": "string", "minLength": 1, "description": "Always generated (core section)." },
-        "resumen_comercial": { "type": "string", "minLength": 1, "description": "Always generated (core section)." },
-        "plan_implantacion": { "type": "string", "description": "Implementation plan. Present only when installation / commissioning / project_management is in scope." },
-        "repuestos": { "type": "string", "description": "Spare-parts section. Present only when spare_parts is in scope." },
-        "transporte": { "type": "string", "description": "Shipping/logistics section. Present only when shipping is in scope." },
-        "formacion": { "type": "string", "description": "Training section. Present only when training is in scope." },
-        "garantia": { "type": "string", "description": "Warranty section. Present only when warranty is in scope." },
+        "sections": {
+          "type": "object",
+          "description": "Render key -> plain text body. Keys are chapter or section ids from schemas/chapter-catalog.json. Format is the same contract as before: no markdown, paragraphs separated by a blank line, list items as '•  item'. The render core turns each into {parrafos, bullets} via parseNarrative(). Boilerplate resolved by A5 is merged in here too, under the same keys — the template cannot tell generated text from clause text, which is deliberate.",
+          "additionalProperties": { "type": "string" }
+        },
+        "tables": {
+          "type": "object",
+          "description": "Table id -> array of row objects, keyed by the column names declared in chapter-catalog.json `tables`. Prose cannot carry a table, so these come back as real JSON from the agents rather than as bullet text to be parsed. Row values are strings; the render core does not reformat them (except money, which is calculated, not generated).",
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        },
         "sections_generated": {
           "type": "array",
-          "description": "Scope-item keys the module wrote content for (traceability).",
+          "description": "Render keys that came back with content (traceability).",
           "items": { "type": "string" }
+        },
+        "agents_run": {
+          "type": "array",
+          "description": "Which stages actually executed, in order.",
+          "items": { "type": "string", "enum": ["A1", "A2", "A3", "A4", "A5"] }
+        },
+        "clauses_applied": {
+          "type": "array",
+          "description": "Ids of the boilerplate snippets A5 selected from the client's Proposal Config sheet. Lets a reviewer see which contract text went out without diffing the document.",
+          "items": { "type": "string" }
+        },
+        "qa": {
+          "type": "object",
+          "description": "A4's review of the assembled draft.",
+          "additionalProperties": true,
+          "properties": {
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["severity", "message"],
+                "properties": {
+                  "severity": { "type": "string", "enum": ["blocker", "warning", "note"] },
+                  "section": { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              }
+            },
+            "patches_applied": { "type": "number", "description": "How many section bodies A4 rewrote." },
+            "reviewed": { "type": "boolean" }
+          }
         },
         "grounded_on": {
           "type": "array",
-          "description": "Optional list of reference-doc identifiers used to ground the generation (traceability).",
+          "description": "Reference-doc names used to ground the generation (traceability).",
           "items": { "type": "string" }
         }
       }
