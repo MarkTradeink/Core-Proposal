@@ -4,6 +4,49 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — chained Sheets reads dropped the request envelope and quadrupled every clause (2026-07-26)
+First live test surfaced two bugs that turned out to be one root cause, reported independently by
+a different session working the same pipeline from the Module 4 side.
+
+The three Proposal Config reads (Chapters/Content/Rules) were wired as a CHAIN -
+`Has Config Sheet? -> Read Chapters Tab -> Read Content Tab -> Read Rules Tab -> Build Proposal
+Config` - across all three workflows (00, 02, 04), instead of three parallel branches off the same
+gate. A Google Sheets read node replaces its input item with however many rows it read and n8n
+executes a node once per incoming item, so chaining meant each read fed the next one N times, once
+per row of the tab before it. The seed `Chapters` tab has exactly 4 rows, so `Read Content Tab` was
+invoked 4 times and every distinct clause, exclusion, premise and obligation in the document -
+including pure static boilerplate typed straight into the template - came out duplicated exactly
+4x: a 6-row obligations table printed 24 rows, a 9-row exclusions table printed 36. The cover page,
+built from a different path, was untouched, which is what made the multiplier visible as clean 4x
+rather than an obvious crash.
+
+The same chaining broke `Build Proposal Config`'s output a second way: with the reads now merged
+into that node's own input, its bare `$json` was never the request envelope, only ever a
+spreadsheet row (a Chapters-tab row on the true branch, whatever fed it on the fallback). Both
+return statements did `{ ...$json, client_config, proposal_config }`, so the final envelope lost
+`data.rfq.client` / `data.rfq.project` entirely - the cover page, the email body and the Telegram
+alert all rendered blank client/project fields, even though Module 1's extraction was correct and
+`Build Proposal Config`'s own INPUT (before the merge) had it right.
+
+Fixed in all three workflows: the gate now fans out to three parallel connections, each read goes
+straight to `Build Proposal Config` (`scripts/mirror-cores.js`'s three targets already read each
+tab by node name, `$('Read Content Tab').all()` etc., so parallelizing needed no code change
+there). In Modules 2 and 4, `Build Proposal Config` now spreads `trig`
+(`$('Execute Workflow Trigger').first().json`) instead of `$json` - the orchestrator's copy was
+already doing this correctly, which is why its client/project data never broke.
+
+Also added, as defense in depth: `resolveProposalConfig()` now deduplicates clause rows by `id`,
+keeping the first occurrence and warning on the rest - `id` is documented as a stable, citable
+reference ("premise 7"), so two rows can never legitimately share one, regardless of whether the
+duplication comes from a wiring bug or someone pasting a sheet's contents in twice by hand.
+
+New: `scripts/check-workflow-graph.js`, wired into `npm run check`. It asserts no two row-reading
+nodes (Sheets, Notion) connect directly into one another anywhere in the workflow graph, and that
+`Build Proposal Config` never spreads bare `$json`. Neither of these bugs was catchable by the
+existing offline module self-checks - those call `resolveProposalConfig()` directly with an
+in-memory object and never exercise n8n's item-per-execution model - so this is a permanent guard
+against the exact shape of bug that only a live run exposes.
+
 ### Fix — Module 2's agent chain lost Plan Chapters' data past the first agent (2026-07-26)
 Two independent reference bugs compounded into "A1 writes something, A2 and A3 write nothing."
 

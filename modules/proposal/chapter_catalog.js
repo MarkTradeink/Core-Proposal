@@ -275,6 +275,7 @@ function resolveProposalConfig({ catalog, sheet, tier, language, scope, has_pric
   }
 
   const clauses = [];
+  const seenClauseIds = new Set();
   const VALID_KINDS = ['clause', 'exclusion', 'premise', 'obligation', 'term'];
   for (const r of (sheet && sheet.content) || []) {
     const id = normText(r.id);
@@ -292,6 +293,12 @@ function resolveProposalConfig({ catalog, sheet, tier, language, scope, has_pric
     // A clause attached to a chapter this request does not render is not an error — the
     // client keeps clauses for scopes they are not selling today.
     if (!renderedIds.has(chapter_id)) continue;
+    // A repeated id means the sheet (or whatever produced `sheet.content`) sent the same row
+    // more than once — a spreadsheet paste mistake, or upstream duplication. `id` is documented
+    // as stable and citable ("premise 7"), so two rows can never legitimately share one: keep the
+    // first occurrence and warn, rather than printing a clause N times in a contract.
+    if (id && seenClauseIds.has(id)) { warnings.push(`Content tab: duplicate id '${id}' — kept the first occurrence, ignored the repeat`); continue; }
+    if (id) seenClauseIds.add(id);
 
     clauses.push({ kind, id, chapter_id, lang, title: normText(r.title), body, applies_when: normText(r.applies_when) });
   }
@@ -432,6 +439,15 @@ if (require.main === module) {
   if (clauseIds.includes('bad_01')) problems.push('bad_01 points at an unknown chapter and must be dropped');
   if (!withSheet.warnings.some((w) => w.includes('no_such_chapter'))) problems.push('an unknown chapter_id should raise a warning');
   if (!withSheet.warnings.some((w) => w.includes('ni_idea'))) problems.push('an orphan clause should raise a warning');
+
+  // 7b. Duplicate rows (e.g. an n8n Sheets-read node accidentally executed more than once and
+  // Content rows arrived twice) must not print a clause twice in a contract.
+  const dupedSheet = { ...sheet, content: sheet.content.concat(sheet.content) };
+  const deduped = resolveProposalConfig({ catalog, sheet: dupedSheet, language: 'es', scope, has_pricing: true });
+  if (deduped.clauses.length !== withSheet.clauses.length) {
+    problems.push(`duplicated Content rows should collapse to the same clause count (${withSheet.clauses.length}), got ${deduped.clauses.length}`);
+  }
+  if (!deduped.warnings.some((w) => w.includes("duplicate id 'gar_01'"))) problems.push('a duplicate clause id should raise a warning naming it');
 
   // 8. all_keys is the whole vocabulary — this is what keeps the render context total.
   if (withSheet.all_keys.length !== seen.size) problems.push(`all_keys should carry every catalog id (${seen.size}), got ${withSheet.all_keys.length}`);
