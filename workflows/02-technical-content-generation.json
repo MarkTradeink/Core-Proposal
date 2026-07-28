@@ -630,6 +630,21 @@
       ],
       "id": null,
       "name": "Apply QA Patches"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        800,
+        1196
+      ],
+      "id": null,
+      "name": "Merge Config Tabs"
     }
   ],
   "connections": {
@@ -839,7 +854,7 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
             "index": 0
           }
@@ -850,9 +865,9 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -861,9 +876,9 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
@@ -995,6 +1010,17 @@
           {
             "node": "A4 — QA Review",
             "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Config Tabs": {
+      "main": [
+        [
+          {
+            "node": "Build Proposal Config",
+            "type": "main",
             "index": 0
           }
         ]

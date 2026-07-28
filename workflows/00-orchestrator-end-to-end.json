@@ -891,6 +891,21 @@
       ],
       "id": null,
       "name": "Build Proposal Config"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "numberInputs": 3,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        832,
+        320
+      ],
+      "id": null,
+      "name": "Merge Config Tabs"
     }
   ],
   "connections": {
@@ -1274,7 +1289,7 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
             "index": 0
           }
@@ -1285,9 +1300,9 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
-            "index": 0
+            "index": 1
           }
         ]
       ]
@@ -1296,9 +1311,9 @@
       "main": [
         [
           {
-            "node": "Build Proposal Config",
+            "node": "Merge Config Tabs",
             "type": "main",
-            "index": 0
+            "index": 2
           }
         ]
       ]
@@ -1308,6 +1323,17 @@
         [
           {
             "node": "Route by Request Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Config Tabs": {
+      "main": [
+        [
+          {
+            "node": "Build Proposal Config",
             "type": "main",
             "index": 0
           }

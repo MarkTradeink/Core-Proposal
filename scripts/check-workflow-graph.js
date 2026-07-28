@@ -12,6 +12,13 @@
 // came out duplicated exactly 4x. It also meant the second and third reads received a spreadsheet
 // row as $json instead of the request envelope, so `$json.client_config...` broke.
 //
+// The first fix connected all three reads directly into the same input index of
+// 'Build Proposal Config', assuming n8n would treat that as "wait for all three, run once." It
+// doesn't reliably: a live run hung indefinitely, and a second live run fired the downstream chain
+// (including the Gmail send) three times. n8n's actual primitive for "wait for N branches, then
+// continue once" is a Merge node - it has one input PORT per branch and only fires once every port
+// has data, which three edges into one input index does not guarantee.
+//
 //   node scripts/check-workflow-graph.js
 
 const fs = require('fs');
@@ -42,17 +49,33 @@ for (const file of glob) {
     }
   }
 
-  // If a "Build Proposal Config" node exists, it must be fed by ALL three Proposal Config reads
-  // directly (a converging fan-in), not by one of them relaying through the other two.
-  if (nodeNames.has('Build Proposal Config')) {
-    const expectedFeeders = ['Read Chapters Tab', 'Read Content Tab', 'Read Rules Tab'].filter((n) => nodeNames.has(n));
-    for (const feeder of expectedFeeders) {
-      const targets = (conn[feeder] && conn[feeder].main || []).flat().map((l) => l.node);
-      if (!targets.includes('Build Proposal Config')) {
-        fail(file, `'${feeder}' does not connect directly to 'Build Proposal Config' - it should feed it in parallel with the other two reads.`);
+  // If a "Build Proposal Config" node exists, all three Proposal Config reads must feed it in
+  // parallel through an explicit Merge barrier - not through each other (that's the chaining bug
+  // above), and not by connecting all three directly into the same input index on Build Proposal
+  // Config either. n8n does not reliably treat "three edges into one input" as "wait for all three,
+  // then run once" - depending on version and on whether the upstream nodes take an onError branch,
+  // it can run the downstream node multiple times (each real execution re-sending emails, PDFs,
+  // etc.) or never resolve the wait at all. A Merge node is the node built for this: it has one
+  // input PORT per branch, and only fires once every port has data.
+  const expectedFeeders = ['Read Chapters Tab', 'Read Content Tab', 'Read Rules Tab'].filter((n) => nodeNames.has(n));
+  if (nodeNames.has('Build Proposal Config') && expectedFeeders.length) {
+    const feedsDirectly = (conn['Merge Config Tabs'] && conn['Merge Config Tabs'].main || []).flat().map((l) => l.node);
+    if (!nodeNames.has('Merge Config Tabs')) {
+      fail(file, `no 'Merge Config Tabs' node found - the three Proposal Config reads must converge through a Merge barrier, not straight into 'Build Proposal Config'.`);
+    } else if (!feedsDirectly.includes('Build Proposal Config')) {
+      fail(file, `'Merge Config Tabs' does not connect to 'Build Proposal Config'.`);
+    } else {
+      for (const feeder of expectedFeeders) {
+        const targets = (conn[feeder] && conn[feeder].main || []).flat().map((l) => l.node);
+        if (!targets.every((t) => t === 'Merge Config Tabs') || !targets.length) {
+          fail(file, `'${feeder}' must connect only to 'Merge Config Tabs', not ${JSON.stringify(targets)}.`);
+        }
+        if (targets.includes('Build Proposal Config')) {
+          fail(file, `'${feeder}' connects directly into 'Build Proposal Config', bypassing the Merge barrier - three separate edges into one input is not a reliable wait-for-all in n8n.`);
+        }
       }
+      ok(file, `all ${expectedFeeders.length} Proposal Config reads converge through 'Merge Config Tabs' before 'Build Proposal Config'`);
     }
-    if (expectedFeeders.length) ok(file, `all ${expectedFeeders.length} Proposal Config reads feed 'Build Proposal Config' in parallel`);
   }
 
   // 'Build Proposal Config' must never spread its own $json into its output — its own direct

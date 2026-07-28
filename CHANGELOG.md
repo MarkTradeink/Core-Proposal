@@ -4,6 +4,30 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — parallel Sheets reads needed a Merge barrier, not three edges into one input (2026-07-26)
+The previous fix (below) parallelized the three Proposal Config reads by connecting all three
+directly into the same input index of `Build Proposal Config`, assuming n8n would wait for all
+three and run it once. Two live runs proved that assumption wrong: one run left the workflow
+"running" indefinitely, a second fired the entire downstream chain - PDF render, Drive upload,
+Gmail send - three times, once per branch.
+
+n8n's actual primitive for "wait for N independent branches, then continue once" is a **Merge**
+node: it exposes one input PORT per branch and only fires once every port has received data. Three
+separate connections into a single input index is a different thing n8n does not treat the same
+way, and can behave inconsistently depending on version and on whether an upstream node took an
+`onError` branch (all three reads have `onError: continueRegularOutput` set).
+
+Added a `Merge Config Tabs` node (mode `append`, 3 inputs) between the three reads and
+`Build Proposal Config` in all three workflows. Each read now connects to its own input port on the
+merge node; the merge node's single output feeds `Build Proposal Config`, guaranteeing it runs
+exactly once, after all three tabs have been read. The merged item's own shape is irrelevant -
+`Build Proposal Config` never reads `$json`/`$input` for the tab data, it pulls each tab back out by
+name (`$('Read Content Tab').all()`, etc.) - so `append` mode, the simplest option, is enough; there
+is no shared key to match rows on across three tabs with unrelated schemas and unrelated row counts.
+
+`scripts/check-workflow-graph.js` now asserts the three reads converge through `Merge Config Tabs`
+specifically, not into `Build Proposal Config` directly - the exact shape of this incident.
+
 ### Fix — chained Sheets reads dropped the request envelope and quadrupled every clause (2026-07-26)
 First live test surfaced two bugs that turned out to be one root cause, reported independently by
 a different session working the same pipeline from the Module 4 side.
