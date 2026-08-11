@@ -41,9 +41,9 @@ Registry-specific properties the workflows read:
 | `Client Name` | Title | Human-readable client name. |
 | `client_id` | Rich text | Unique slug used as the lookup key, e.g. `demo_client`. |
 | `Client Status` | Select: `active` / `trial` / `paused` / `churned` | Gates processing: `active`/`trial` are processed; `paused`/`churned` are rejected with an admin alert. Also picks the **sending address**: `trial` → `demo@cifral.io`, everything else → `proposal@cifral.io`. |
-| `send_mode` | Select: `send` / `draft` (empty → `send`) | Delivery switch. `send` replies to the reseller for real; `draft` stops at a Gmail draft and sends nothing. The per-client rollback — set it to `draft` to take one client out of live sending without touching the workflows. |
+| `send_mode` | Select: `send` / `draft` (empty → `send`) | Delivery switch. `send` replies to the reseller for real; `draft` stops at a Gmail draft and sends nothing. The per-client rollback — set it to `draft` to take one client out of live sending without touching the workflows. **Not consulted for `demo_client` or for anything that arrived through `demo@cifral.io`:** those are forced to `draft` in code, because "empty → `send`" is a permissive failure mode and a public address cannot have one ([`docs/DEMO-INTAKE.md`](DEMO-INTAKE.md) §3). |
 | `service_tier` | Select: `pricing_only` / `proposal_only` / `full_pipeline` | Default deliverable for this client. |
-| `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. |
+| `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. Not used as the identity key for mail delivered to `demo@cifral.io` — that route resolves by destination instead. |
 | `template_id_en` | Rich text | Google Docs master template id for English proposals. |
 | `template_id_es` | Rich text | Google Docs master template id for Spanish proposals (may be empty → EN fallback). |
 | `proposals_folder_id` | Rich text | Google Drive folder to drop generated proposals into. |
@@ -67,15 +67,34 @@ place but are **not read by any workflow**.
 
 ## Client identification & status gating
 
-The orchestrator no longer hardcodes `demo_client`. For an **email** trigger it reads the sender's
-address and the "Map Client Config" node finds the registry row whose `commercial_contact_email`
-matches it (case-insensitive) — that's the `client_id`. For the **chat** trigger (no sender) it falls
-back to `demo_client` for local testing.
+Identity comes from the address the message was **delivered to** first, and only then from the
+sender. Full detail in [`docs/DEMO-INTAKE.md`](DEMO-INTAKE.md).
 
-- **Unknown sender** (no row matches) → rejected; an admin Telegram alert fires, nothing is produced.
-- **`paused` / `churned`** → rejected the same way (client inactive).
+- **Delivered to `demo@cifral.io`** → `client_id` is **always `demo_client`**, whoever sent it. This
+  address is public: an unknown sender is the normal case, not an error. Replies are forced to
+  `draft`, and the intake guards (rate limit, junk filter, size cap) apply.
+- **Delivered to `proposal@cifral.io`, or anything else** → the "Map Client Config" node finds the
+  registry row whose `commercial_contact_email` matches the sender (case-insensitive) — that's the
+  `client_id`. This is the original behaviour, unchanged.
+- **Chat** trigger (no sender, no destination) → falls back to `demo_client` for local testing.
+
+If both intake addresses appear in the recipients, `demo@` wins: it is the safer route, so an
+ambiguous recipient list can never buy live sending.
+
+- **Unknown sender** on the registry route (no row matches) → rejected; an admin Telegram alert
+  fires, nothing is produced. On the public route this cannot happen — there is nothing to match.
+- **`paused` / `churned`** → rejected the same way (client inactive), on both routes.
 - **`active` / `trial`** → processed. The status is shown in the success Telegram alerts so trials are
   visible, and it selects the sending address (below).
+- **Rate-limited, oversize, or over the attachment cap** (public route only) → refused before the
+  registry is even read, with a Telegram alert. Autoresponders, bounces, mailing-list mail and empty
+  bodies are dropped silently at the same point, on every route.
+
+> ⚠️ **`demo_client` is the public tenant.** Its Drive folder is served verbatim to strangers, and
+> Module 2 grounds its writing on the documents in `reference_docs_folder_id`. Keep that folder, its
+> Proposal Config sheet, its pricing sheet and its `.docx` templates to **generic seed material
+> only** — never a real client's proposal, rate card or clause text. Onboarding a real client means
+> a new row, never reusing this one.
 
 The reply address (`reply_to`) is the **actual sender**, so the quote/proposal goes back to whoever
 emailed the RFQ. To onboard a trial client you only need a registry row with their sender email in

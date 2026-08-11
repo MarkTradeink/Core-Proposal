@@ -81,23 +81,30 @@ Every module accepts and returns the same envelope; the module-specific payload 
 ```
 workflows/   the 4 module workflows + 00-orchestrator (n8n JSON, git-tracked source of truth)
 schemas/     I/O envelopes + chapter-catalog.json (the chapter superset) + scope-catalog.json
+modules/intake/    intake_core.js       — which intake a message came through, and the guards on it
 modules/pricing/   pricing_core.js      — the pricing formula (numbers live in Google Sheets)
 modules/proposal/  chapter_catalog.js   — resolves the catalog against a request and a client
                    render_context.js    — how proposal data is shaped for the .docx template
 templates/   build-templates.js + the seed .docx templates it generates from the catalog
-scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check)
+scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check),
+             check-intake-routing.js (replays the intake chain against the real node source)
 seed/        demo_client's Proposal Config CSVs — the starting point for a new client's sheet
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
-docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEPLOYMENT, ONBOARDING,
-             PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE, TESTING-MANUAL
+docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEMO-INTAKE, DEPLOYMENT,
+             ONBOARDING, PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE,
+             TESTING-MANUAL
 ```
+
+**Two intakes.** `demo@cifral.io` is public — it serves any sender as `demo_client` and can only
+ever produce a draft. `proposal@cifral.io` is for registered clients, matched by sender address.
+See [`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md).
 
 **The repo owns structure; Drive owns content.** Pricing numbers, chapter selection, clause libraries
 and the actual `.docx` templates live in each client's Google Drive folder so they change without a
 deploy. The repo owns the workflows, the contracts, the pricing formula, the chapter catalog and the
 render context.
 
-Three logic cores live in this repo *and* inside n8n, because a Code node cannot `require` a file.
+Four logic cores live in this repo *and* inside n8n, because a Code node cannot `require` a file.
 `npm run mirror` copies them in the one safe direction; `npm run check` fails if they have drifted.
 
 ## What's different from the legacy demo
@@ -117,7 +124,8 @@ pruning, incomplete-RFQ handling, recipient safety, sending alias, in-thread rep
 
 > ⚠️ Proposals and quotes are **sent**, not parked as drafts. Set a client's `send_mode` to `draft`
 > in the Notion registry to hold delivery while you test — see
-> [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md).
+> [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md). The exception is public
+> traffic: anything arriving at `demo@cifral.io` is forced to draft in code and cannot send.
 
 Most of what can break is checkable offline in a few seconds:
 
@@ -126,10 +134,12 @@ npm install
 npm run check
 ```
 
-That runs the three core self-checks, verifies the n8n Code nodes have not drifted from the repo, and
-performs four real docxtemplater renders (tiers A/B/C in Spanish, tier B in English) against the real
-templates and the real seed config — failing on the two things that reach a customer silently, the
-literal word `undefined` and unrendered braces.
+That runs the four core self-checks, verifies the n8n Code nodes have not drifted from the repo,
+replays the intake chain end to end against the real node source
+([`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md)), and performs four real docxtemplater renders (tiers
+A/B/C in Spanish, tier B in English) against the real templates and the real seed config — failing
+on the two things that reach a customer silently, the literal word `undefined` and unrendered
+braces.
 
 ## Deploying to n8n
 
