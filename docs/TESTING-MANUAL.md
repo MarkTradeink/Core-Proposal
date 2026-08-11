@@ -14,7 +14,10 @@ change a workflow.
       = a mailbox **you** control (this receives the replies), `template_id_en`, `proposals_folder_id`,
       `pricing_sheet_id`, `notification_chat_id`. (`reference_docs_folder_id` optional.)
 - [ ] **`send_mode` = `draft`** on every registry row. Scenarios 1–12 are written for draft mode, so
-      nothing leaves the mailbox while you work through them. Scenario 15 is where you flip it.
+      nothing leaves the mailbox while you work through them. Scenario 15 is where you flip it —
+      and it needs a **second, non-demo** row, because `demo_client` is now pinned to draft in code.
+- [ ] Chase the intake scenarios (12b) from a mailbox that is **not** in the registry, and expect
+      the rate limit to bite on the fourth message of the day from any one address.
 - [ ] Both aliases verified as "Send mail as" on the Gmail account (see `DEPLOYMENT.md`) — needed
       from Scenario 15 onwards, and harmless before.
 - [ ] Pricing Google Sheet created and shared (see `PRICING-SHEET-TEMPLATE.md`).
@@ -157,19 +160,62 @@ Send an RFQ whose body contains a **different, clearly identifiable end-customer
 ## Scenario 11 — Client identification by sender (multi-client)
 
 Add a second registry row (e.g. `acme_client`) with a different `commercial_contact_email`, its own
-`service_tier`, template, pricing sheet and `notification_chat_id`.
+`service_tier`, template, pricing sheet and `notification_chat_id`. Send everything here to
+**`proposal@cifral.io`** — mail to `demo@` resolves by destination instead (Scenario 12b).
 
 - [ ] **Email from demo_client's address** → matched to `demo_client`; its template/sheet/chat used.
 - [ ] **Email from acme_client's address** → matched to `acme_client`; ITS template/sheet/chat used.
 - [ ] Draft **To:** is the sender in each case.
 - [ ] Chat trigger (no sender) still falls back to `demo_client`.
+- [ ] With `acme_client` still registered, run Scenario 12b's first case and confirm **none** of
+      acme's ids appear in the run: not its template, pricing sheet, config sheet, folders or chat
+      id. A stranger is served the demo tenant and nothing else.
 
 ## Scenario 12 — Unknown sender & inactive client (gating)
 
-- [ ] **Email from an unregistered address** → no proposal; admin Telegram "unrecognized sender".
+Send these to **`proposal@cifral.io`**, not to `demo@` — `demo@` is public and an unknown sender is
+its normal case (Scenario 12b).
+
+- [ ] **Email from an unregistered address** → no proposal; admin Telegram "sender is not in the
+      client registry".
 - [ ] Set the client's `Client Status` to `paused` (or `churned`) and email from their address →
       no proposal; admin Telegram "client is paused/churned".
 - [ ] Set it back to `trial` → processed again; success Telegram shows `(trial)`.
+
+## Scenario 12b — The public intake (`demo@cifral.io`)
+
+The address anyone may write to. Background and rationale: [`DEMO-INTAKE.md`](DEMO-INTAKE.md).
+Everything here is expected to stay in Drafts — that is the point of the scenario.
+
+- [ ] **RFQ from an address that is in no registry row, sent to `demo@cifral.io`** → a proposal IS
+      produced, against `demo_client`'s template, and filed in its proposals folder.
+- [ ] The draft's **To:** is that unknown sender, threaded onto their message, **From**
+      `demo@cifral.io`.
+- [ ] It is in **Drafts**. Check **Sent** and confirm it is not there. `Send Draft` shows as skipped
+      in the execution.
+- [ ] The same address emailing **`proposal@cifral.io`** is still rejected ("sender is not in the
+      client registry"). Only the destination changed.
+- [ ] A **registered** client emailing `demo@cifral.io` gets `demo_client`'s template, not their own
+      — the destination decides, and it drafts rather than sends.
+- [ ] Set `demo_client`'s `send mode` to `send` in Notion and re-run the first case → it **still
+      drafts**. The registry value is not consulted for the demo tenant; draft is forced in code.
+      (Put it back to `draft` afterwards anyway.)
+- [ ] Forward an RFQ to `demo@` from Mark's own address (the pre-change workaround) → still works,
+      still drafts.
+
+### The guards
+
+- [ ] Send **four** RFQs from the same address within one UTC day → the first three are processed,
+      the fourth produces no proposal and a Telegram "sender over the daily RFQ cap" with a detail
+      line. Confirm Module 1 never ran on the fourth.
+- [ ] Reply to one of your own RFQs with an **out-of-office** autoresponder (or send a message with
+      `Precedence: bulk`) → nothing is produced and **no Telegram fires**. The execution log shows
+      `Intake Guard: dropped (…)`.
+- [ ] Send a message with a body of two words → dropped the same way.
+- [ ] Send an RFQ with 12 attachments → refused, Telegram "too many attachments".
+- [ ] Send a genuine RFQ with 2 attachments → processed normally.
+- [ ] Paste a very long RFQ (over ~20 000 characters) → processed, and Module 1's input ends with
+      `[intake guard: truncated …]`.
 
 ## Scenario 13 — Sending alias follows Client Status
 
@@ -200,16 +246,23 @@ Send an RFQ with a distinctive subject (e.g. `RFQ - conveyor line for Zaragoza p
 The first scenario that actually delivers mail. Do it with `commercial_contact_email` pointing at a
 mailbox you control.
 
+> **`demo_client` cannot be used for this scenario any more.** The demo tenant is public and is
+> pinned to `draft` in code, so setting `send mode = send` on it changes nothing (that is Scenario
+> 12b's sixth check). Use a **second registry row** — `acme_client` from Scenario 11 — with
+> `Client Status = active`, and send to `proposal@cifral.io`.
+
 - [ ] Verify both aliases first (`DEPLOYMENT.md`) — otherwise this scenario is expected to fail at
       the send step, which is itself worth seeing once.
-- [ ] Set `send_mode` = `send` on `demo_client`, run an RFQ.
+- [ ] Set `send_mode` = `send` on `acme_client`, run an RFQ from its registered address.
 - [ ] **Send Draft** (or **Send Quote**) executes and returns a message `id` + `threadId`.
 - [ ] The email **arrives** in the commercial mailbox, in the RFQ thread, from the right alias.
 - [ ] Telegram reads `SENT ✅` and `Delivered as a reply in the original RFQ thread.`
 - [ ] `Build Output → data`: `sent = true`, `sent_message_id` set, `draft_id` still recorded.
 - [ ] Set `send_mode` back to `draft`, re-run → `Send Draft` is **skipped**, nothing arrives,
       `sent = false`, `sent_message_id = null`, Telegram reads `drafted 📝`.
-- [ ] Remove the `send_mode` column value entirely (empty) → defaults to `send`.
+- [ ] Remove the `send_mode` column value entirely (empty) → defaults to `send`. This permissive
+      default is exactly why the demo tenant does not read this property at all
+      ([`DEMO-INTAKE.md`](DEMO-INTAKE.md) §3).
 - [ ] Repeat once on the `pricing_only` route (Scenario 2) to cover `Send Quote?` / `Send Quote`.
 
 > **Failure mode to confirm once:** point `from_alias` at an unverified address and run in send mode.

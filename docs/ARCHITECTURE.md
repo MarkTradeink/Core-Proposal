@@ -229,14 +229,17 @@ a finding — the client's contract text is not an agent's to rewrite.
   original RFQ. Mechanically this is *create draft → `drafts.send`*: the Gmail node's Send operation
   rebuilds `From` from the authenticated mailbox and would discard the alias, while its Create Draft
   operation honours both `fromAlias` and `threadId`. `client_config.send_mode = 'draft'` skips the
-  send step — the per-client rollback.
+  send step — the per-client rollback. **Except for public traffic:** anything that came in through
+  `demo@cifral.io` (`client_config.open_intake`), and the `demo_client` tenant generally, is forced
+  to `draft` here regardless of what the registry says — a stranger never gets an autonomous reply.
 - Schema: `schemas/proposal-assembly.schema.json`.
 
 ## How the orchestrator composes them (`00-orchestrator-end-to-end.json`)
 
 ```
 trigger (Gmail / chat)
-  → Build Envelope (sender + thread id + "Re: <subject>")
+  → Build Envelope (intake route + sender + thread id + "Re: <subject>")
+  → Intake Guard → Intake OK?  (junk / rate / size gates — BEFORE anything costly)
   → Load Client Config (Notion, ONCE)                 ┐ resolve-once
   → Module 1  (Execute Workflow, client_config passed) ┘
   → IF status == "incomplete"
@@ -255,6 +258,27 @@ Two envelope fields carry the email context. `client_config` holds what belongs 
 what belongs to the *request* (`thread_id`, `message_id`, `reply_subject`). Runs with no originating
 thread — the chat trigger, or a module invoked standalone — get a `null` `email_context` and
 degrade to a new message with a synthetic subject rather than failing.
+
+### Two intakes: identity by destination, not by sender
+
+Which address a message was **delivered to** decides how the client is resolved — full detail in
+`docs/DEMO-INTAKE.md`.
+
+- **`demo@cifral.io` is public.** It resolves to `demo_client` whoever wrote in, and its replies are
+  forced to `draft` in code (not read from the registry, whose failure mode defaults to *send*). This
+  is what makes the "send me an RFQ and I'll send back a sample proposal" CTA literal.
+- **`proposal@cifral.io` is private.** The sender's address must match a registry row's
+  `commercial_contact_email`, exactly as before; an unknown sender is rejected.
+
+Because a public address is an open invoice, **`Intake Guard` runs before the registry read and
+before Module 1** — junk filter, per-sender and global daily rate limits, size and attachment caps,
+and a body cap that truncates rather than refuses. Junk is dropped silently (no items returned, so
+the branch ends); refusals Mark can act on alert over Telegram. Registered clients pass everything
+but the junk filter.
+
+The guard and the routing live in `modules/intake/intake_core.js` and are mirrored into the
+`Build Envelope` and `Intake Guard` nodes, so both are checkable offline —
+`node modules/intake/intake_core.js` and `node scripts/check-intake-routing.js`.
 
 Because the orchestrator passes `client_config` through, each `Execute Workflow` sub-call skips its
 own Notion lookup. A module called standalone (no `client_config` in the input) performs its own

@@ -11,7 +11,7 @@
         },
         "simple": false,
         "filters": {
-          "q": "subject:(RFQ OR presupuesto OR proposal OR quote OR estimate)"
+          "q": "(to:demo@cifral.io OR deliveredto:demo@cifral.io OR subject:(RFQ OR presupuesto OR proposal OR quote OR estimate))"
         },
         "options": {}
       },
@@ -46,7 +46,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Build the shared envelope from whichever trigger fired, and identify the client by the\n// SENDER's email (matched against the Notion registry in the next node). Chat-trigger runs\n// have no sender, so they fall back to demo_client for local testing.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\nfunction headerVal(obj, name){ try { const hs=(obj.payload&&obj.payload.headers)||obj.headers; if(Array.isArray(hs)){ const h=hs.find(x=>String(x.name).toLowerCase()===name); return h?h.value:null; } if(hs&&typeof hs==='object'){ return hs[name] ?? hs[name.charAt(0).toUpperCase()+name.slice(1)] ?? null; } } catch(e){} return null; }\nlet fromRaw = t.from || t.From || headerVal(t,'from') || '';\nif (fromRaw && typeof fromRaw==='object') { fromRaw = (fromRaw.value&&fromRaw.value[0]&&(fromRaw.value[0].address||fromRaw.value[0].value)) || fromRaw.address || fromRaw.text || ''; }\nconst m = String(fromRaw).match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/);\nconst sender_email = m ? m[0].toLowerCase() : null;\nconst fallback_client_id = sender_email ? null : 'demo_client';\n\n// Thread context — lets the reply land INSIDE the reseller's original RFQ thread instead of\n// opening a new conversation. Gmail threads a reply on threadId + a matching subject, so the\n// subject must be the original one prefixed with 'Re: ', never a synthetic one.\n// Chat-trigger runs have no thread; every field is null and threading degrades to a new mail.\nconst thread_id = t.threadId || t.thread_id || null;\nconst message_id = headerVal(t, 'message-id') || null;\n// Only meaningful when there IS a thread to reply into — otherwise a chat run with no subject\n// would ship a bare 'Re: RFQ' instead of letting the caller build a real one.\nconst reply_subject = thread_id ? (/^re:\\s/i.test(subject) ? subject : `Re: ${subject}`) : null;\nconst email_context = { thread_id, message_id, reply_subject };\nreturn [{ json: { sender_email, fallback_client_id, email_context, data: { subject, text } } }];"
+        "jsCode": "// === INTAKE CORE START ===\n\n// The two public-facing addresses. Both must be VERIFIED \"Send mail as\" aliases on the Gmail\n// account that owns the n8n credential (docs/DEPLOYMENT.md) — they are also what the pipeline\n// replies FROM, chosen by Client Status.\nconst DEMO_INTAKE_ADDRESS = 'demo@cifral.io';\nconst PROPOSAL_INTAKE_ADDRESS = 'proposal@cifral.io';\n\n// The tenant every public RFQ is served by. Its Drive folder holds ONLY generic seed material —\n// see docs/DEMO-INTAKE.md, \"What a stranger can see\".\nconst DEMO_CLIENT_ID = 'demo_client';\n\nconst INTAKE_LIMITS = {\n  // Per sender per UTC day, on the open route only. Registered clients on proposal@ are not\n  // rate limited — they are paying for throughput.\n  max_rfq_per_sender_per_day: 3,\n  // The whole open address per UTC day. Per-sender alone caps nothing: rotating the From costs\n  // an attacker nothing, so this is the ceiling that actually bounds the bill.\n  max_open_rfq_per_day: 25,\n  // Envelope size and attachment count. The pipeline never reads attachments (Module 1 sees\n  // subject + text), so a big one is pure carriage — but generous enough that a real RFQ with\n  // drawings attached still gets through.\n  max_email_bytes: 10 * 1024 * 1024,\n  max_attachments: 10,\n  // The token bill tracks body length, so an over-long body is TRUNCATED rather than rejected:\n  // a genuine 40-page tender still produces a proposal, it just stops paying past the cap.\n  max_body_chars: 20000,\n  // Below this there is nothing to extract. Module 1's own `incomplete` path handles the\n  // merely-thin RFQ; this only catches the empty one.\n  min_body_chars: 80,\n};\n\n// Headers whose mere presence marks machine-generated mail.\nconst AUTOMATED_HEADERS = [\n  'x-autoreply',\n  'x-autorespond',\n  'x-autoresponder',\n  'x-auto-response-suppress',\n  'list-id',\n  'list-unsubscribe',\n  'x-failed-recipients',\n  'feedback-id',\n];\n\n// `Precedence:` values that mean \"not a person writing to you\" (RFC 3834 and common practice).\nconst BULK_PRECEDENCE = ['bulk', 'junk', 'list', 'auto_reply'];\n\n// Subjects of autoresponders and delivery reports, EN + ES + DE (the languages the outbound\n// machine actually writes in).\nconst AUTOMATED_SUBJECT_RE = /^\\s*(re:\\s*|fwd?:\\s*)*(out of office|automatic(al)? reply|auto(matic)?[\\s-]?reply|autoreply|auto:|undeliverable|undelivered mail|delivery (status notification|failure|has failed)|mail delivery (failed|subsystem)|returned mail|failure notice|read receipt|abwesenheits?notiz|automatische antwort|respuesta autom[aá]tica|fuera de la oficina|correo no entregado)/i;\n\n// Local-parts that never belong to a human who wants a proposal back.\nconst NOREPLY_LOCALPART_RE = /^(no[._-]?reply|do[._-]?not[._-]?reply|donotreply|mailer[._-]?daemon|postmaster|bounces?|notifications?|automated?|alerts?|newsletters?)([._+-]|$)/i;\n\nconst EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/g;\n\n/** Every email address in a header value, lower-cased. */\nfunction addressesIn(value) {\n  if (value == null) return [];\n  return String(value).toLowerCase().match(EMAIL_RE) || [];\n}\n\n/**\n * Flatten whatever header shape the trigger produced into one lower-cased name -> value map.\n *\n * n8n's Gmail trigger with `simple: false` gives `payload.headers` as an array of {name, value};\n * a pinned or hand-built item may give a plain object instead. Repeated headers (several\n * `Received:` or `Delivered-To:` lines) are joined rather than overwritten — the delivery\n * address we are routing on is often in the second one.\n */\nfunction normaliseHeaders(raw) {\n  const out = {};\n  const push = (name, value) => {\n    if (!name || value == null) return;\n    const key = String(name).toLowerCase().trim();\n    const val = typeof value === 'object' ? JSON.stringify(value) : String(value);\n    out[key] = out[key] ? `${out[key]}, ${val}` : val;\n  };\n  if (Array.isArray(raw)) {\n    for (const h of raw) push(h && h.name, h && h.value);\n  } else if (raw && typeof raw === 'object') {\n    for (const key of Object.keys(raw)) push(key, raw[key]);\n  }\n  return out;\n}\n\n/** Pull a sender address out of the many shapes `from` arrives in. */\nfunction extractSender(...candidates) {\n  for (let value of candidates) {\n    if (value && typeof value === 'object') {\n      const first = value.value && value.value[0];\n      value = (first && (first.address || first.value)) || value.address || value.text || '';\n    }\n    const found = addressesIn(value);\n    if (found.length) return found[0];\n  }\n  return null;\n}\n\n/**\n * Decide the intake route from the DESTINATION address.\n *\n * Envelope headers are scanned before the visible ones: `Delivered-To` is what Gmail actually\n * delivered to, whereas `To` is only what the sender typed. Both are checked because alias\n * delivery often leaves the alias in `To` and the underlying mailbox in `Delivered-To`.\n *\n * If BOTH intake addresses appear, demo@ wins. It is the strictly safer of the two — demo tenant,\n * forced draft — so an ambiguous recipient list can never be the thing that buys live sending to\n * a stranger.\n *\n * Any other address (or none at all, e.g. the chat trigger) keeps the registry route, so opening\n * demo@ cannot silently make some third address public too.\n */\nfunction resolveIntake(headers) {\n  const h = headers || {};\n  const pools = ['delivered-to', 'x-original-to', 'envelope-to', 'x-forwarded-to', 'to', 'cc', 'bcc'];\n  const recipients = [];\n  for (const name of pools) recipients.push(...addressesIn(h[name]));\n\n  if (recipients.includes(DEMO_INTAKE_ADDRESS)) {\n    return { route: 'open', address: DEMO_INTAKE_ADDRESS, client_id: DEMO_CLIENT_ID, open: true, recipients };\n  }\n  if (recipients.includes(PROPOSAL_INTAKE_ADDRESS)) {\n    return { route: 'registry', address: PROPOSAL_INTAKE_ADDRESS, client_id: null, open: false, recipients };\n  }\n  return { route: 'registry', address: null, client_id: null, open: false, recipients };\n}\n\n/**\n * Strip a message down to the text a human actually typed, for the emptiness test ONLY.\n *\n * This result is never what Module 1 sees — quoting and signatures are legitimate RFQ context and\n * the extractor is better at reading them than a regex is. It exists so that \"auto-reply with a\n * 400-line quoted thread underneath\" is correctly measured as empty.\n */\nfunction meaningfulBody(raw) {\n  let s = String(raw == null ? '' : raw);\n  s = s.replace(/<(style|script)[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  s = s\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#3?9;/gi, \"'\");\n\n  const kept = [];\n  for (const line of s.split(/\\r?\\n/)) {\n    const t = line.trim();\n    if (!t) continue;\n    if (/^>/.test(t)) continue;\n    if (/^(-{2,}|_{3,}|\\*{3,})\\s*$/.test(t)) break;\n    if (/^(on\\s.+\\swrote:|el\\s.+\\sescribió:|am\\s.+\\sschrieb:|-{2,}\\s*(original message|forwarded message|mensaje original))/i.test(t)) break;\n    kept.push(t);\n  }\n  return kept.join(' ').replace(/\\s+/g, ' ').trim();\n}\n\n/**\n * Is this machine-generated mail rather than someone asking for a quote?\n *\n * Returns a reason string, or null when the message looks human. Applied on EVERY route, not just\n * the open one: an out-of-office was never a valid RFQ on any address, and turning one into a\n * proposal is a bug wherever it happens.\n */\nfunction detectAutomated({ headers, subject, senderEmail }) {\n  const h = headers || {};\n\n  // RFC 3834: 'no' is the only value that means \"a person sent this\".\n  const autoSubmitted = String(h['auto-submitted'] || '').trim().toLowerCase();\n  if (autoSubmitted && autoSubmitted !== 'no') return 'auto_submitted';\n\n  for (const name of AUTOMATED_HEADERS) {\n    if (h[name] != null && String(h[name]).trim() !== '') return 'automated_header';\n  }\n\n  const precedence = String(h.precedence || '').trim().toLowerCase();\n  if (BULK_PRECEDENCE.includes(precedence)) return 'bulk_precedence';\n\n  // A null return-path is the signature of a bounce / delivery status notification.\n  const returnPath = String(h['return-path'] || '').trim();\n  if (returnPath === '<>' || returnPath === '') {\n    if (returnPath === '<>') return 'bounce';\n  }\n\n  if (AUTOMATED_SUBJECT_RE.test(String(subject || ''))) return 'automated_subject';\n\n  const localPart = String(senderEmail || '').split('@')[0];\n  if (localPart && NOREPLY_LOCALPART_RE.test(localPart)) return 'noreply_sender';\n\n  return null;\n}\n\n/**\n * Run every intake guard over one message and say what should happen to it.\n *\n * `counters` is the persisted daily tally — `{ day, by_sender, open_total }`. In n8n it is\n * `$getWorkflowStaticData('global')`; in the self-check it is a plain object. It is mutated in\n * place, and ONLY when a message is accepted, so a rejected message never consumes quota.\n *\n * Returns:\n *   { accepted: false, drop: true,  reason, notify: false }  junk — swallow it silently. A spam\n *                                                            wave must not become a Telegram flood.\n *   { accepted: false, drop: false, reason, notify: true }   refused, and Mark should know.\n *   { accepted: true,  text, truncated, ... }                proceed; `text` may be truncated.\n */\nfunction classifyIntake({\n  intake,\n  senderEmail,\n  subject,\n  text,\n  headers,\n  sizeBytes,\n  attachmentCount,\n  counters,\n  today,\n  limits,\n}) {\n  const lim = Object.assign({}, INTAKE_LIMITS, limits || {});\n  const route = (intake && intake.route) || 'registry';\n  const open = !!(intake && intake.open);\n  const sender = senderEmail ? String(senderEmail).toLowerCase() : null;\n\n  const drop = (reason) => ({ accepted: false, drop: true, notify: false, reason, route, open });\n  const refuse = (reason, detail) => ({ accepted: false, drop: false, notify: true, reason, detail: detail || '', route, open, sender_email: sender });\n\n  // --- 1. junk filter (every route) ----------------------------------------\n  const automated = detectAutomated({ headers, subject, senderEmail: sender });\n  if (automated) return drop(automated);\n\n  const body = meaningfulBody(text);\n  if (body.length < lim.min_body_chars) return drop('empty_body');\n\n  // --- everything below guards the PUBLIC address only ----------------------\n  // A registered client on proposal@ is paying for throughput and is not metered.\n  if (!open) {\n    return { accepted: true, drop: false, notify: false, route, open, sender_email: sender, text: String(text == null ? '' : text), truncated: false, body_chars: body.length };\n  }\n\n  // The reply to a public RFQ goes to whoever sent it. With no parseable sender there is nobody\n  // to reply to, and Module 4 would throw much further downstream after all the spend.\n  if (!sender) return refuse('no_sender', 'open intake with no parseable From address');\n\n  // --- 2. size / attachment cap --------------------------------------------\n  const bytes = Number(sizeBytes) || 0;\n  if (bytes > lim.max_email_bytes) {\n    return refuse('oversize', `${Math.round(bytes / 1024)} KB over the ${Math.round(lim.max_email_bytes / 1024)} KB cap`);\n  }\n  const attachments = Number(attachmentCount) || 0;\n  if (attachments > lim.max_attachments) {\n    return refuse('too_many_attachments', `${attachments} attachments over the ${lim.max_attachments} cap`);\n  }\n\n  // --- 3. rate limit, per sender and overall --------------------------------\n  const day = today || new Date().toISOString().slice(0, 10);\n  if (counters.day !== day) {\n    counters.day = day;\n    counters.by_sender = {};\n    counters.open_total = 0;\n  }\n  if (!counters.by_sender) counters.by_sender = {};\n  if (typeof counters.open_total !== 'number') counters.open_total = 0;\n\n  const usedBySender = counters.by_sender[sender] || 0;\n  if (usedBySender >= lim.max_rfq_per_sender_per_day) {\n    return refuse('rate_limited_sender', `${usedBySender} already today, cap ${lim.max_rfq_per_sender_per_day}`);\n  }\n  if (counters.open_total >= lim.max_open_rfq_per_day) {\n    return refuse('rate_limited_global', `${counters.open_total} public RFQs already today, cap ${lim.max_open_rfq_per_day}`);\n  }\n\n  // --- 4. body cap: truncate, do not refuse ---------------------------------\n  const raw = String(text == null ? '' : text);\n  let outText = raw;\n  let truncated = false;\n  if (raw.length > lim.max_body_chars) {\n    outText = `${raw.slice(0, lim.max_body_chars)}\\n\\n[intake guard: truncated ${raw.length - lim.max_body_chars} characters over the ${lim.max_body_chars}-character cap]`;\n    truncated = true;\n  }\n\n  // Quota is spent only by a message that is actually going to be processed.\n  counters.by_sender[sender] = usedBySender + 1;\n  counters.open_total += 1;\n\n  return {\n    accepted: true,\n    drop: false,\n    notify: false,\n    route,\n    open,\n    sender_email: sender,\n    text: outText,\n    truncated,\n    body_chars: body.length,\n    sender_count_today: counters.by_sender[sender],\n    open_total_today: counters.open_total,\n  };\n}\n// === INTAKE CORE END ===\n\n// --- n8n wrapper ---\n// Build the shared envelope from whichever trigger fired, and decide WHICH INTAKE the message\n// arrived through.\n//\n// Client identity comes from the DESTINATION address, not from the sender (decision 2026-08-11):\n// demo@cifral.io is a public intake — any sender, always demo_client, always draft — while\n// proposal@cifral.io keeps the strict sender match, so an unknown sender is still rejected there.\n// The routing itself is INTAKE CORE above; this wrapper only feeds it n8n's item shape.\n//\n// SOURCE OF TRUTH mirrored in modules/intake/intake_core.js — change both, and check with\n// `node modules/intake/intake_core.js`.\nconst t = $input.first().json;\nconst subject = t.subject || t.Subject || 'RFQ';\nconst text = t.text || t.snippet || t.chatInput || t.body || '';\n\n// Gmail with simple:false puts the real headers on payload.headers; a pinned or hand-built item\n// may carry a plain object instead. Whatever the trigger lifted to the top level only fills gaps,\n// never overwrites — the raw header is the one that says where the mail was delivered.\nconst headers = normaliseHeaders((t.payload && t.payload.headers) || t.headers || {});\nfor (const [key, value] of Object.entries({ from: t.from, to: t.to, cc: t.cc })) {\n  if (headers[key] == null && typeof value === 'string' && value) headers[key] = value;\n}\n\nconst sender_email = extractSender(t.from, t.From, headers.from);\n// The chat trigger has neither a sender nor a destination: it stays on demo_client for local\n// testing, exactly as it did before this change.\nconst fallback_client_id = sender_email ? null : DEMO_CLIENT_ID;\nconst intake = resolveIntake(headers);\n\n// What the size guard measures. Nothing in the pipeline ever opens an attachment (Module 1 reads\n// subject + text), so this is only about refusing to carry one.\nconst size_bytes = Number(t.sizeEstimate || t.size || 0) || 0;\nlet attachments = 0;\n(function countParts(part) {\n  if (!part) return;\n  if (part.filename) attachments += 1;\n  if (Array.isArray(part.parts)) part.parts.forEach(countParts);\n})(t.payload);\nconst binaryKeys = Object.keys($input.first().binary || {});\nconst attachment_count = Math.max(attachments, binaryKeys.length, Array.isArray(t.attachments) ? t.attachments.length : 0);\n\n// Thread context — lets the reply land INSIDE the sender's original RFQ thread instead of\n// opening a new conversation. Gmail threads a reply on threadId + a matching subject, so the\n// subject must be the original one prefixed with 'Re: ', never a synthetic one.\n// Chat-trigger runs have no thread; every field is null and threading degrades to a new mail.\nconst thread_id = t.threadId || t.thread_id || null;\nconst message_id = headers['message-id'] || null;\n// Only meaningful when there IS a thread to reply into — otherwise a chat run with no subject\n// would ship a bare 'Re: RFQ' instead of letting the caller build a real one.\nconst reply_subject = thread_id ? (/^re:\\s/i.test(subject) ? subject : `Re: ${subject}`) : null;\nconst email_context = { thread_id, message_id, reply_subject };\n\nreturn [{ json: {\n  sender_email,\n  fallback_client_id,\n  intake,\n  email_meta: { headers, size_bytes, attachment_count },\n  email_context,\n  data: { subject, text }\n} }];"
       },
       "id": "df55d63e-05d5-4876-8a3f-c14d41a8cadb",
       "name": "Build Envelope",
@@ -56,6 +56,52 @@
         -5360,
         -48
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// === INTAKE CORE START ===\n\n// The two public-facing addresses. Both must be VERIFIED \"Send mail as\" aliases on the Gmail\n// account that owns the n8n credential (docs/DEPLOYMENT.md) — they are also what the pipeline\n// replies FROM, chosen by Client Status.\nconst DEMO_INTAKE_ADDRESS = 'demo@cifral.io';\nconst PROPOSAL_INTAKE_ADDRESS = 'proposal@cifral.io';\n\n// The tenant every public RFQ is served by. Its Drive folder holds ONLY generic seed material —\n// see docs/DEMO-INTAKE.md, \"What a stranger can see\".\nconst DEMO_CLIENT_ID = 'demo_client';\n\nconst INTAKE_LIMITS = {\n  // Per sender per UTC day, on the open route only. Registered clients on proposal@ are not\n  // rate limited — they are paying for throughput.\n  max_rfq_per_sender_per_day: 3,\n  // The whole open address per UTC day. Per-sender alone caps nothing: rotating the From costs\n  // an attacker nothing, so this is the ceiling that actually bounds the bill.\n  max_open_rfq_per_day: 25,\n  // Envelope size and attachment count. The pipeline never reads attachments (Module 1 sees\n  // subject + text), so a big one is pure carriage — but generous enough that a real RFQ with\n  // drawings attached still gets through.\n  max_email_bytes: 10 * 1024 * 1024,\n  max_attachments: 10,\n  // The token bill tracks body length, so an over-long body is TRUNCATED rather than rejected:\n  // a genuine 40-page tender still produces a proposal, it just stops paying past the cap.\n  max_body_chars: 20000,\n  // Below this there is nothing to extract. Module 1's own `incomplete` path handles the\n  // merely-thin RFQ; this only catches the empty one.\n  min_body_chars: 80,\n};\n\n// Headers whose mere presence marks machine-generated mail.\nconst AUTOMATED_HEADERS = [\n  'x-autoreply',\n  'x-autorespond',\n  'x-autoresponder',\n  'x-auto-response-suppress',\n  'list-id',\n  'list-unsubscribe',\n  'x-failed-recipients',\n  'feedback-id',\n];\n\n// `Precedence:` values that mean \"not a person writing to you\" (RFC 3834 and common practice).\nconst BULK_PRECEDENCE = ['bulk', 'junk', 'list', 'auto_reply'];\n\n// Subjects of autoresponders and delivery reports, EN + ES + DE (the languages the outbound\n// machine actually writes in).\nconst AUTOMATED_SUBJECT_RE = /^\\s*(re:\\s*|fwd?:\\s*)*(out of office|automatic(al)? reply|auto(matic)?[\\s-]?reply|autoreply|auto:|undeliverable|undelivered mail|delivery (status notification|failure|has failed)|mail delivery (failed|subsystem)|returned mail|failure notice|read receipt|abwesenheits?notiz|automatische antwort|respuesta autom[aá]tica|fuera de la oficina|correo no entregado)/i;\n\n// Local-parts that never belong to a human who wants a proposal back.\nconst NOREPLY_LOCALPART_RE = /^(no[._-]?reply|do[._-]?not[._-]?reply|donotreply|mailer[._-]?daemon|postmaster|bounces?|notifications?|automated?|alerts?|newsletters?)([._+-]|$)/i;\n\nconst EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}/g;\n\n/** Every email address in a header value, lower-cased. */\nfunction addressesIn(value) {\n  if (value == null) return [];\n  return String(value).toLowerCase().match(EMAIL_RE) || [];\n}\n\n/**\n * Flatten whatever header shape the trigger produced into one lower-cased name -> value map.\n *\n * n8n's Gmail trigger with `simple: false` gives `payload.headers` as an array of {name, value};\n * a pinned or hand-built item may give a plain object instead. Repeated headers (several\n * `Received:` or `Delivered-To:` lines) are joined rather than overwritten — the delivery\n * address we are routing on is often in the second one.\n */\nfunction normaliseHeaders(raw) {\n  const out = {};\n  const push = (name, value) => {\n    if (!name || value == null) return;\n    const key = String(name).toLowerCase().trim();\n    const val = typeof value === 'object' ? JSON.stringify(value) : String(value);\n    out[key] = out[key] ? `${out[key]}, ${val}` : val;\n  };\n  if (Array.isArray(raw)) {\n    for (const h of raw) push(h && h.name, h && h.value);\n  } else if (raw && typeof raw === 'object') {\n    for (const key of Object.keys(raw)) push(key, raw[key]);\n  }\n  return out;\n}\n\n/** Pull a sender address out of the many shapes `from` arrives in. */\nfunction extractSender(...candidates) {\n  for (let value of candidates) {\n    if (value && typeof value === 'object') {\n      const first = value.value && value.value[0];\n      value = (first && (first.address || first.value)) || value.address || value.text || '';\n    }\n    const found = addressesIn(value);\n    if (found.length) return found[0];\n  }\n  return null;\n}\n\n/**\n * Decide the intake route from the DESTINATION address.\n *\n * Envelope headers are scanned before the visible ones: `Delivered-To` is what Gmail actually\n * delivered to, whereas `To` is only what the sender typed. Both are checked because alias\n * delivery often leaves the alias in `To` and the underlying mailbox in `Delivered-To`.\n *\n * If BOTH intake addresses appear, demo@ wins. It is the strictly safer of the two — demo tenant,\n * forced draft — so an ambiguous recipient list can never be the thing that buys live sending to\n * a stranger.\n *\n * Any other address (or none at all, e.g. the chat trigger) keeps the registry route, so opening\n * demo@ cannot silently make some third address public too.\n */\nfunction resolveIntake(headers) {\n  const h = headers || {};\n  const pools = ['delivered-to', 'x-original-to', 'envelope-to', 'x-forwarded-to', 'to', 'cc', 'bcc'];\n  const recipients = [];\n  for (const name of pools) recipients.push(...addressesIn(h[name]));\n\n  if (recipients.includes(DEMO_INTAKE_ADDRESS)) {\n    return { route: 'open', address: DEMO_INTAKE_ADDRESS, client_id: DEMO_CLIENT_ID, open: true, recipients };\n  }\n  if (recipients.includes(PROPOSAL_INTAKE_ADDRESS)) {\n    return { route: 'registry', address: PROPOSAL_INTAKE_ADDRESS, client_id: null, open: false, recipients };\n  }\n  return { route: 'registry', address: null, client_id: null, open: false, recipients };\n}\n\n/**\n * Strip a message down to the text a human actually typed, for the emptiness test ONLY.\n *\n * This result is never what Module 1 sees — quoting and signatures are legitimate RFQ context and\n * the extractor is better at reading them than a regex is. It exists so that \"auto-reply with a\n * 400-line quoted thread underneath\" is correctly measured as empty.\n */\nfunction meaningfulBody(raw) {\n  let s = String(raw == null ? '' : raw);\n  s = s.replace(/<(style|script)[\\s\\S]*?<\\/\\1>/gi, ' ').replace(/<[^>]+>/g, ' ');\n  s = s\n    .replace(/&nbsp;/gi, ' ')\n    .replace(/&amp;/gi, '&')\n    .replace(/&lt;/gi, '<')\n    .replace(/&gt;/gi, '>')\n    .replace(/&quot;/gi, '\"')\n    .replace(/&#3?9;/gi, \"'\");\n\n  const kept = [];\n  for (const line of s.split(/\\r?\\n/)) {\n    const t = line.trim();\n    if (!t) continue;\n    if (/^>/.test(t)) continue;\n    if (/^(-{2,}|_{3,}|\\*{3,})\\s*$/.test(t)) break;\n    if (/^(on\\s.+\\swrote:|el\\s.+\\sescribió:|am\\s.+\\sschrieb:|-{2,}\\s*(original message|forwarded message|mensaje original))/i.test(t)) break;\n    kept.push(t);\n  }\n  return kept.join(' ').replace(/\\s+/g, ' ').trim();\n}\n\n/**\n * Is this machine-generated mail rather than someone asking for a quote?\n *\n * Returns a reason string, or null when the message looks human. Applied on EVERY route, not just\n * the open one: an out-of-office was never a valid RFQ on any address, and turning one into a\n * proposal is a bug wherever it happens.\n */\nfunction detectAutomated({ headers, subject, senderEmail }) {\n  const h = headers || {};\n\n  // RFC 3834: 'no' is the only value that means \"a person sent this\".\n  const autoSubmitted = String(h['auto-submitted'] || '').trim().toLowerCase();\n  if (autoSubmitted && autoSubmitted !== 'no') return 'auto_submitted';\n\n  for (const name of AUTOMATED_HEADERS) {\n    if (h[name] != null && String(h[name]).trim() !== '') return 'automated_header';\n  }\n\n  const precedence = String(h.precedence || '').trim().toLowerCase();\n  if (BULK_PRECEDENCE.includes(precedence)) return 'bulk_precedence';\n\n  // A null return-path is the signature of a bounce / delivery status notification.\n  const returnPath = String(h['return-path'] || '').trim();\n  if (returnPath === '<>' || returnPath === '') {\n    if (returnPath === '<>') return 'bounce';\n  }\n\n  if (AUTOMATED_SUBJECT_RE.test(String(subject || ''))) return 'automated_subject';\n\n  const localPart = String(senderEmail || '').split('@')[0];\n  if (localPart && NOREPLY_LOCALPART_RE.test(localPart)) return 'noreply_sender';\n\n  return null;\n}\n\n/**\n * Run every intake guard over one message and say what should happen to it.\n *\n * `counters` is the persisted daily tally — `{ day, by_sender, open_total }`. In n8n it is\n * `$getWorkflowStaticData('global')`; in the self-check it is a plain object. It is mutated in\n * place, and ONLY when a message is accepted, so a rejected message never consumes quota.\n *\n * Returns:\n *   { accepted: false, drop: true,  reason, notify: false }  junk — swallow it silently. A spam\n *                                                            wave must not become a Telegram flood.\n *   { accepted: false, drop: false, reason, notify: true }   refused, and Mark should know.\n *   { accepted: true,  text, truncated, ... }                proceed; `text` may be truncated.\n */\nfunction classifyIntake({\n  intake,\n  senderEmail,\n  subject,\n  text,\n  headers,\n  sizeBytes,\n  attachmentCount,\n  counters,\n  today,\n  limits,\n}) {\n  const lim = Object.assign({}, INTAKE_LIMITS, limits || {});\n  const route = (intake && intake.route) || 'registry';\n  const open = !!(intake && intake.open);\n  const sender = senderEmail ? String(senderEmail).toLowerCase() : null;\n\n  const drop = (reason) => ({ accepted: false, drop: true, notify: false, reason, route, open });\n  const refuse = (reason, detail) => ({ accepted: false, drop: false, notify: true, reason, detail: detail || '', route, open, sender_email: sender });\n\n  // --- 1. junk filter (every route) ----------------------------------------\n  const automated = detectAutomated({ headers, subject, senderEmail: sender });\n  if (automated) return drop(automated);\n\n  const body = meaningfulBody(text);\n  if (body.length < lim.min_body_chars) return drop('empty_body');\n\n  // --- everything below guards the PUBLIC address only ----------------------\n  // A registered client on proposal@ is paying for throughput and is not metered.\n  if (!open) {\n    return { accepted: true, drop: false, notify: false, route, open, sender_email: sender, text: String(text == null ? '' : text), truncated: false, body_chars: body.length };\n  }\n\n  // The reply to a public RFQ goes to whoever sent it. With no parseable sender there is nobody\n  // to reply to, and Module 4 would throw much further downstream after all the spend.\n  if (!sender) return refuse('no_sender', 'open intake with no parseable From address');\n\n  // --- 2. size / attachment cap --------------------------------------------\n  const bytes = Number(sizeBytes) || 0;\n  if (bytes > lim.max_email_bytes) {\n    return refuse('oversize', `${Math.round(bytes / 1024)} KB over the ${Math.round(lim.max_email_bytes / 1024)} KB cap`);\n  }\n  const attachments = Number(attachmentCount) || 0;\n  if (attachments > lim.max_attachments) {\n    return refuse('too_many_attachments', `${attachments} attachments over the ${lim.max_attachments} cap`);\n  }\n\n  // --- 3. rate limit, per sender and overall --------------------------------\n  const day = today || new Date().toISOString().slice(0, 10);\n  if (counters.day !== day) {\n    counters.day = day;\n    counters.by_sender = {};\n    counters.open_total = 0;\n  }\n  if (!counters.by_sender) counters.by_sender = {};\n  if (typeof counters.open_total !== 'number') counters.open_total = 0;\n\n  const usedBySender = counters.by_sender[sender] || 0;\n  if (usedBySender >= lim.max_rfq_per_sender_per_day) {\n    return refuse('rate_limited_sender', `${usedBySender} already today, cap ${lim.max_rfq_per_sender_per_day}`);\n  }\n  if (counters.open_total >= lim.max_open_rfq_per_day) {\n    return refuse('rate_limited_global', `${counters.open_total} public RFQs already today, cap ${lim.max_open_rfq_per_day}`);\n  }\n\n  // --- 4. body cap: truncate, do not refuse ---------------------------------\n  const raw = String(text == null ? '' : text);\n  let outText = raw;\n  let truncated = false;\n  if (raw.length > lim.max_body_chars) {\n    outText = `${raw.slice(0, lim.max_body_chars)}\\n\\n[intake guard: truncated ${raw.length - lim.max_body_chars} characters over the ${lim.max_body_chars}-character cap]`;\n    truncated = true;\n  }\n\n  // Quota is spent only by a message that is actually going to be processed.\n  counters.by_sender[sender] = usedBySender + 1;\n  counters.open_total += 1;\n\n  return {\n    accepted: true,\n    drop: false,\n    notify: false,\n    route,\n    open,\n    sender_email: sender,\n    text: outText,\n    truncated,\n    body_chars: body.length,\n    sender_count_today: counters.by_sender[sender],\n    open_total_today: counters.open_total,\n  };\n}\n// === INTAKE CORE END ===\n\n// --- n8n wrapper ---\n// The intake guards, run BEFORE the registry read and BEFORE Module 1 — the only place they are\n// worth anything, because every node after them costs LLM tokens or Drive calls.\n//\n//   junk filter   -> silent drop: autoresponders, bounces, mailing lists, empty bodies\n//   size cap      -> refused + Telegram\n//   rate limit    -> refused + Telegram (per sender per day, plus a ceiling for the address)\n//   body cap      -> truncated, never refused\n//\n// Registered clients on proposal@ pass everything but the junk filter: they are paying for\n// throughput, and metering them would be a regression. Only the public address is capped.\n//\n// SOURCE OF TRUTH mirrored in modules/intake/intake_core.js — change both, and check with\n// `node modules/intake/intake_core.js`.\nconst env = $('Build Envelope').first().json;\nconst meta = env.email_meta || {};\n\n// The daily tally lives in the workflow's own static data — n8n persists it after each\n// production execution, so a counter this small needs no external store. Two honest caveats:\n// it is per workflow (a second orchestrator would keep its own count), and two executions\n// overlapping within the same tick can both read the pre-increment value. Acceptable for a cap\n// whose job is to bound a bill; it is not a security boundary.\nconst counters = $getWorkflowStaticData('global');\n\nconst verdict = classifyIntake({\n  intake: env.intake,\n  senderEmail: env.sender_email,\n  subject: (env.data && env.data.subject) || '',\n  text: (env.data && env.data.text) || '',\n  headers: meta.headers,\n  sizeBytes: meta.size_bytes,\n  attachmentCount: meta.attachment_count,\n  counters,\n  today: $now.toUTC().toFormat('yyyy-MM-dd'),\n});\n\n// Junk: return no items at all. The branch simply ends, with no Telegram alert — deliberate,\n// because a spam wave must not become a notification flood. The n8n execution log still shows\n// the drop and its reason.\nif (verdict.drop) {\n  console.log(`Intake Guard: dropped (${verdict.reason}) from ${env.sender_email || 'unknown sender'}`);\n  return [];\n}\n\nif (!verdict.accepted) {\n  return [{ json: {\n    accepted: false,\n    resolved: false,\n    reason: verdict.reason,\n    detail: verdict.detail || '',\n    sender_email: verdict.sender_email || env.sender_email || null,\n    intake_address: (env.intake && env.intake.address) || null,\n    data: env.data\n  } }];\n}\n\n// Accepted. `data.text` is the guard's own copy — byte-identical to the original unless the body\n// cap truncated it — so nothing downstream can spend more than the cap's worth of tokens.\nreturn [{ json: {\n  accepted: true,\n  sender_email: env.sender_email,\n  intake: env.intake,\n  email_context: env.email_context,\n  truncated: !!verdict.truncated,\n  sender_count_today: verdict.sender_count_today || null,\n  open_total_today: verdict.open_total_today || null,\n  data: { subject: (env.data && env.data.subject) || 'RFQ', text: verdict.text }\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5136,
+        -48
+      ],
+      "id": "a7c1e4d2-0b93-4f18-9a6e-3d5c81f04b27",
+      "name": "Intake Guard"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "cond-intake-accepted",
+              "leftValue": "={{ $json.accepted }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4928,
+        -48
+      ],
+      "id": "b3f8a615-72cd-4e09-8b41-6ea2d7c95318",
+      "name": "Intake OK?"
     },
     {
       "parameters": {
@@ -76,7 +122,7 @@
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        -5136,
+        -4688,
         -48
       ],
       "credentials": {
@@ -88,14 +134,14 @@
     },
     {
       "parameters": {
-        "jsCode": "// Resolve the client ONCE from the registry by the SENDER's email (or the chat fallback id),\n// enforcing Client Status. The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender: no registry row matches the sender email.\n//   - inactive: the matched client is 'paused' or 'churned'.\nconst env = $('Build Envelope').first().json;\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\nif(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, data: env.data } }]; }\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, data: env.data } }]; }\n\n// Outbound identity. 'trial' clients send from the demo address so pilot traffic stays\n// visibly separate from production. Both must be VERIFIED 'Send mail as' aliases on the\n// Gmail account that owns the credential, or Gmail rejects drafts.send.\n// Keep in sync with 04-proposal-assembly.json -> 'Map Client Config' (standalone fallback).\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nfunction resolveFromAlias(status){ return status === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS; }\n// send_mode is the per-client kill switch: 'send' delivers the reply, 'draft' only parks it\n// in the mailbox (the pre-production behaviour). Anything other than 'draft' means 'send'.\nfunction resolveSendMode(raw){ return String(raw || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'; }\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  proposal_config_sheet_id: prop(match,'property_proposal_config_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id'),\n  from_alias: resolveFromAlias(clientStatus),\n  send_mode: resolveSendMode(prop(match,'property_send_mode'))\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, email_context: env.email_context || null, data: env.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Resolve the client ONCE from the registry, enforcing Client Status. WHICH KEY is used depends\n// on the intake the message came through (decided in 'Build Envelope'):\n//   open route (demo@cifral.io)      -> the client is FIXED to demo_client, whoever wrote in.\n//                                       Nothing about the sender is consulted — that is the point.\n//   registry route (proposal@, etc.) -> the SENDER's address must match a row's\n//                                       commercial_contact_email, or the RFQ is rejected as before.\n// The n8n Notion node flattens properties as 'property_<snake_case>'.\n// Outputs resolved:true (proceed) or resolved:false (rejected) — 'Client OK?' branches on it.\n//   - unknown_sender:        no registry row matches the sender email (registry route only).\n//   - inactive:              the matched client is 'paused' or 'churned'.\n//   - demo_tenant_missing:   the open route resolved but demo_client has no registry row.\n//   - open_intake_misrouted: the open route matched a row that is not the demo tenant.\nconst DEMO_CLIENT_ID = 'demo_client';\nconst env = $('Build Envelope').first().json;\nconst guard = $('Intake Guard').first().json;\nconst intake = guard.intake || env.intake || { route: 'registry', open: false, client_id: null };\nconst senderEmail = (env.sender_email || '').toLowerCase();\nconst fallbackId = env.fallback_client_id;\n// The guard's copy of the message: identical to the original unless the body cap truncated it.\nconst data = guard.data || env.data;\nconst rows = $input.all();\nfunction prop(props, name){ const p = props && props[name]; if(!p && p!==false) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nif(intake.open){\n  for(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'property_client_id')===intake.client_id){ match=props; break; } }\n  if(!match){ return [{ json: { resolved:false, reason:'demo_tenant_missing', client_id: intake.client_id, sender_email: senderEmail||null, intake_address: intake.address||null, data } }]; }\n} else {\n  for(const r of rows){ const props=r.json.properties||r.json; const email=String(prop(props,'property_commercial_contact_email')||'').toLowerCase(); const cid=prop(props,'property_client_id'); if(senderEmail && email && email===senderEmail){ match=props; break; } if(!senderEmail && fallbackId && cid===fallbackId){ match=props; break; } }\n  if(!match){ return [{ json: { resolved:false, reason:'unknown_sender', sender_email: senderEmail||null, intake_address: intake.address||null, data } }]; }\n}\nconst clientStatus = prop(match,'property_client_status');\nconst wantId = prop(match,'property_client_id');\nif(clientStatus==='paused' || clientStatus==='churned'){ return [{ json: { resolved:false, reason:'inactive', client_id: wantId, client_status: clientStatus, sender_email: senderEmail||null, intake_address: intake.address||null, data } }]; }\n\n// Guard 5 backstop. The open route must resolve to the demo tenant and nothing else. If the\n// registry is ever edited so that this lookup lands on another row, a stranger would be served\n// that client's template, clause library and rate card — so it stops here instead.\nif(intake.open && wantId !== DEMO_CLIENT_ID){ return [{ json: { resolved:false, reason:'open_intake_misrouted', client_id: wantId, sender_email: senderEmail||null, intake_address: intake.address||null, data } }]; }\n\n// Outbound identity. 'trial' clients send from the demo address so pilot traffic stays\n// visibly separate from production. Both must be VERIFIED 'Send mail as' aliases on the\n// Gmail account that owns the credential, or Gmail rejects drafts.send.\n// Keep in sync with 04-proposal-assembly.json -> 'Map Client Config' (standalone fallback).\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nfunction resolveFromAlias(status){ return status === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS; }\n// send_mode is the per-client kill switch: 'send' delivers the reply, 'draft' only parks it\n// in the mailbox (the pre-production behaviour). Anything other than 'draft' means 'send'.\nfunction resolveSendMode(raw){ return String(raw || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'; }\n\n// GUARD 1 — nothing reaches a stranger without a human reading it first.\n//\n// Draft is forced HERE, in code, for the whole demo tenant, instead of being read from the\n// registry. The registry read is exactly the failure class that has already cost this system two\n// incidents: a property that is renamed, blanked or mistyped does not raise, it yields undefined,\n// and `String(undefined || 'send')` resolves undefined to the PERMISSIVE option. A public address\n// cannot have a permissive failure mode, so on this path there is no default to fall back to.\n// (docs/14 §2.3 called this risk before it was built. It is not a live bug — n8n snake_cases the\n// Notion property, so `send mode` does arrive as `property_send_mode` — but the default was.)\nconst forceDraft = intake.open || wantId === DEMO_CLIENT_ID;\nconst send_mode = forceDraft ? 'draft' : resolveSendMode(prop(match,'property_send_mode'));\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'property_client_name'),\n  status: clientStatus,\n  service_tier: prop(match,'property_service_tier'),\n  commercial_contact_email: prop(match,'property_commercial_contact_email'),\n  reply_to: senderEmail || prop(match,'property_commercial_contact_email'),\n  templates: { en: prop(match,'property_template_id_en'), es: prop(match,'property_template_id_es') },\n  proposals_folder_id: prop(match,'property_proposals_folder_id'),\n  reference_docs_folder_id: prop(match,'property_reference_docs_folder_id'),\n  pricing_sheet_id: prop(match,'property_pricing_sheet_id'),\n  proposal_config_sheet_id: prop(match,'property_proposal_config_sheet_id'),\n  notification_chat_id: prop(match,'property_notification_chat_id'),\n  from_alias: resolveFromAlias(clientStatus),\n  send_mode,\n  // Travels with the envelope so the last gate before Gmail can re-assert the draft rule\n  // without having to know anything about how the message got here.\n  open_intake: !!intake.open,\n  intake_address: intake.address || null\n};\nreturn [{ json: { resolved:true, client_id: wantId, client_config, sender_email: senderEmail||null, email_context: env.email_context || null, data, status: 'ok', errors: [] } }];"
       },
       "id": "eb7becde-bd78-4ac5-bdfa-c8bfb7057076",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -4944,
+        -4496,
         -48
       ]
     },
@@ -128,14 +174,14 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -4736,
+        -4288,
         -48
       ]
     },
     {
       "parameters": {
         "chatId": "1748634056",
-        "text": "=🚫 RFQ not processed — {{ $json.reason === 'inactive' ? ('client is ' + $json.client_status) : 'unrecognized sender' }}.\n\nSender: {{ $json.sender_email || 'unknown' }}{{ $json.client_id ? ('Client: ' + $json.client_id) : '' }}\n\nAdd or activate this client in the registry to enable processing.",
+        "text": "=🚫 RFQ not processed — {{ ({ unknown_sender: 'sender is not in the client registry', inactive: 'client is ' + ($json.client_status || 'inactive'), demo_tenant_missing: 'demo@ intake resolved, but demo_client has no registry row', open_intake_misrouted: 'demo@ intake matched a row that is NOT demo_client — check the registry', no_sender: 'demo@ intake with no readable From address', oversize: 'email over the size cap', too_many_attachments: 'too many attachments', rate_limited_sender: 'sender over the daily RFQ cap', rate_limited_global: 'demo@ over its global daily RFQ cap' })[$json.reason] || $json.reason }}.\n\nSender: {{ $json.sender_email || 'unknown' }}\n{{ $json.intake_address ? ('Intake: ' + $json.intake_address + '\\n') : '' }}{{ $json.client_id ? ('Client: ' + $json.client_id + '\\n') : '' }}{{ $json.detail ? ('Detail: ' + $json.detail + '\\n') : '' }}\n{{ String($json.reason).startsWith('rate_limited') ? 'Raise the cap in the Intake Guard node if this is legitimate traffic.' : ($json.reason === 'unknown_sender' ? 'Add this client to the registry, or have them write to demo@cifral.io instead.' : 'Check the client registry.') }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -146,7 +192,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        -4416,
+        -3968,
         176
       ],
       "webhookId": "507c764a-a393-430b-a824-2289910667eb",
@@ -183,7 +229,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -4416,
+        -3968,
         -48
       ]
     },
@@ -215,7 +261,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -4192,
+        -3744,
         -48
       ]
     },
@@ -233,7 +279,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        -3968,
+        -3520,
         176
       ],
       "webhookId": "f23bd4cb-b634-472f-93da-9b520e8778d3",
@@ -253,7 +299,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3968,
+        -3520,
         -80
       ]
     },
@@ -336,7 +382,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        -3760,
+        -3312,
         -96
       ]
     },
@@ -349,7 +395,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3520,
+        -3072,
         -416
       ]
     },
@@ -379,20 +425,20 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -3296,
+        -2848,
         -416
       ]
     },
     {
       "parameters": {
-        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\n// client_config rides through Module 3 untouched; fall back to the orchestrator's own\n// resolution if a future change ever drops it, so the alias can never silently go missing.\nconst cfg = j.client_config || $('Map Client Config').first().json.client_config || {};\nconst ec = $('Build Envelope').first().json.email_context || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\n// Reply inside the reseller's own RFQ thread. Gmail only threads when the threadId AND the\n// subject match the original, so a synthetic subject would break out into a new conversation.\nconst subject = ec.reply_subject || `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nconst from_alias = cfg.from_alias || '';\nif (!from_alias) throw new Error(`No from_alias resolved for '${j.client_id}'. Refusing to send from the raw mailbox address.`);\n// Empty string (not null) for threadId: the Gmail node treats it as falsy and omits the\n// field, whereas a null would be serialised into the API call.\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', from_alias, send_mode: cfg.send_mode || 'send', thread_id: ec.thread_id || '', subject, html, company, total: p.total, currency: cur } }];"
+        "jsCode": "// pricing_only deliverable: a price estimate (no proposal document). Draft goes to the\n// client's own commercial contact (G1), never the extracted end customer.\nconst j = $json; // Module 3 output: { client_id, client_config, data:<pricing> }\n// client_config rides through Module 3 untouched; fall back to the orchestrator's own\n// resolution if a future change ever drops it, so the alias can never silently go missing.\nconst cfg = j.client_config || $('Map Client Config').first().json.client_config || {};\nconst ec = $('Build Envelope').first().json.email_context || {};\nconst p = j.data || {};\nconst recipient = cfg.reply_to || cfg.commercial_contact_email;\nif (!recipient) throw new Error(`No reply address for '${j.client_id}' (sender email + commercial_contact_email both empty). Refusing to send the quote to the end customer (gap G1).`);\nconst m1 = $('Call Module 1').first().json;\nconst company = (m1.data && m1.data.client && m1.data.client.company) || 'Client';\nconst cur = p.currency || '';\n// Reply inside the reseller's own RFQ thread. Gmail only threads when the threadId AND the\n// subject match the original, so a synthetic subject would break out into a new conversation.\nconst subject = ec.reply_subject || `Price estimate — ${company}`;\nconst html = `<p>Hi,</p>\\n<p>Here is the price estimate for <b>${company}</b>, for your review before it goes to the customer.</p>\\n<ul>\\n<li>Subtotal: ${p.subtotal} ${cur}</li>\\n<li><b>Total: ${p.total} ${cur}</b></li>\\n<li>Payment terms: ${p.payment_terms || ''}</li>\\n</ul>\\n<p>Priced items: ${(p.priced_categories||[]).join(', ') || 'materials'}.</p>`;\nconst from_alias = cfg.from_alias || '';\nif (!from_alias) throw new Error(`No from_alias resolved for '${j.client_id}'. Refusing to send from the raw mailbox address.`);\n// Empty string (not null) for threadId: the Gmail node treats it as falsy and omits the\n// field, whereas a null would be serialised into the API call.\n// GUARD 1, re-asserted at the last gate before Gmail. A public RFQ never triggers an\n// autonomous reply, whatever the registry or an upstream refactor says.\nconst send_mode = cfg.open_intake === true ? 'draft' : (String(cfg.send_mode || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send');\nreturn [{ json: { client_id: j.client_id, recipient, notification_chat_id: cfg.notification_chat_id, client_status: cfg.status || '', from_alias, send_mode, thread_id: ec.thread_id || '', subject, html, company, total: p.total, currency: cur } }];"
       },
       "id": "a9c6365b-a62c-41a7-a18e-5d265a4dcdc5",
       "name": "Build Quote Draft",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3072,
+        -2624,
         -416
       ]
     },
@@ -413,7 +459,7 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
       "position": [
-        -2848,
+        -2400,
         -416
       ],
       "webhookId": "415a4933-ca21-45cd-9c4c-6869a91e5a28",
@@ -452,7 +498,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -2640,
+        -2192,
         -416
       ]
     },
@@ -472,7 +518,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        -2384,
+        -1936,
         -528
       ],
       "credentials": {
@@ -497,7 +543,7 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        -2144,
+        -1696,
         -400
       ],
       "webhookId": "fded95b6-c0b4-441b-916a-68516fab59f2",
@@ -517,7 +563,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3520,
+        -3072,
         -176
       ]
     },
@@ -547,7 +593,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -3296,
+        -2848,
         -176
       ]
     },
@@ -560,7 +606,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3072,
+        -2624,
         -176
       ]
     },
@@ -590,7 +636,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -2848,
+        -2400,
         -176
       ]
     },
@@ -603,7 +649,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3520,
+        -3072,
         48
       ]
     },
@@ -633,7 +679,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -3296,
+        -2848,
         48
       ]
     },
@@ -646,7 +692,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -3520,
+        -3072,
         272
       ]
     },
@@ -676,7 +722,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -3296,
+        -2848,
         272
       ]
     },
@@ -687,7 +733,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        -3056,
+        -2608,
         160
       ]
     },
@@ -700,7 +746,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -2832,
+        -2384,
         160
       ]
     },
@@ -730,7 +776,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        -2608,
+        -2160,
         160
       ]
     },
@@ -741,7 +787,7 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        -1856,
+        -1408,
         -176
       ]
     },
@@ -756,7 +802,7 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -5088,
+        -4640,
         -480
       ]
     },
@@ -798,7 +844,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -16,
+        432,
         320
       ],
       "id": null,
@@ -821,7 +867,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        208,
+        656,
         224
       ],
       "id": null,
@@ -846,7 +892,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        416,
+        864,
         224
       ],
       "id": null,
@@ -871,7 +917,7 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        624,
+        1072,
         224
       ],
       "id": null,
@@ -886,7 +932,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        848,
+        1296,
         320
       ],
       "id": null,
@@ -901,7 +947,7 @@
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        832,
+        1280,
         320
       ],
       "id": null,
@@ -935,7 +981,36 @@
       "main": [
         [
           {
+            "node": "Intake Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intake Guard": {
+      "main": [
+        [
+          {
+            "node": "Intake OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Intake OK?": {
+      "main": [
+        [
+          {
             "node": "Load Client Registry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Client Rejected",
             "type": "main",
             "index": 0
           }

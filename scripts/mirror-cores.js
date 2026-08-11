@@ -25,6 +25,17 @@ const MIRRORS = [
     targets: [['workflows/03-pricing-commercial-logic.json', 'Compute Pricing']],
   },
   {
+    module: 'modules/intake/intake_core.js',
+    marker: 'INTAKE CORE',
+    // Both nodes get the whole core and each wrapper calls the half it needs — same pattern as
+    // the chapter catalog below. 'Build Envelope' routes on the destination address; 'Intake
+    // Guard' runs the junk/size/rate/body gates before anything expensive is invoked.
+    targets: [
+      ['workflows/00-orchestrator-end-to-end.json', 'Build Envelope'],
+      ['workflows/00-orchestrator-end-to-end.json', 'Intake Guard'],
+    ],
+  },
+  {
     module: 'modules/proposal/render_context.js',
     marker: 'PROPOSAL RENDER CORE',
     targets: [['workflows/04-proposal-assembly.json', 'Compute Proposal Fields']],

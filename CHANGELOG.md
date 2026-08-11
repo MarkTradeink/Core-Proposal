@@ -4,6 +4,79 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Feature — `demo@cifral.io` accepts an RFQ from anyone, in draft mode (2026-08-11)
+Mark's decision, 2026-08-11: the demo address must serve `demo_client` by default and accept RFQs
+from any sender, so the "send me a real RFQ and I'll send back a sample proposal" CTA is literal.
+`proposal@cifral.io` stays reserved for registered clients. Full write-up: `docs/DEMO-INTAKE.md`.
+
+**Identity now comes from the destination, not the sender.** The orchestrator used to resolve a
+client by matching the incoming `From` against `commercial_contact_email`, so a prospect writing
+from their own address matched no row and was rejected — the CTA could only be honoured by having
+Mark forward the RFQ himself. `Build Envelope` now reads the delivery address (`Delivered-To`,
+`X-Original-To`, `Envelope-To`, `To`, `Cc`) and picks a route: mail to `demo@cifral.io` resolves to
+`demo_client` whoever sent it; everything else keeps the strict sender match, and an unknown sender
+is rejected exactly as before. When both intake addresses appear, `demo@` wins — it is the safer
+route, so an ambiguous recipient list can never buy live sending. Any address that is not one of the
+two named constants stays private, so opening one alias opened nothing else.
+
+**The Gmail trigger had to be widened, or none of the above would fire.** Its query filtered on
+`subject:(RFQ OR presupuesto OR …)`, which is right for registered clients — the onboarding guide
+tells them to write "RFQ" — and wrong for a public address, where a prospect writes whatever they
+like and a skipped message leaves no trace anywhere. It now also matches `to:`/`deliveredto:`
+`demo@cifral.io`, so everything sent there enters the pipeline whatever the subject says and the
+guards do the filtering visibly, in the execution log, instead of the subject line doing it
+silently. Other addresses are unaffected.
+
+**A public address needed guards before it needed anything else.** New `Intake Guard` +
+`Intake OK?` nodes sit between `Build Envelope` and the Notion read — before Module 1, because
+anywhere later is too late to save the spend:
+
+- **junk filter** (every route): autoresponders (`Auto-Submitted`, `X-Autoreply`, `Precedence:
+  bulk`, out-of-office subjects in EN/ES/DE), bounces (null `Return-Path`), mailing lists
+  (`List-Id`/`List-Unsubscribe`), no-reply senders and bodies with nothing in them once quoting is
+  stripped. Dropped **silently** — the node returns no items, so the branch ends without firing
+  Telegram. A spam wave must not become a notification flood.
+- **rate limit** (public route): 3 RFQs per sender per UTC day *and* 25 per day for the address
+  overall. Per-sender alone caps nothing — rotating the `From` is free — so the global ceiling is
+  what actually bounds the bill. Counters live in `$getWorkflowStaticData('global')`; documented as
+  a cost control, explicitly not a security boundary.
+- **size cap** (public route): 10 MB, 10 attachments. Attachments are counted, never read.
+- **body cap**: over 20 000 characters the body is truncated, not refused, so a genuine 40-page
+  tender still produces a proposal.
+
+Rate-limit and size refusals alert over Telegram; `Client Rejected` now reports which of the nine
+reasons fired, with the sender, the intake address and a detail line. (It also had a small
+formatting bug — sender and client ran onto one line — fixed in passing.)
+
+**Draft mode is forced in code, not read from Notion.** `docs/14` §2.3 in the Vegapunk repo flagged
+this before it was built, and it was half right. The *read* is fine: n8n snake_cases Notion property
+names, so `send mode` does arrive as `property_send_mode`, and no rename is needed. The *default*
+was not: `String(raw || 'send')` resolves any miss — renamed property, blanked select, Notion
+hiccup — to `send`, which is a permissive failure mode, and a public address cannot have one. So
+`demo_client` and anything arriving through `demo@` are pinned to `draft` in code, at all three
+gates that stand between a rendered proposal and `drafts.send`: the orchestrator's
+`Map Client Config`, its `Build Quote Draft` (the `pricing_only` branch), and Module 4's
+`Compute Proposal Fields` plus its standalone `Map Client Config`. Any one of them is one refactor
+away from being wrong; all three are cheap.
+
+**Cross-client leakage, traced.** The reply now goes to a stranger, so Module 4 was checked for
+whether it can put another client's material in front of them. Structurally it cannot:
+`Load Client Registry` returns every row but `Map Client Config` selects exactly one and returns
+only that, and every artefact Module 4 touches — template, clause library, rate card, folders —
+comes from that single resolved `client_config`. On the public route it is pinned by `client_id`,
+with a backstop (`open_intake_misrouted`) that refuses the run if the lookup ever lands elsewhere.
+The residual risk is operational, not structural, and is written down as a rule:
+`demo_client`'s Drive folder is public-facing, Module 2 grounds its writing on its
+`reference_docs_folder_id`, so that folder may hold generic seed material only.
+
+**New:** `modules/intake/intake_core.js` (routing + guards, mirrored into both nodes by
+`scripts/mirror-cores.js`, 33 self-checks) and `scripts/check-intake-routing.js`, which pulls the
+`jsCode` straight out of the workflow JSON and replays the whole chain — Gmail item → Build Envelope
+→ Intake Guard → Notion rows → Map Client Config → Module 4 — through an n8n shim, against a
+registry holding a second paying client whose field values must appear nowhere in what reaches the
+render. It also walks the graph from every trigger to prove no path reaches the registry read or any
+module without passing the guard. Both run in `npm run check`.
+
 ### Fix — parallel Sheets reads needed a Merge barrier, not three edges into one input (2026-07-26)
 The previous fix (below) parallelized the three Proposal Config reads by connecting all three
 directly into the same input index of `Build Proposal Config`, assuming n8n would wait for all
