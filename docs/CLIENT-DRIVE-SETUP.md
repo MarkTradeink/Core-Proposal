@@ -189,12 +189,27 @@ the sheet empty and the catalog decides everything.
 |---|---|
 | `chapter_id` | An id from `schemas/chapter-catalog.json`. Applies to chapters *and* subsections. |
 | `include` | `yes` forces the chapter in, `no` forces it out. **Empty means "let the catalog decide"** — which is usually what you want, because the catalog already drops chapters that are out of tier or out of scope. |
-| `order` | A number that moves the chapter. Chapters are ordered by this value; the catalog uses multiples of ten, so `15` puts something between chapter 1 and chapter 2. Leave empty to keep the default position. |
+| `order` | A number that sets the chapter's **number** and its place in the resolved chapter list. The catalog uses multiples of ten, so `15` puts something between chapter 1 and chapter 2. Leave empty to keep the default. **It does not move the chapter in the document** — see below. |
 | `title_es` / `title_en` | Rename the chapter. Empty keeps the catalog title. |
 | `tier` | Reserved for per-chapter tier overrides. Leave empty. |
 | `notes` | For humans. Nothing reads it. |
 
 An unknown `chapter_id` is ignored and reported as a warning — it does not silently do nothing.
+
+### `order` numbers a chapter; the template positions it
+
+Where a chapter physically appears is decided by **where its block sits in the `.docx`**, because
+docxtemplater fills each block where it finds it. `order` cannot move it.
+
+In practice this does not produce a document that contradicts itself, because the contents list is
+a real Word TOC built from the finished document, and Word numbers the headings by their position
+too — so what the reader sees is always consistent. What `order` does change is `{<id>.numero}`,
+which is what cross-references in body text use.
+
+So: **to move a chapter, move its `{#has_<id>}` … `{/has_<id>}` block in the template**, and set
+`order` to match if anything cross-references it.
+
+
 
 ### Adding a chapter the catalog does not have
 

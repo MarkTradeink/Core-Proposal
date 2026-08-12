@@ -1,255 +1,335 @@
 kind,id,chapter_id,lang,applies_when,title,body
-premise,pre_01,limites_alcance_premisas,es,always,,La documentación técnica facilitada por el Cliente refleja fielmente la instalación existente en el momento de la oferta.
-premise,pre_02,limites_alcance_premisas,es,always,,Los equipos existentes que no se sustituyen se encuentran en estado operativo y con su mantenimiento al día.
-premise,pre_03,limites_alcance_premisas,es,scope:installation,,"Se dispone de acceso al área de trabajo en las ventanas horarias acordadas, libre de obstáculos y de otros gremios."
-premise,pre_04,limites_alcance_premisas,es,scope:installation,,El Cliente facilita punto de acopio cubierto y con seguridad para materiales y herramienta durante la ejecución.
-premise,pre_05,limites_alcance_premisas,es,always,,"Las infraestructuras existentes (canalizaciones, bandejas, cuadros, tomas de tierra) son aptas para su reutilización."
-premise,pre_06,limites_alcance_premisas,es,scope:commissioning,,El Cliente dispone de personal de operación y mantenimiento durante la puesta en marcha y las pruebas de aceptación.
-premise,pre_07,limites_alcance_premisas,es,always,,Los plazos indicados parten de la fecha de recepción del pedido en firme y de la aprobación de la ingeniería de detalle.
-premise,pre_08,limites_alcance_premisas,es,tier:C,,La información del pliego es completa y no sufrirá modificaciones sustanciales tras la presentación de la oferta.
-premise,pre_01,limites_alcance_premisas,en,always,,The technical documentation supplied by the Client faithfully reflects the existing installation at the time of this offer.
-premise,pre_02,limites_alcance_premisas,en,always,,Existing equipment that is not being replaced is operational and up to date with its maintenance.
-premise,pre_03,limites_alcance_premisas,en,scope:installation,,"Access to the work area is available within the agreed time windows, clear of obstructions and of other trades."
-premise,pre_04,limites_alcance_premisas,en,scope:installation,,"The Client provides a covered, secured storage area for materials and tools during execution."
-premise,pre_05,limites_alcance_premisas,en,always,,"Existing infrastructure (conduits, trays, cabinets, earthing) is suitable for reuse."
-premise,pre_06,limites_alcance_premisas,en,scope:commissioning,,The Client makes operations and maintenance personnel available during commissioning and acceptance testing.
-premise,pre_07,limites_alcance_premisas,en,always,,Stated lead times run from receipt of a firm order and approval of the detailed engineering.
-premise,pre_08,limites_alcance_premisas,en,tier:C,,The tender information is complete and will not be substantially amended after submission.
-exclusion,exc_01,limites_alcance_exclusiones,es,always,,"Obra civil de cualquier naturaleza: cimentaciones, forjados, aperturas, refuerzos estructurales."
-exclusion,exc_02,limites_alcance_exclusiones,es,always,,"Suministro eléctrico hasta el cuadro general de la instalación, y cualquier modificación de la acometida."
-exclusion,exc_03,limites_alcance_exclusiones,es,always,,"Desmontaje, transporte y gestión de residuos de los equipos retirados, salvo indicación expresa en el alcance."
-exclusion,exc_04,limites_alcance_exclusiones,es,always,,"Trabajos de protección contra incendios, detección o extinción."
-exclusion,exc_05,limites_alcance_exclusiones,es,always,,"Licencias, permisos, tasas y visados administrativos ante organismos públicos."
-exclusion,exc_06,limites_alcance_exclusiones,es,always,,"Evaluación de conformidad y marcado CE del conjunto de la instalación. Si la intervención constituye una modificación sustancial en el sentido del Reglamento (UE) 2023/1230, la nueva evaluación de conformidad se cotiza aparte."
-exclusion,exc_07,limites_alcance_exclusiones,es,always,,Medios de elevación y andamiaje de más de 3 m de altura.
-exclusion,exc_08,limites_alcance_exclusiones,es,no_pricing,,Cualquier concepto económico: esta propuesta es exclusivamente técnica.
-exclusion,exc_09,limites_alcance_exclusiones,es,scope:installation,,Trabajos en festivos o en turnos no acordados en las condiciones del emplazamiento.
-exclusion,exc_10,limites_alcance_exclusiones,es,always,,Repuestos consumibles y elementos de desgaste durante el periodo de garantía.
-exclusion,exc_01,limites_alcance_exclusiones,en,always,,"Civil works of any kind: foundations, slabs, openings, structural reinforcement."
-exclusion,exc_02,limites_alcance_exclusiones,en,always,,"Power supply up to the installation's main distribution board, and any change to the incoming supply."
-exclusion,exc_03,limites_alcance_exclusiones,en,always,,"Dismantling, transport and waste management of removed equipment, unless expressly stated in the scope."
-exclusion,exc_04,limites_alcance_exclusiones,en,always,,"Fire protection, detection or suppression work."
-exclusion,exc_05,limites_alcance_exclusiones,en,always,,"Licences, permits, fees and administrative approvals from public bodies."
-exclusion,exc_06,limites_alcance_exclusiones,en,always,,"Conformity assessment and CE marking of the installation as a whole. Where the work constitutes a substantial modification within the meaning of Regulation (EU) 2023/1230, the new conformity assessment is quoted separately."
-exclusion,exc_07,limites_alcance_exclusiones,en,always,,Lifting equipment and scaffolding above 3 m.
-exclusion,exc_08,limites_alcance_exclusiones,en,no_pricing,,Any commercial figure: this proposal is technical only.
-exclusion,exc_09,limites_alcance_exclusiones,en,scope:installation,,Work on public holidays or in shifts not agreed in the site conditions.
-exclusion,exc_10,limites_alcance_exclusiones,en,always,,Consumables and wear parts during the warranty period.
-obligation,obl_01,condiciones_sitio_obligaciones,es,always,,Designar un interlocutor único con capacidad de decisión técnica durante toda la ejecución.
-obligation,obl_02,condiciones_sitio_obligaciones,es,scope:installation,,"Facilitar accesos, acreditaciones y formación de acceso al centro para el personal asignado, con al menos 10 días de antelación."
-obligation,obl_03,condiciones_sitio_obligaciones,es,scope:installation,,Poner a disposición suministro eléctrico y aire comprimido en el área de trabajo.
-obligation,obl_04,condiciones_sitio_obligaciones,es,always,,Aprobar la documentación de ingeniería en los plazos acordados; los retrasos en la aprobación desplazan el plazo de entrega.
-obligation,obl_05,condiciones_sitio_obligaciones,es,scope:commissioning,,Detener y liberar el sistema en las ventanas acordadas para las pruebas de aceptación.
-obligation,obl_06,condiciones_sitio_obligaciones,es,always,,Entregar la información de coordinación de actividades empresariales exigida por el RD 171/2004 antes del inicio de los trabajos.
-obligation,obl_01,condiciones_sitio_obligaciones,en,always,,Appoint a single point of contact with technical decision-making authority for the duration of the work.
-obligation,obl_02,condiciones_sitio_obligaciones,en,scope:installation,,"Provide site access, clearances and site induction for the assigned personnel at least 10 days in advance."
-obligation,obl_03,condiciones_sitio_obligaciones,en,scope:installation,,Make electrical supply and compressed air available in the work area.
-obligation,obl_04,condiciones_sitio_obligaciones,en,always,,Approve engineering documentation within the agreed periods; approval delays shift the delivery date.
-obligation,obl_05,condiciones_sitio_obligaciones,en,scope:commissioning,,Stop and release the system within the agreed windows for acceptance testing.
-obligation,obl_06,condiciones_sitio_obligaciones,en,always,,Supply the contractor-coordination information required by the applicable health and safety regulations before work starts.
-clause,bo_premisas,bases_oferta_premisas,es,always,,"Esta oferta se emite sobre la base de la información facilitada por el Cliente y de las premisas recogidas en el capítulo de límites del alcance. Cualquier discrepancia entre dicha información y la situación real encontrada en el emplazamiento podrá dar lugar a una revisión del alcance, del plazo o del precio.
+clause,bo_estandar,bases_oferta,es,,,"Si no se ha especificado previamente, esta oferta se basa estrictamente en el estándar de diseño y en las especificaciones de los equipos de BEUMER Group."
+clause,bo_estandar,bases_oferta,en,,,"Unless otherwise specified, this offer is based strictly on BEUMER Group's design standard and equipment specifications."
+clause,as_documentacion,alcance_suministro_documentacion,es,,,"La documentación afectada por la intervención se actualiza y se entrega en formato electrónico, conforme a los estándares habituales de BEUMER y en el idioma de esta oferta.
 
-La oferta constituye una propuesta completa e indivisible: la aceptación parcial de partidas requiere una revisión previa por nuestra parte."
-clause,bo_premisas,bases_oferta_premisas,en,always,,"This offer is issued on the basis of the information provided by the Client and the assumptions set out in the scope boundaries chapter. Any discrepancy between that information and the situation actually found on site may lead to a revision of scope, schedule or price.
+•  Actualización de los esquemas eléctricos de los armarios afectados.
+•  Documentación técnica de los equipos suministrados.
+•  Información de configuración relevante para el mantenimiento.
+•  Protocolos de prueba firmados."
+clause,as_documentacion,alcance_suministro_documentacion,en,,,"The documentation affected by the works is updated and delivered electronically, in line with BEUMER's usual standards and in the language of this offer.
 
-The offer is a complete and indivisible proposal: partial acceptance of individual items requires our prior review."
-clause,cs_area,condiciones_sitio_area,es,scope:installation,,"Los trabajos se ejecutan en el área designada por el Cliente, que deberá estar despejada y delimitada antes del inicio.
+•  Updated electrical drawings for the affected cabinets.
+•  Technical documentation for the supplied equipment.
+•  Configuration information relevant to maintenance.
+•  Signed test protocols."
+clause,ej_envio,ejecucion_transporte,es,scope:shipping,,"El suministro incluye el embalaje y el transporte del material hasta las instalaciones del Cliente bajo Incoterms DAP.
 
-•  El área se entrega libre de material ajeno a la intervención.
-•  Se dispone de iluminación suficiente para trabajos de precisión.
-•  La coexistencia con otros gremios se coordina previamente en la reunión de arranque."
-clause,cs_area,condiciones_sitio_area,en,scope:installation,,"The work is carried out in the area designated by the Client, which must be clear and demarcated before work starts.
+El Cliente será responsable de recibir, descargar y almacenar el material en un lugar seguro, protegido y conocido."
+clause,ej_envio,ejecucion_transporte,en,scope:shipping,,"The supply includes packing and transport of the material to the Client's premises under Incoterms DAP.
 
-•  The area is handed over free of material unrelated to the work.
-•  Adequate lighting for precision work is available.
-•  Coexistence with other trades is coordinated in advance at the kick-off meeting."
-clause,cs_jornadas,condiciones_sitio_jornadas,es,always,,"Salvo indicación en contrario, la oferta contempla jornada laboral de lunes a viernes en horario diurno.
+The Client is responsible for receiving, unloading and storing the material in a safe, protected and identified location."
+clause,ej_recepcion,ejecucion_recepcion,es,scope:commissioning,,"Tras la finalización del plan de pruebas se procede a la aceptación de los trabajos por parte del Cliente.
 
-Los trabajos que requieran parada del sistema se planifican en las ventanas acordadas con el Cliente. Los trabajos nocturnos, en fin de semana o en festivo se cotizan aparte según las tarifas recogidas en la oferta económica."
-clause,cs_jornadas,condiciones_sitio_jornadas,en,always,,"Unless stated otherwise, the offer assumes a Monday-to-Friday daytime working week.
+La aceptación se documenta y recoge, en su caso, los puntos pendientes y su plazo de subsanación. Los puntos pendientes que no impidan la operación normal del sistema no suspenden la aceptación."
+clause,ej_recepcion,ejecucion_recepcion,en,scope:commissioning,,"Once the test plan is complete, the works are accepted by the Client.
 
-Work requiring a system stoppage is scheduled within windows agreed with the Client. Night, weekend and public-holiday work is quoted separately at the rates given in the commercial section."
-clause,cs_suministros,condiciones_sitio_suministros,es,scope:installation,,"El Cliente pone a disposición, sin coste:
+Acceptance is documented and records any outstanding items and their remedy period. Outstanding items that do not prevent normal operation of the system do not suspend acceptance."
+clause,cu1_recurso,custom_1,es,scope:installation,,"La ejecución de los trabajos incluye la figura del recurso preventivo exigida por la normativa española de prevención de riesgos laborales, cuando la actividad lo requiera.
 
-•  Suministro eléctrico y aire comprimido en el área de trabajo.
-•  Zona de acopio cubierta y con control de acceso.
-•  Aseos y vestuarios para el personal asignado.
-•  Medios de elevación fijos ya existentes en la instalación."
-clause,cs_suministros,condiciones_sitio_suministros,en,scope:installation,,"The Client provides, at no cost:
+•  Designación de recurso preventivo durante las actividades que lo exijan.
+•  Aportación de la documentación de coordinación de actividades empresariales antes del inicio de los trabajos.
+•  Personal con formación en prevención y reconocimiento médico en vigor.
+•  Evaluación de riesgos específica para los trabajos que se ejecuten con el sistema en operación."
+clause,cu1_recurso,custom_1,en,scope:installation,,"The works include the preventive resource role required by Spanish occupational health and safety regulations, where the activity calls for it.
 
-•  Electrical supply and compressed air in the work area.
-•  A covered storage area with access control.
-•  Washrooms and changing facilities for the assigned personnel.
-•  Fixed lifting equipment already present in the installation."
-clause,la_interfaces,limites_alcance_interfaces,es,always,,"El límite de suministro se sitúa en los puntos de conexión definidos en la documentación de ingeniería. Aguas arriba y aguas abajo de dichos puntos, la instalación es responsabilidad del Cliente.
+•  A designated preventive resource during the activities that require one.
+•  Contractor-coordination documentation provided before work starts.
+•  Personnel with current safety training and medical clearance.
+•  A specific risk assessment for work carried out with the system in operation."
+clause,cu2_omp,custom_2,es,,,"Tras la puesta en marcha se contempla un periodo de acompañamiento a la operativa del Cliente, orientado a estabilizar el sistema en condiciones reales de producción.
 
-Las señales de interfaz con sistemas de terceros se intercambian según el protocolo acordado en la fase de ingeniería. La disponibilidad y la documentación de esos sistemas de terceros son responsabilidad del Cliente."
-clause,la_interfaces,limites_alcance_interfaces,en,always,,"The battery limit is at the connection points defined in the engineering documentation. Upstream and downstream of those points the installation is the Client's responsibility.
+•  Presencia de personal de BEUMER durante la operación del sistema.
+•  Ajuste fino de parámetros en función del comportamiento observado.
+•  Resolución de incidencias derivadas de la puesta en marcha.
+•  Transferencia de conocimiento al personal de mantenimiento del Cliente.
 
-Interface signals with third-party systems are exchanged using the protocol agreed during the engineering phase. Availability and documentation of those third-party systems are the Client's responsibility."
-clause,la_cambios,limites_alcance_cambios,es,always,,"Se tramitará una orden de cambio, con su correspondiente valoración de plazo y coste, cuando concurra alguna de las siguientes circunstancias:
+La duración del periodo se indica en el alcance de suministro. Su extensión se cotiza como opción."
+clause,cu2_omp,custom_2,en,,,"After commissioning, a period of support to the Client's operation is provided, aimed at stabilising the system under real production conditions.
 
-•  Incumplimiento de cualquiera de las premisas numeradas en este capítulo.
-•  Modificación del alcance solicitada por el Cliente tras la aprobación de la ingeniería.
+•  BEUMER personnel present while the system is operating.
+•  Fine-tuning of parameters based on observed behaviour.
+•  Resolution of issues arising from commissioning.
+•  Knowledge transfer to the Client's maintenance personnel.
+
+The duration is stated in the scope of supply. Extending it is quoted as an option."
+clause,cs_operacion,condiciones_sitio_entorno,es,,,"Para la ejecución de los trabajos será necesario que el sistema, o la zona afectada, se encuentre fuera de servicio durante la intervención y su posterior verificación.
+
+El Cliente deberá garantizar la disponibilidad del sistema en las fechas acordadas y en condiciones seguras para la intervención antes del inicio de los trabajos.
+
+•  Instalación en interior, en local seco y no clasificado desde el punto de vista eléctrico.
+•  Temperatura ambiente entre +5 y +40 °C, sin condensación.
+•  Humedad relativa entre 0 y 95 %, sin condensación."
+clause,cs_operacion,condiciones_sitio_entorno,en,,,"The system, or the affected area, must be out of service while the work is carried out and verified.
+
+The Client shall guarantee the availability of the system on the agreed dates and in safe conditions for the intervention before work starts.
+
+•  Indoor installation, in a dry room that is unclassified in electrical terms.
+•  Ambient temperature between +5 and +40 °C, non-condensing.
+•  Relative humidity between 0 and 95 %, non-condensing."
+clause,cs_ventanas,condiciones_sitio_jornadas,es,,,"Los trabajos se ejecutan durante ventanas de intervención acordadas con el Cliente. Su duración y planificación detallada se definen en la fase de gestión de proyecto, en función de la disponibilidad del sistema.
+
+Es probable que las ventanas se asignen en horario nocturno, en fin de semana o en periodos de no producción; el precio de esta oferta se ha calculado sobre esa base.
+
+Los trabajos fuera del horario acordado se consideran adicionales y se facturan según las tarifas de BEUMER vigentes en ese momento."
+clause,cs_ventanas,condiciones_sitio_jornadas,en,,,"The works are carried out within intervention windows agreed with the Client. Their duration and detailed planning are defined during the project management phase, subject to system availability.
+
+Windows are likely to fall at night, at weekends or during non-production periods; the price in this offer is calculated on that basis.
+
+Work outside the agreed hours is treated as additional and invoiced at BEUMER's rates in force at the time."
+clause,cs_instalacion,condiciones_sitio_area,es,scope:installation,,"Las zonas de instalación deberán estar secas, limpias, accesibles y libres de cualquier otra actividad durante los periodos de trabajo acordados.
+
+El sistema completo deberá estar vacío de mercancía y de artículos antes de comenzar la instalación y la puesta en marcha.
+
+•  El área de trabajo permitirá el desmontaje, la instalación y la verificación sin interferencias.
+•  Los armarios y equipos objeto de la intervención estarán accesibles.
+•  Los pasillos y las vías de evacuación se mantendrán seguros y señalizados."
+clause,cs_instalacion,condiciones_sitio_area,en,scope:installation,,"The installation areas must be dry, clean, accessible and free of any other activity during the agreed working periods.
+
+The complete system must be empty of goods and items before installation and commissioning begin.
+
+•  The work area shall allow dismantling, installation and verification without interference.
+•  The cabinets and equipment covered by the works shall be accessible.
+•  Walkways and escape routes shall be kept safe and marked."
+clause,cs_suministros,condiciones_sitio_suministros,es,,,"El Cliente pondrá a disposición de BEUMER, sin coste:
+
+•  Energía eléctrica permanente e iluminación adecuada para la instalación, la puesta en marcha y las pruebas.
+•  Tomas de corriente en las proximidades del área de trabajo para la conexión de herramienta eléctrica.
+•  Zona de acopio cubierta, con acceso restringido y en las proximidades de la zona de intervención.
+•  Contenedores de residuos junto al área de trabajo para su segregación.
+•  Conexión VPN operativa con acceso a los PLC del sistema para el soporte remoto.
+•  Aseos, vestuarios y zona de descanso para el personal asignado."
+clause,cs_suministros,condiciones_sitio_suministros,en,,,"The Client shall make available to BEUMER, at no cost:
+
+•  Permanent power and adequate lighting for installation, commissioning and testing.
+•  Power sockets close to the work area for connecting power tools.
+•  A covered storage area with restricted access, close to the work area.
+•  Waste containers next to the work area for segregation.
+•  A working VPN connection with access to the system PLCs for remote support.
+•  Washrooms, changing facilities and a rest area for the assigned personnel."
+clause,cs_acceso,condiciones_sitio_accesos,es,,,"El Cliente será responsable de gestionar el acceso del personal de BEUMER a la instalación y de proporcionar los permisos necesarios para la ejecución de los trabajos.
+
+Los pases y la documentación de acceso se gestionan a través de la plataforma de coordinación que el Cliente tenga establecida. BEUMER mantendrá actualizada dicha plataforma con la documentación de prevención de riesgos laborales del personal asignado.
+
+Los trabajos se ejecutarán conforme a la normativa aplicable en materia de seguridad y prevención de riesgos laborales. El Cliente garantizará que el entorno de trabajo cumple las condiciones de seguridad necesarias."
+clause,cs_acceso,condiciones_sitio_accesos,en,,,"The Client is responsible for arranging BEUMER personnel's access to the site and for providing the permits required to carry out the works.
+
+Passes and access documentation are handled through whichever coordination platform the Client has in place. BEUMER will keep that platform up to date with the health and safety documentation of the assigned personnel.
+
+The works are carried out in accordance with the applicable occupational health and safety regulations. The Client shall ensure that the working environment meets the necessary safety conditions."
+obligation,obl_01,condiciones_sitio_obligaciones,es,,,"Designar un responsable técnico, o representante cualificado, que conozca los detalles del proyecto y esté disponible durante la instalación, la puesta en marcha y las pruebas, y que será responsable de la aceptación."
+obligation,obl_01,condiciones_sitio_obligaciones,en,,,"Appoint a technical manager, or qualified representative, familiar with the project details and available during installation, commissioning and testing, who will be responsible for acceptance."
+obligation,obl_02,condiciones_sitio_obligaciones,es,,,Garantizar la disponibilidad del sistema en las fechas acordadas y en condiciones seguras antes del inicio de los trabajos.
+obligation,obl_02,condiciones_sitio_obligaciones,en,,,Guarantee the availability of the system on the agreed dates and in safe conditions before work starts.
+obligation,obl_03,condiciones_sitio_obligaciones,es,,,Gestionar el acceso del personal de BEUMER a la instalación y proporcionar los permisos necesarios.
+obligation,obl_03,condiciones_sitio_obligaciones,en,,,Arrange access to the site for BEUMER personnel and provide the necessary permits.
+obligation,obl_04,condiciones_sitio_obligaciones,es,,,"Proporcionar energía eléctrica permanente e iluminación adecuada para la instalación, la puesta en marcha y las pruebas."
+obligation,obl_04,condiciones_sitio_obligaciones,en,,,"Provide permanent power and adequate lighting for installation, commissioning and testing."
+obligation,obl_05,condiciones_sitio_obligaciones,es,,,"Proporcionar una zona de almacenamiento adecuada, con acceso restringido, en las proximidades de la zona de intervención."
+obligation,obl_05,condiciones_sitio_obligaciones,en,,,"Provide a suitable storage area with restricted access, close to the work area."
+obligation,obl_06,condiciones_sitio_obligaciones,es,,,Disponer de una conexión VPN operativa con acceso a los PLC del sistema para el soporte remoto de los ingenieros de BEUMER.
+obligation,obl_06,condiciones_sitio_obligaciones,en,,,Provide a working VPN connection with access to the system PLCs for remote support by BEUMER engineers.
+obligation,obl_07,condiciones_sitio_obligaciones,es,scope:installation,,Vaciar el sistema de mercancía y de artículos antes del inicio de la instalación y de la puesta en marcha.
+obligation,obl_07,condiciones_sitio_obligaciones,en,scope:installation,,Empty the system of goods and items before installation and commissioning begin.
+obligation,obl_08,condiciones_sitio_obligaciones,es,scope:commissioning,,"Suministrar los artículos etiquetados y el personal necesarios para la ejecución de las pruebas, así como la energía y los consumibles asociados."
+obligation,obl_08,condiciones_sitio_obligaciones,en,scope:commissioning,,"Supply the labelled items and personnel needed to run the tests, together with the associated power and consumables."
+obligation,obl_09,condiciones_sitio_obligaciones,es,,,Proporcionar contenedores de residuos junto al área de trabajo para la segregación de los materiales retirados.
+obligation,obl_09,condiciones_sitio_obligaciones,en,,,Provide waste containers next to the work area for segregating removed materials.
+obligation,obl_10,condiciones_sitio_obligaciones,es,,,Aprobar la documentación técnica en los plazos acordados; los retrasos en la aprobación desplazan el plazo de ejecución.
+obligation,obl_10,condiciones_sitio_obligaciones,en,,,Approve the technical documentation within the agreed periods; approval delays shift the execution schedule.
+premise,pre_01,limites_alcance_premisas,es,,,La intervención puede ejecutarse sobre la instalación existente sin modificaciones estructurales significativas.
+premise,pre_01,limites_alcance_premisas,en,,,The works can be carried out on the existing installation without significant structural modifications.
+premise,pre_02,limites_alcance_premisas,es,,,La configuración actual de la instalación se corresponde con la configuración técnica prevista en esta oferta. Cualquier desviación podrá requerir ajustes adicionales.
+premise,pre_02,limites_alcance_premisas,en,,,The current configuration of the installation matches the technical configuration assumed in this offer. Any deviation may require additional adjustments.
+premise,pre_03,limites_alcance_premisas,es,,,"La interfaz con el sistema de control existente (PLC y comunicaciones de campo) se mantiene sin cambios significativos, más allá de las adaptaciones necesarias para la integración."
+premise,pre_03,limites_alcance_premisas,en,,,"The interface with the existing control system (PLC and field communications) remains substantially unchanged, beyond the adaptations needed for integration."
+premise,pre_04,limites_alcance_premisas,es,,,La documentación técnica facilitada por el Cliente refleja fielmente la instalación existente en el momento de la oferta.
+premise,pre_04,limites_alcance_premisas,en,,,The technical documentation provided by the Client faithfully reflects the existing installation at the time of this offer.
+premise,pre_05,limites_alcance_premisas,es,,,"La infraestructura existente (canalizaciones, bandejas, armarios y tomas de tierra) es apta para su reutilización."
+premise,pre_05,limites_alcance_premisas,en,,,"The existing infrastructure (conduits, trays, cabinets and earthing) is suitable for reuse."
+premise,pre_06,limites_alcance_premisas,es,,,Los equipos existentes que no se sustituyen se encuentran en estado operativo y con su mantenimiento al día.
+premise,pre_06,limites_alcance_premisas,en,,,Existing equipment that is not being replaced is operational and up to date with its maintenance.
+premise,pre_07,limites_alcance_premisas,es,,,Los plazos indicados parten de la recepción del pedido en firme y de la confirmación de la disponibilidad de los equipos.
+premise,pre_07,limites_alcance_premisas,en,,,The stated lead times run from receipt of a firm order and confirmation of equipment availability.
+premise,pre_08,limites_alcance_premisas,es,,,"El Cliente facilita una ventana de intervención dentro del ejercicio previsto en esta oferta. En caso contrario, los precios y los plazos deberán revisarse."
+premise,pre_08,limites_alcance_premisas,en,,,The Client provides an intervention window within the year assumed in this offer. Otherwise prices and schedules must be revised.
+premise,pre_09,limites_alcance_premisas,es,scope:commissioning,,El Cliente dispone de personal de operación y mantenimiento durante la puesta en marcha y las pruebas de aceptación.
+premise,pre_09,limites_alcance_premisas,en,scope:commissioning,,The Client makes operations and maintenance personnel available during commissioning and acceptance testing.
+exclusion,exc_01,limites_alcance_exclusiones,es,,,Suministro de recambios adicionales a los expresamente incluidos en el alcance.
+exclusion,exc_01,limites_alcance_exclusiones,en,,,Supply of spare parts beyond those expressly included in the scope.
+exclusion,exc_02,limites_alcance_exclusiones,es,,,Sustitución completa de armarios o envolventes no indicados expresamente en el alcance.
+exclusion,exc_02,limites_alcance_exclusiones,en,,,Complete replacement of cabinets or enclosures not expressly stated in the scope.
+exclusion,exc_03,limites_alcance_exclusiones,es,,,"Modificaciones en sensores, cableado de campo o elementos externos a los equipos ofertados."
+exclusion,exc_03,limites_alcance_exclusiones,en,,,"Modifications to sensors, field wiring or elements outside the quoted equipment."
+exclusion,exc_04,limites_alcance_exclusiones,es,,,Cambios funcionales en la lógica de control o de seguridad más allá de la adaptación necesaria para la integración de los nuevos equipos.
+exclusion,exc_04,limites_alcance_exclusiones,en,,,Functional changes to the control or safety logic beyond the adaptation needed to integrate the new equipment.
+exclusion,exc_05,limites_alcance_exclusiones,es,,,Modificaciones en el sistema de control principal (PLC) no directamente relacionadas con la integración objeto de esta oferta.
+exclusion,exc_05,limites_alcance_exclusiones,en,,,Modifications to the main control system (PLC) not directly related to the integration covered by this offer.
+exclusion,exc_06,limites_alcance_exclusiones,es,,,Modificaciones de la arquitectura de red o del sistema de control fuera de las expresamente contempladas.
+exclusion,exc_06,limites_alcance_exclusiones,en,,,Changes to the network or control system architecture beyond those expressly covered.
+exclusion,exc_07,limites_alcance_exclusiones,es,,,Adecuaciones a normativa vigente que no estén directamente asociadas a la intervención ofertada.
+exclusion,exc_07,limites_alcance_exclusiones,en,,,Bringing the installation into line with current regulations where not directly associated with the quoted works.
+exclusion,exc_08,limites_alcance_exclusiones,es,,,"Reparación o corrección de averías preexistentes, defectos ocultos o daños no detectables previamente."
+exclusion,exc_08,limites_alcance_exclusiones,en,,,"Repair or correction of pre-existing faults, hidden defects or damage that could not be detected beforehand."
+exclusion,exc_09,limites_alcance_exclusiones,es,,,Trabajos adicionales derivados de un estado real de la instalación distinto al previsto en esta oferta.
+exclusion,exc_09,limites_alcance_exclusiones,en,,,Additional work arising from an actual condition of the installation that differs from the one assumed in this offer.
+exclusion,exc_10,limites_alcance_exclusiones,es,,,"Medios de elevación, andamiaje, medios auxiliares de acceso y manipulación interna de materiales."
+exclusion,exc_10,limites_alcance_exclusiones,en,,,"Lifting equipment, scaffolding, access aids and internal handling of materials."
+exclusion,exc_11,limites_alcance_exclusiones,es,,,"Obra civil de cualquier naturaleza, estructuras metálicas, plataformas, pasarelas, escaleras y refuerzos estructurales."
+exclusion,exc_11,limites_alcance_exclusiones,en,,,"Civil works of any kind, steel structures, platforms, catwalks, stairs and structural reinforcement."
+exclusion,exc_12,limites_alcance_exclusiones,es,,,"Retirada, clasificación, eliminación y reciclaje de los materiales y equipos desmontados, salvo acuerdo específico."
+exclusion,exc_12,limites_alcance_exclusiones,en,,,"Removal, sorting, disposal and recycling of dismantled materials and equipment, unless specifically agreed."
+exclusion,exc_13,limites_alcance_exclusiones,es,,,"Consumo energético en el emplazamiento durante la instalación, la puesta en marcha y las pruebas."
+exclusion,exc_13,limites_alcance_exclusiones,en,,,"On-site energy consumption during installation, commissioning and testing."
+exclusion,exc_14,limites_alcance_exclusiones,es,,,Suministro de aire comprimido.
+exclusion,exc_14,limites_alcance_exclusiones,en,,,Compressed air supply.
+exclusion,exc_15,limites_alcance_exclusiones,es,,,"Sistemas de detección, protección y extinción de incendios."
+exclusion,exc_15,limites_alcance_exclusiones,en,,,"Fire detection, protection and suppression systems."
+exclusion,exc_16,limites_alcance_exclusiones,es,,,Sistema de alimentación ininterrumpida o alimentación de emergencia.
+exclusion,exc_16,limites_alcance_exclusiones,en,,,Uninterruptible power supply or emergency power supply.
+exclusion,exc_17,limites_alcance_exclusiones,es,,,"Red informática del Cliente, incluidas las redes de área local (LAN/WLAN)."
+exclusion,exc_17,limites_alcance_exclusiones,en,,,"The Client's IT network, including local area networks (LAN/WLAN)."
+exclusion,exc_18,limites_alcance_exclusiones,es,,,"Marcado CE del conjunto de la instalación, análisis de riesgos y validación normativa completa del sistema."
+exclusion,exc_18,limites_alcance_exclusiones,en,,,"CE marking of the installation as a whole, risk analysis and full regulatory validation of the system."
+exclusion,exc_19,limites_alcance_exclusiones,es,,,"Elaboración del Plan de Seguridad y Salud, de la evaluación de riesgos y del Plan de Control Medioambiental, salvo contratación expresa."
+exclusion,exc_19,limites_alcance_exclusiones,en,,,"Preparation of the health and safety plan, the risk assessment and the environmental control plan, unless expressly contracted."
+exclusion,exc_20,limites_alcance_exclusiones,es,,,Pruebas generales de estrés del sistema y mejoras de rendimiento respecto a la funcionalidad existente previa a la intervención.
+exclusion,exc_20,limites_alcance_exclusiones,en,,,General system stress testing and performance improvements over the functionality existing before the works.
+exclusion,exc_21,limites_alcance_exclusiones,es,,,Restablecimiento del servicio y trabajos derivados de fallos ajenos a los ejecutados por BEUMER o causados por terceros.
+exclusion,exc_21,limites_alcance_exclusiones,en,,,"Service restoration and work arising from faults unrelated to those carried out by BEUMER, or caused by third parties."
+exclusion,exc_22,limites_alcance_exclusiones,es,scope:commissioning,,Artículos de prueba y su manipulación durante la validación del sistema.
+exclusion,exc_22,limites_alcance_exclusiones,en,scope:commissioning,,Test items and their handling during system validation.
+exclusion,exc_23,limites_alcance_exclusiones,es,,,Simulación y animación 3D del sistema.
+exclusion,exc_23,limites_alcance_exclusiones,en,,,Simulation and 3D animation of the system.
+exclusion,exc_24,limites_alcance_exclusiones,es,,,Mantenimiento del sistema una vez finalizados los trabajos.
+exclusion,exc_24,limites_alcance_exclusiones,en,,,Maintenance of the system once the works are complete.
+exclusion,exc_25,limites_alcance_exclusiones,es,,,"Trabajos fuera del horario estándar acordado, que se considerarán adicionales y se facturarán según las tarifas vigentes."
+exclusion,exc_25,limites_alcance_exclusiones,en,,,"Work outside the agreed standard hours, which is treated as additional and invoiced at the rates in force."
+exclusion,exc_26,limites_alcance_exclusiones,es,,,"Costes derivados de esperas, interrupciones, ampliaciones de turno, visitas adicionales o reprogramaciones no imputables a BEUMER."
+exclusion,exc_26,limites_alcance_exclusiones,en,,,"Costs arising from waiting time, interruptions, extended shifts, additional visits or rescheduling not attributable to BEUMER."
+exclusion,exc_27,limites_alcance_exclusiones,es,no_pricing,,Cualquier concepto económico: la presente propuesta es exclusivamente técnica.
+exclusion,exc_27,limites_alcance_exclusiones,en,no_pricing,,Any commercial figure: this proposal is technical only.
+exclusion,exc_28,limites_alcance_exclusiones,es,,,Queda excluido todo aquello que no haya sido especificado de forma expresa en la presente oferta.
+exclusion,exc_28,limites_alcance_exclusiones,en,,,Anything not expressly specified in this offer is excluded.
+clause,la_cambios,limites_alcance_cambios,es,,,"Cualquier trabajo o suministro no incluido en el presente documento y requerido durante la ejecución del proyecto se gestionará mediante el correspondiente proceso de orden de cambio, previa aprobación por parte del Cliente.
+
+Se tramitará una orden de cambio, con su valoración de plazo y coste, cuando concurra alguna de las siguientes circunstancias:
+
+•  Incumplimiento de cualquiera de los supuestos recogidos en este capítulo.
+•  Modificación del alcance solicitada por el Cliente.
 •  Hallazgos en el emplazamiento que difieran de la documentación facilitada.
 •  Retrasos imputables al Cliente o a terceros bajo su coordinación.
 •  Cambios normativos posteriores a la fecha de la oferta que afecten al alcance.
 
-Ningún trabajo adicional se ejecuta sin orden de cambio aceptada por escrito."
-clause,la_cambios,limites_alcance_cambios,en,always,,"A change order, with its corresponding schedule and cost assessment, will be raised where any of the following applies:
+Ningún trabajo adicional se ejecuta sin una orden de cambio aceptada por escrito."
+clause,la_cambios,limites_alcance_cambios,en,,,"Any work or supply not included in this document and required during project execution will be handled through the corresponding change order process, subject to the Client's prior approval.
 
-•  Any of the numbered assumptions in this chapter does not hold.
-•  A change of scope requested by the Client after engineering approval.
+A change order, with its schedule and cost assessment, will be raised where any of the following applies:
+
+•  Any of the assumptions set out in this chapter does not hold.
+•  A change of scope requested by the Client.
 •  Site findings that differ from the documentation provided.
 •  Delays attributable to the Client or to third parties under their coordination.
 •  Regulatory changes after the date of this offer that affect the scope.
 
 No additional work is carried out without a change order accepted in writing."
-clause,gar_alcance,garantia_soporte_alcance,es,always,,"El periodo de garantía es de 24 meses desde la aceptación final, o de 30 meses desde la entrega en el emplazamiento, lo que ocurra primero.
-
-La garantía cubre los defectos de material, fabricación y montaje de los equipos suministrados, e incluye la mano de obra y los desplazamientos necesarios para su subsanación."
-clause,gar_alcance,garantia_soporte_alcance,en,always,,"The warranty period is 24 months from final acceptance, or 30 months from delivery to site, whichever occurs first.
-
-The warranty covers defects in material, manufacture and assembly of the supplied equipment, and includes the labour and travel needed to remedy them."
-clause,gar_exclusiones,garantia_soporte_exclusiones,es,always,,"Quedan fuera de la garantía:
-
-•  El desgaste normal y los elementos consumibles.
-•  Los daños derivados de un uso distinto al previsto, de falta de mantenimiento o de intervenciones de terceros no autorizadas.
-•  Los fallos causados por equipos o software del Cliente ajenos al suministro.
-•  Los defectos derivados de información facilitada por el Cliente que resultara incorrecta."
-clause,gar_exclusiones,garantia_soporte_exclusiones,en,always,,"The warranty does not cover:
-
-•  Normal wear and consumable items.
-•  Damage arising from use other than intended, lack of maintenance, or unauthorised third-party intervention.
-•  Failures caused by Client equipment or software outside the supply.
-•  Defects arising from information supplied by the Client that proves to be incorrect."
-clause,gar_sla,garantia_soporte_sla,es,always,,"Durante el periodo de garantía se presta soporte técnico telefónico y remoto en horario laboral, con los siguientes tiempos de respuesta:
-
-•  Incidencia crítica (sistema parado): respuesta en 4 horas laborables.
-•  Incidencia mayor (operación degradada): respuesta en 8 horas laborables.
-•  Consulta o incidencia menor: respuesta en 2 días laborables.
-
-La intervención presencial, cuando sea necesaria, se planifica de acuerdo con el Cliente."
-clause,gar_sla,garantia_soporte_sla,en,always,,"During the warranty period, telephone and remote technical support is provided in working hours with the following response times:
-
-•  Critical incident (system down): response within 4 working hours.
-•  Major incident (degraded operation): response within 8 working hours.
-•  Query or minor incident: response within 2 working days.
-
-On-site intervention, where required, is scheduled in agreement with the Client."
 clause,oe_no_incluido,oferta_economica_no_incluido,es,pricing,,"Los precios indicados no incluyen:
 
-•  Impuestos indirectos aplicables (IVA u equivalente).
+•  IVA ni cualquier otro impuesto indirecto aplicable.
 •  Aranceles, tasas aduaneras y gastos de despacho.
-•  Avales, garantías bancarias y seguros específicos exigidos por el Cliente.
-•  Costes de indexación derivados de variaciones extraordinarias en materias primas."
+•  Avales, garantías bancarias y seguros específicos exigidos por el Cliente."
 clause,oe_no_incluido,oferta_economica_no_incluido,en,pricing,,"The stated prices do not include:
 
-•  Applicable indirect taxes (VAT or equivalent).
+•  VAT or any other applicable indirect tax.
 •  Duties, customs charges and clearance costs.
-•  Bonds, bank guarantees and specific insurance required by the Client.
-•  Indexation arising from extraordinary raw-material variations."
-clause,oe_moneda,oferta_economica_moneda,es,pricing,,"Todos los importes se expresan en euros (EUR). Los pagos se efectúan en la misma moneda; el riesgo de tipo de cambio, en su caso, corresponde al Cliente."
-clause,oe_moneda,oferta_economica_moneda,en,pricing,,"All amounts are expressed in euros (EUR). Payments are made in the same currency; exchange-rate risk, where applicable, is borne by the Client."
-clause,oe_revision,oferta_economica_revision,es,pricing,,"Para proyectos con plazo de ejecución superior a 12 meses, los precios se revisan anualmente conforme a la variación del índice de precios industriales publicado por el organismo estadístico competente."
-clause,oe_revision,oferta_economica_revision,en,pricing,,"For projects with an execution period longer than 12 months, prices are revised annually in line with the industrial price index published by the competent statistics body."
-clause,oe_validez,oferta_economica_validez,es,always,,"La presente oferta tiene una validez de 30 días naturales desde su fecha de emisión. Transcurrido ese plazo, los precios y los plazos quedan sujetos a confirmación."
-clause,oe_validez,oferta_economica_validez,en,always,,"This offer is valid for 30 calendar days from its date of issue. After that period, prices and lead times are subject to confirmation."
-clause,oe_plazo,oferta_economica_plazo,es,always,,El plazo de entrega comienza a contar desde la recepción del pedido en firme y la aprobación de la ingeniería de detalle. Los plazos indicados son estimados y están sujetos a la disponibilidad de los componentes en el momento del pedido.
-clause,oe_plazo,oferta_economica_plazo,en,always,,The delivery period starts on receipt of a firm order and approval of the detailed engineering. Stated periods are estimates and are subject to component availability at the time of ordering.
-clause,ej_recepcion,ejecucion_recepcion,es,scope:commissioning,,"La recepción se produce tras la superación de las pruebas de aceptación en el emplazamiento y la entrega de la documentación as-built.
+•  Bonds, bank guarantees and specific insurance required by the Client."
+clause,oe_indexacion,oferta_economica_revision,es,pricing,,"El precio ofertado se calcula sobre una base de costes de flete, materiales y mano de obra, y estará sujeto a indexación a partir de la fecha de presentación de esta oferta conforme a los últimos índices respectivos actualizados. La indexación será una media ponderada de los índices pertinentes que reflejen el coste de ejecución del contrato.
 
-Se levanta un acta firmada por ambas partes en la que se recogen, en su caso, los puntos pendientes y su plazo de subsanación. Los puntos pendientes que no impidan la operación normal no suspenden la recepción."
-clause,ej_recepcion,ejecucion_recepcion,en,scope:commissioning,,"Handover takes place once the site acceptance tests are passed and the as-built documentation has been delivered.
+Solo se aplicarán variaciones de indexación positivas, siendo el mínimo del 0 % para cada uno de los índices aplicables. No se aplicarán indexaciones negativas.
 
-A record is signed by both parties listing any outstanding items and their remedy period. Outstanding items that do not prevent normal operation do not suspend handover."
-clause,as_documentacion,alcance_suministro_documentacion,es,always,,"Se entrega la siguiente documentación en formato electrónico y en el idioma de esta oferta:
+BEUMER se reserva el derecho de ajustar los precios de envío si las tarifas de transporte globales aumentan más de un 5 %.
 
-•  Esquemas eléctricos as-built.
-•  Listado de señales y configuración de la lógica de control.
-•  Manual de operación y de mantenimiento preventivo.
-•  Declaraciones y certificados de los componentes suministrados.
-•  Protocolos de prueba firmados."
-clause,as_documentacion,alcance_suministro_documentacion,en,always,,"The following documentation is delivered electronically and in the language of this offer:
+Los gastos adicionales causados por circunstancias extraordinarias, como condiciones especiales de admisión, trabajo o pruebas, no pueden calcularse y se facturarán de forma retroactiva según los costes reales incurridos."
+clause,oe_indexacion,oferta_economica_revision,en,pricing,,"The quoted price is calculated on a basis of freight, material and labour costs, and is subject to indexation from the date this offer is submitted, in line with the latest updated indices. Indexation will be a weighted average of the relevant indices reflecting the cost of performing the contract.
 
-•  As-built electrical drawings.
-•  Signal list and control logic configuration.
-•  Operation and preventive maintenance manual.
-•  Declarations and certificates for the supplied components.
-•  Signed test protocols."
-clause,gp_metodologia,gestion_proyecto_metodologia,es,always,,"El proyecto se gestiona por fases con puertas de control (Stage-Gate). Cada fase se cierra formalmente antes de iniciar la siguiente, con criterios de salida definidos y documentados.
+Only positive indexation changes will be applied, with a minimum of 0 % for each applicable index. Negative indexation will not be applied.
 
-La planificación se mantiene actualizada y se revisa en cada reunión de seguimiento."
-clause,gp_metodologia,gestion_proyecto_metodologia,en,always,,"The project is managed in phases with stage gates. Each phase is formally closed before the next begins, against defined and documented exit criteria.
+BEUMER reserves the right to adjust shipping prices if global transport rates rise by more than 5 %.
 
-The schedule is kept up to date and reviewed at each progress meeting."
-clause,gp_comunicacion,gestion_proyecto_comunicacion,es,always,,"•  Reunión de arranque presencial antes del inicio de la ingeniería.
-•  Reunión de seguimiento quincenal, con acta y lista de acciones.
-•  Informe mensual de avance, desviaciones y riesgos.
-•  Punto de contacto único por cada parte para toda comunicación formal."
-clause,gp_comunicacion,gestion_proyecto_comunicacion,en,always,,"•  Face-to-face kick-off meeting before engineering starts.
-•  Fortnightly progress meeting, with minutes and an action list.
-•  Monthly report on progress, deviations and risks.
-•  A single point of contact on each side for all formal communication."
-clause,gp_cambios,gestion_proyecto_cambios,es,always,,"Toda modificación del alcance se tramita mediante una solicitud de cambio formal, valorada en plazo y coste y aceptada por escrito antes de su ejecución.
+Additional costs caused by extraordinary circumstances, such as special admission, working or testing conditions, cannot be calculated and will be invoiced retroactively at the actual costs incurred."
+clause,oe_pago,oferta_economica_pago,es,pricing,,"Salvo que el acuerdo marco entre las partes establezca otra cosa, todas las facturas se abonarán mediante transferencia bancaria a 60 días desde la fecha de emisión, a BEUMER Group Technology Iberia, S.L.
 
-Se mantiene un registro de cambios con su estado y su impacto acumulado sobre plazo y precio, que se revisa en cada reunión de seguimiento."
-clause,gp_cambios,gestion_proyecto_cambios,en,always,,"Every change of scope is handled through a formal change request, assessed for schedule and cost impact and accepted in writing before execution.
+El desglose de hitos de pago aplicable a esta oferta se indica en el cuadro económico. Los hitos vencen en las fechas recogidas en la planificación; si dichas fechas se posponen por causas imputables al Cliente, y siempre que BEUMER pueda cumplir, se mantendrán los vencimientos originales."
+clause,oe_pago,oferta_economica_pago,en,pricing,,"Unless the framework agreement between the parties states otherwise, all invoices are paid by bank transfer 60 days from the invoice date, to BEUMER Group Technology Iberia, S.L.
 
-A change log is maintained with each item's status and cumulative impact on schedule and price, and is reviewed at every progress meeting."
-clause,cr_prl,continuidad_riesgos_prl,es,scope:installation,,"Los trabajos se ejecutan conforme a la normativa de prevención de riesgos laborales aplicable y al plan de seguridad y salud del emplazamiento.
+The payment milestones applicable to this offer are set out in the commercial section. Instalments fall due on the dates given in the schedule; if those dates are postponed for reasons attributable to the Client, and provided BEUMER is able to comply, the original due dates remain valid."
+clause,oe_validez,oferta_economica_validez,es,,,"Esta oferta es válida durante 3 meses desde la fecha de emisión indicada en la portada, y sustituye a cualquier revisión anterior de la misma oferta.
 
-•  Se aporta la documentación de coordinación de actividades empresariales antes del inicio.
-•  Se designa recurso preventivo cuando la actividad lo requiera.
-•  Todo el personal cuenta con formación y reconocimiento médico en vigor.
-•  Se realiza evaluación de riesgos específica para los trabajos con el sistema en operación."
-clause,cr_prl,continuidad_riesgos_prl,en,scope:installation,,"Work is carried out in accordance with the applicable occupational health and safety regulations and with the site's health and safety plan.
+Transcurrido ese plazo, los precios y los plazos quedan sujetos a confirmación."
+clause,oe_validez,oferta_economica_validez,en,,,"This offer is valid for 3 months from the issue date shown on the cover, and supersedes any earlier revision of the same offer.
 
-•  Contractor-coordination documentation is provided before work starts.
-•  A designated safety resource is appointed where the activity requires it.
-•  All personnel hold current training and medical clearance.
-•  A specific risk assessment is produced for work carried out with the system in operation."
-clause,cr_ambiental,continuidad_riesgos_ambiental,es,always,,"Los residuos generados se segregan en origen y se entregan a gestor autorizado, con entrega al Cliente de los justificantes correspondientes. Los equipos eléctricos y electrónicos retirados se tratan conforme a la normativa de RAEE aplicable."
-clause,cr_ambiental,continuidad_riesgos_ambiental,en,always,,"Waste generated is segregated at source and handed to an authorised waste manager, with the corresponding certificates provided to the Client. Removed electrical and electronic equipment is treated in accordance with the applicable WEEE regulations."
-clause,cg_marco,condiciones_generales_marco,es,always,,"Salvo lo expresamente modificado en esta oferta, resultan de aplicación las Condiciones Generales Orgalime SI 24 para el suministro y montaje de productos mecánicos, eléctricos y electrónicos.
+After that period, prices and lead times are subject to confirmation."
+clause,oe_plazo,oferta_economica_plazo,es,,,"Las fechas para la realización de los trabajos se programarán con la confirmación del pedido, en coordinación con el Cliente y en función de la disponibilidad de materiales, de recursos y de las ventanas operativas del sistema. Tras la firma del pedido, el gestor de proyecto de BEUMER enviará un calendario válido.
 
-En caso de contradicción, prevalece lo dispuesto en el cuerpo de esta oferta."
-clause,cg_marco,condiciones_generales_marco,en,always,,"Except as expressly amended in this offer, the Orgalime SI 24 General Conditions for the supply and erection of mechanical, electrical and electronic products apply.
+Debido a la posible interrupción de las cadenas de suministro a nivel mundial, la fecha de entrega y el plan de ejecución se acuerdan bajo la condición de que las piezas y los materiales necesarios se entreguen a tiempo. Si se produjera un retraso por esta causa, BEUMER informará al Comprador y hará esfuerzos razonables para minimizar el impacto en el calendario."
+clause,oe_plazo,oferta_economica_plazo,en,,,"The dates for carrying out the works will be scheduled on order confirmation, in coordination with the Client and subject to the availability of materials, resources and system operating windows. Once the order is signed, BEUMER's project manager will issue a valid schedule.
 
-In the event of conflict, the body of this offer prevails."
-clause,cg_responsabilidad,condiciones_generales_responsabilidad,es,always,,"La responsabilidad total derivada del contrato queda limitada al importe del mismo.
+Because of possible disruption to global supply chains, the delivery date and execution plan are agreed on the condition that the necessary parts and materials are delivered on time. Should a delay arise on that account, BEUMER will inform the Purchaser and make reasonable efforts to minimise the impact on the schedule."
+clause,oe_moneda,oferta_economica_moneda,es,pricing,,Los precios de la presente oferta están expresados en euros (EUR).
+clause,oe_moneda,oferta_economica_moneda,en,pricing,,The prices in this offer are expressed in euros (EUR).
+clause,gar_periodo,garantia_soporte_alcance,es,,,"Los equipos suministrados en el marco de esta oferta están cubiertos por una garantía de 2 años desde la entrega o desde el inicio del uso comercial, aplicándose la fecha que ocurra primero.
 
-Quedan excluidos los daños indirectos, el lucro cesante, la pérdida de producción y la pérdida de datos, en la medida en que la legislación aplicable lo permita."
-clause,cg_responsabilidad,condiciones_generales_responsabilidad,en,always,,"Total liability arising from the contract is limited to the contract value.
+La garantía cubre los defectos de material, fabricación y montaje de los equipos suministrados."
+clause,gar_periodo,garantia_soporte_alcance,en,,,"The equipment supplied under this offer is covered by a 2-year warranty from delivery or from the start of commercial use, whichever occurs first.
 
-Indirect damages, loss of profit, loss of production and loss of data are excluded, to the extent permitted by applicable law."
-clause,cg_pi,condiciones_generales_pi,es,always,,"La propiedad intelectual e industrial sobre la ingeniería, el software de aplicación y la documentación desarrollada permanece en nuestro poder. El Cliente recibe una licencia de uso no exclusiva, indefinida e intransferible para la operación y el mantenimiento de la instalación objeto de esta oferta."
-clause,cg_pi,condiciones_generales_pi,en,always,,"Intellectual and industrial property in the engineering, application software and documentation developed remains with us. The Client receives a non-exclusive, perpetual and non-transferable licence to use them for the operation and maintenance of the installation covered by this offer."
-clause,cg_confidencialidad,condiciones_generales_confidencialidad,es,always,,"Ambas partes se obligan a mantener la confidencialidad de la información técnica y comercial intercambiada, y a no comunicarla a terceros sin autorización escrita, durante la vigencia del contrato y los cinco años siguientes."
-clause,cg_confidencialidad,condiciones_generales_confidencialidad,en,always,,"Both parties undertake to keep the technical and commercial information exchanged confidential, and not to disclose it to third parties without written authorisation, during the term of the contract and for five years thereafter."
-clause,cg_fuerza_mayor,condiciones_generales_fuerza_mayor,es,always,,Ninguna de las partes responderá del incumplimiento derivado de causas de fuerza mayor. La parte afectada lo comunicará sin demora y ambas acordarán la revisión de los plazos afectados.
-clause,cg_fuerza_mayor,condiciones_generales_fuerza_mayor,en,always,,Neither party shall be liable for non-performance caused by force majeure. The affected party shall give notice without delay and both parties shall agree a revision of the affected deadlines.
-clause,pp_pasos,proximos_pasos,es,always,,"Para avanzar con esta propuesta:
+The warranty covers defects in material, manufacture and assembly of the supplied equipment."
+clause,gar_exclusiones,garantia_soporte_exclusiones,es,,,"Quedan excluidos de la garantía:
 
-•  Confirme su aceptación por escrito a la dirección de contacto indicada en la portada, dentro del plazo de validez.
-•  Facilite los datos de facturación y la referencia de pedido.
-•  Acordaremos la reunión de arranque en un plazo máximo de una semana desde la recepción del pedido.
-•  Quedamos a su disposición para revisar cualquier punto de esta oferta antes de su aceptación."
-clause,pp_pasos,proximos_pasos,en,always,,"To proceed with this proposal:
+•  Los fallos o defectos existentes con anterioridad a la intervención, de cualquier naturaleza (mecánica, eléctrica, de software o de documentación).
+•  Los elementos no incluidos en el alcance de suministro.
+•  Los componentes no suministrados por BEUMER.
+•  El desgaste normal y los elementos consumibles.
+•  Los daños derivados de un uso distinto al previsto, de falta de mantenimiento o de intervenciones de terceros no autorizadas.
 
-•  Confirm your acceptance in writing to the contact address on the cover, within the validity period.
-•  Provide billing details and your order reference.
-•  We will arrange the kick-off meeting within one week of receiving the order.
-•  We remain available to review any point of this offer before acceptance."
-clause,cu1_porque,custom_1,es,always,,"Este capítulo es un ejemplo del mecanismo de personalización: su título y su contenido salen íntegramente de esta hoja, sin que ningún agente los escriba. Sustituya este texto por el suyo y active el capítulo poniendo include=yes en la pestaña Chapters."
-clause,cu1_porque,custom_1,en,always,,"This chapter demonstrates the customisation mechanism: its title and content come entirely from this sheet, with no agent writing them. Replace this text with your own and switch the chapter on by setting include=yes in the Chapters tab."
-term,gl_fat,glosario,es,always,FAT,Factory Acceptance Test — pruebas de aceptación en fábrica.
-term,gl_fat,glosario,en,always,FAT,Factory Acceptance Test.
-term,gl_sat,glosario,es,always,SAT,Site Acceptance Test — pruebas de aceptación en el emplazamiento.
-term,gl_sat,glosario,en,always,SAT,Site Acceptance Test.
-term,gl_itp,glosario,es,always,PPI,Plan de Puntos de Inspección.
-term,gl_itp,glosario,en,always,PPI,Inspection and Test Plan.
-term,gl_ot,glosario,es,always,OT,"Operational Technology — tecnología de operación, redes y sistemas de control industrial."
-term,gl_ot,glosario,en,always,OT,Operational Technology: industrial control networks and systems.
-term,gl_cae,glosario,es,always,CAE,Coordinación de Actividades Empresariales.
-term,gl_cae,glosario,en,always,CAE,Contractor activity coordination.
+Los servicios prestados no llevan asociado periodo de garantía."
+clause,gar_exclusiones,garantia_soporte_exclusiones,en,,,"The warranty does not cover:
+
+•  Faults or defects existing before the works, of any nature (mechanical, electrical, software or documentation).
+•  Items outside the scope of supply.
+•  Components not supplied by BEUMER.
+•  Normal wear and consumable items.
+•  Damage arising from use other than intended, lack of maintenance, or unauthorised third-party intervention.
+
+No warranty period applies to the services provided."
+clause,cg_marco,condiciones_generales_marco,es,,,"La presente oferta se rige por las Condiciones Generales de BEUMER Group Technology Iberia, S.L., basadas en las condiciones Orgalime SI 14. En caso de contradicción, prevalece lo dispuesto en el cuerpo de esta oferta.
+
+Además, resultan de aplicación las siguientes reservas:
+
+•  El Cliente proporcionará acceso a internet a los técnicos de BEUMER durante la ejecución de los trabajos, cuando sea necesario.
+•  Deberá estar disponible una conexión VPN operativa para permitir el soporte remoto por parte de los ingenieros de BEUMER.
+•  Si por causas ajenas a BEUMER no se pudieran cumplir los horarios previstos y fuera necesario extender los turnos o realizar desplazamientos adicionales, dichos trabajos se facturarán conforme a las tarifas vigentes.
+•  Cualquier retraso derivado de condiciones inadecuadas de las zonas de trabajo, de la falta de disponibilidad del sistema o de cualquier otra causa imputable al Cliente dará lugar a costes adicionales, que serán facturados previa notificación.
+•  En caso de imposibilidad de acceso a las instalaciones en los periodos acordados, BEUMER se reserva el derecho de repercutir los costes derivados, incluidos transporte y reorganización de recursos.
+•  Los elementos necesarios para la realización de las pruebas deberán estar disponibles con antelación suficiente.
+•  Las modificaciones incluidas en esta oferta cumplen la normativa aplicable a los equipos suministrados. No obstante, la certificación de conformidad CE del conjunto de la instalación no está incluida en el alcance.
+•  BEUMER se reserva el derecho de modificar la propuesta por motivos de progreso técnico hasta la aclaración final de todos los detalles técnicos.
+•  La aceptación de la presente oferta implica la aceptación íntegra de las condiciones técnicas, comerciales y generales aquí descritas."
+clause,cg_marco,condiciones_generales_marco,en,,,"This offer is governed by the General Conditions of BEUMER Group Technology Iberia, S.L., based on Orgalime SI 14. In the event of conflict, the body of this offer prevails.
+
+The following reservations also apply:
+
+•  The Client will provide internet access to BEUMER technicians while the works are carried out, where necessary.
+•  A working VPN connection must be available to allow remote support by BEUMER engineers.
+•  If, for reasons beyond BEUMER's control, the planned working hours cannot be met and shifts must be extended or additional travel is required, that work will be invoiced at the rates in force.
+•  Any delay caused by inadequate conditions in the work areas, lack of system availability or any other cause attributable to the Client will give rise to additional costs, invoiced after notice.
+•  Should access to the site be impossible during the agreed periods, BEUMER reserves the right to pass on the resulting costs, including transport and resource rescheduling.
+•  The items needed to carry out the tests must be available sufficiently in advance.
+•  The modifications included in this offer comply with the regulations applicable to the supplied equipment. However, CE conformity certification of the installation as a whole is not included in the scope.
+•  BEUMER reserves the right to modify the proposal for reasons of technical progress until all technical details are finally clarified.
+•  Acceptance of this offer implies full acceptance of the technical, commercial and general conditions described herein."
+clause,pp_cierre,proximos_pasos,es,,,"Esperamos que la oferta cumpla con sus requerimientos y así poder recibir su orden de compra.
+
+En caso de dudas o comentarios relativos a la oferta, por favor contacte con nosotros."
+clause,pp_cierre,proximos_pasos,en,,,"We hope that the offer meets your requirements and that we may receive your purchase order.
+
+If you have any questions or comments regarding this offer, please contact us."

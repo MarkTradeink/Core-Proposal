@@ -9,7 +9,7 @@
 - **Peso del documento por defecto:** B — propuesta estándar (15-25 pág.)
 - **Versión del documento:** 1.0
 - **Capítulos configurados:** 16
-- **Cláusulas propias:** 34
+- **Cláusulas propias:** 60
 
 ## Variables propias de este cliente
 
@@ -37,93 +37,73 @@ Los que salen hoy, en orden, con todo el alcance activado:
 
 — Portada
 — Control de versión
-— Índice
-**1.** Resumen ejecutivo
-  - 1.1 La necesidad
-  - 1.2 La solución propuesta
-  - 1.3 Beneficios e indicadores
-  - 1.4 Resumen económico y plazo
-**2.** Bases de la oferta
-  - 2.1 Documentos de referencia
-  - 2.2 Normativa y estándares aplicables
-  - 2.3 Premisas generales
-**3.** Antecedentes y situación actual
-  - 3.1 Instalación existente
-  - 3.2 Problemática y obsolescencia
-  - 3.3 Objetivos y criterios de éxito
-**4.** Alcance de suministro
-  - 4.1 Resumen de lo incluido y no incluido
-  - 4.2 Software y licencias
-  - 4.3 SCADA / HMI y visualización
-  - 4.4 Documentación técnica entregable
-**5.** Ejecución del proyecto
-  - 5.1 Inspección previa y toma de datos
-  - 5.2 Fases de ejecución
-  - 5.3 Plan de pruebas y criterios de aceptación
-  - 5.4 Periodo de demostración
-  - 5.5 Recepción y aceptación
-**6.** Gestión de proyecto
-  - 6.1 Metodología y control del proyecto
-  - 6.2 Comunicación y reporting
-  - 6.3 Gestión de cambios
-  - 6.4 Planificación, hitos y plazo
-**7.** Continuidad operativa, seguridad y riesgos
-  - 7.1 Estrategia de continuidad operativa
-  - 7.2 Contingencia y reversión
-  - 7.3 Registro de riesgos
-  - 7.4 Seguridad y salud
-**8.** Condiciones técnicas y requisitos del emplazamiento
-  - 8.1 Área de trabajo y accesibilidad
-  - 8.2 Jornadas de trabajo y disponibilidad del sistema
-  - 8.3 Accesos, permisos y acreditaciones
-  - 8.4 Suministros a cargo del cliente
-  - 8.5 Obligaciones del cliente
-**9.** Límites del alcance
-  - 9.1 Premisas e hipótesis
+— Contenido
+**1.** Bases de la oferta
+  - 1.1 Documentos y reuniones de referencia
+**2.** Introducción
+  - 2.1 Descripción del sistema
+  - 2.2 Situación actual y obsolescencia
+  - 2.3 Objetivo de la actuación
+**3.** Alcance de suministro
+  - 3.1 Resumen del alcance
+  - 3.2 Hardware
+  - 3.3 Software
+  - 3.4 Recambios
+  - 3.5 Documentación
+**4.** Ejecución de los trabajos
+  - 4.1 Instalación
+  - 4.2 Puesta en marcha
+  - 4.3 Plan de pruebas
+  - 4.4 Envío
+  - 4.5 Aceptación de los trabajos
+**5.** Recurso preventivo (QHSE)
+**6.** Soporte a la operativa
+**7.** Gestión de proyecto
+  - 7.1 Coordinación de las actuaciones
+  - 7.2 Planificación detallada
+**8.** Condiciones técnicas
+  - 8.1 Condiciones de instalación
+  - 8.2 Ventanas de intervención y turnos de trabajo
+  - 8.3 Acceso a las instalaciones y seguridad
+  - 8.4 Suministros necesarios
+  - 8.5 Entregables por el Cliente
+  - 8.6 Condiciones de operación y disponibilidad del sistema
+**9.** Exclusiones y consideraciones adicionales
+  - 9.1 Supuestos y dependencias
   - 9.2 Exclusiones
-  - 9.3 Interfaces y límites de suministro
-  - 9.4 Condiciones que originan una orden de cambio
-**10.** Oferta económica
-  - 10.1 Resumen de precios
-  - 10.2 Opciones cotizadas aparte
-  - 10.3 Tarifas para trabajos adicionales
-  - 10.4 Conceptos no incluidos en el precio
-  - 10.5 Condiciones de pago
-  - 10.6 Moneda
-  - 10.7 Validez de la oferta
+  - 9.3 Gestión de desviaciones y órdenes de cambio
+**10.** Términos y condiciones comerciales
+  - 10.1 Precio
+  - 10.2 Opciones
+  - 10.3 Conceptos no incluidos en el precio
+  - 10.4 Condiciones de pago
+  - 10.5 Moneda
+  - 10.6 Indexación y revisión de precios
+  - 10.7 Validez
   - 10.8 Plazo de entrega
-**11.** Garantía y soporte post-venta
-  - 11.1 Exclusiones de la garantía
-  - 11.2 Soporte técnico y niveles de servicio
-  - 11.3 Servicios recurrentes recomendados
+**11.** Garantía
+  - 11.1 Periodo de garantía
+  - 11.2 Exclusiones de la garantía
 **12.** Condiciones generales y reservas
-  - 12.1 Marco contractual
-  - 12.2 Responsabilidad y limitaciones
-  - 12.3 Propiedad intelectual
-  - 12.4 Confidencialidad
-**13.** Próximos pasos y aceptación
+  - 12.1 Condiciones generales de contratación
+**13.** Cierre
 
 ## Estilo de redacción
 
 Estas líneas se inyectan literalmente en las instrucciones de los agentes que escriben:
 
 - `default_tier`: B
-- `tone`: técnico, sobrio y concreto; sin superlativos ni lenguaje comercial
-- `person`: primera persona del plural (proponemos, ejecutaremos)
+- `tone`: técnico, sobrio y factual; frases cortas; sin superlativos ni lenguaje comercial
+- `person`: tercera persona nombrando a BEUMER y al Cliente (BEUMER propone, el Cliente facilitará)
 - `units`: Sistema Internacional; decimal con coma en español
 - `date_format`: dd/mm/aaaa
-- `forbidden_words`: revolucionario, líder mundial, solución llave en mano definitiva, best-in-class, sinergia
-- `must_mention`: continuidad de la operación, trazabilidad documental
+- `forbidden_words`: revolucionario, líder mundial, llave en mano definitiva, best-in-class, sinergia, innovador, puntero, óptimo
+- `must_mention`: continuidad de la operación, obsolescencia de los equipos, minimizar el impacto en la producción
 - `warranty_months`: 24
-- `validity_days`: 30
+- `validity_days`: 90
 - `incoterm`: DAP
 - di **el Cliente**, nunca "cliente final"
 - di **equipo**, nunca "máquina"
-
-## ⚠ Avisos de configuración
-
-Cada uno de estos significa que una fila de la hoja se está ignorando:
-
-- Templates tab: variant 'default' (es) has no file_id, row ignored
-- Templates tab: variant 'default' (en) has no file_id, row ignored
+- di **BEUMER**, nunca "nosotros"
+- di **el Cliente**, nunca "usuario"
 

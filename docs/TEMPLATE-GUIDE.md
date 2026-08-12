@@ -92,6 +92,11 @@ Every id exposes exactly this:
 
 Put the paragraph loop before the bullet loop — that is the order content is written in.
 
+**Block order is document order.** A chapter appears where its block sits in this file; the
+`order` column in the client's `Chapters` tab sets the chapter's number, not its position. To move
+a chapter, move the whole `{#has_<id>}` … `{/has_<id>}` block. The reserved `custom_1`…`custom_5`
+blocks sit at the end of the seed, so a client who uses one almost always wants to move it.
+
 Generated text and the client's own clauses arrive through the **same** loops. The template cannot
 tell them apart, and should not try to.
 
@@ -328,8 +333,21 @@ already supports one per language, and it keeps templates readable for non-devel
 Offline, before anything reaches Drive:
 
 ```bash
-npm run check          # renders tiers A/B/C in Spanish and tier B in English
+# every tag in the client's own .docx, against the vocabulary that will fill it
+node scripts/check-template.js <template.docx> <client_id>
+
+# a real render of that template against that client's real configuration
+node scripts/render-sample.js es B <client_id> --template <template.docx>
+
+npm run check          # the seed templates, tiers A/B/C in Spanish and tier B in English
 ```
+
+`check-template.js` is the one to run after **any** edit in Word. It catches the two things that
+survive an edit and reach a customer: a tag nothing fills (`{cliente.empressa}`, or a `{campos.*}`
+the client's `Fields` tab does not declare), which prints the literal word `undefined`, and a tag
+Word has split across text runs. It reports the split ones as a count, because Word splits almost
+every tag it touches and docxtemplater rejoins them — the count only matters on the day one tag
+stops rendering.
 
 It fails on the two things that reach a customer silently: the literal word `undefined`, and
 unrendered braces.

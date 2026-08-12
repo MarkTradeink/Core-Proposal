@@ -2,7 +2,7 @@
 // Render a seed template against a synthetic proposal, the same way Module 4 does.
 //
 //   npm install --no-save docxtemplater pizzip jexl
-//   node scripts/render-sample.js [es|en] [A|B|C]
+//   node scripts/render-sample.js [es|en] [A|B|C] [client_id] [--template <file.docx>]
 //
 // This is the offline half of the end-to-end check: it exercises the real chain
 // catalog -> resolveProposalConfig -> buildRenderContext -> docxtemplater against the real
@@ -27,6 +27,13 @@ const catalog = require(path.join(ROOT, 'schemas/chapter-catalog.json'));
 
 const lang = process.argv[2] === 'en' ? 'en' : 'es';
 const tier = ['A', 'B', 'C'].includes(process.argv[3]) ? process.argv[3] : 'B';
+// Any client whose CSVs are in seed/<id>/proposal-config/ can be checked the same way — which is
+// how a real client's clause library gets validated before a single row reaches Drive.
+const clientId = (process.argv[4] && !process.argv[4].startsWith('--')) ? process.argv[4] : 'demo_client';
+// A client's OWN restyled .docx can be rendered here too. That is the only way to find out,
+// before a customer does, whether their template survives a real chapter set.
+const tplIdx = process.argv.indexOf('--template');
+const templateOverride = tplIdx !== -1 ? process.argv[tplIdx + 1] : null;
 
 // The n8n node swaps docxtemplater's parser for Jexl, so a tag is an expression, not a lookup.
 // Reproducing that here is the point — it is why key names may not contain '-' and why loops must
@@ -70,7 +77,7 @@ function readCsv(file) {
   return rows.filter((r) => r.some((v) => v !== '')).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] === undefined ? '' : r[i]])));
 }
 
-const SEED = path.join(ROOT, 'seed/demo_client/proposal-config');
+const SEED = path.join(ROOT, 'seed', clientId, 'proposal-config');
 // The three newer tabs are optional: a client sheet created before they existed simply has none,
 // and everything still resolves. Reading them the same way keeps that path exercised.
 const readTab = (name) => (fs.existsSync(path.join(SEED, name)) ? readCsv(path.join(SEED, name)) : []);
@@ -149,7 +156,7 @@ const { context, sections_rendered, fields_missing } = buildRenderContext({
   },
 });
 
-const templatePath = path.join(ROOT, `templates/proposal-template-${lang}.docx`);
+const templatePath = templateOverride || path.join(ROOT, `templates/proposal-template-${lang}.docx`);
 const zip = new PizZip(fs.readFileSync(templatePath, 'binary'));
 const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true, parser: jexlParser });
 
@@ -166,7 +173,7 @@ try {
 }
 if (failed) process.exit(1);
 
-const out = path.join(ROOT, `templates/sample-${lang}-tier${tier}.docx`);
+const out = path.join(ROOT, `templates/sample-${clientId === 'demo_client' ? '' : `${clientId}-`}${lang}-tier${tier}.docx`);
 fs.writeFileSync(out, doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' }));
 
 // The two failure modes that reach a customer silently.

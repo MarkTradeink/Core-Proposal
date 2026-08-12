@@ -8,7 +8,8 @@
     "render": "node scripts/render-sample.js es A && node scripts/render-sample.js es B && node scripts/render-sample.js es C && node scripts/render-sample.js en B",
     "mirror": "node scripts/mirror-cores.js",
     "templates": "node templates/build-templates.js",
-    "client-docs": "node scripts/client-docs.js"
+    "client-docs": "node scripts/client-docs.js",
+    "check-template": "node scripts/check-template.js"
   },
   "devDependencies": {
     "docx": "^9.5.1",

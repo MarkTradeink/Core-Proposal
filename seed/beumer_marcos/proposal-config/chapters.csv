@@ -1,5 +1,77 @@
 chapter_id,include,order,title_es,title_en,tier,notes
-carta_presentacion,no,,,,,Se activa solo para ofertas fuera de licitación.
-solucion_tecnica_alternativas,,,,,,Solo tier C por defecto; poner include=yes para forzarla.
-anexo_cronograma,no,,,,,Activar cuando se adjunte Gantt.
-custom_1,no,,Por qué nosotros,Why us,,"Ejemplo de capítulo propio: título y texto salen de esta hoja, ningún agente lo escribe."
+carta_presentacion,no,,,,,BEUMER no usa carta de presentación: la oferta abre con el control de versión.
+resumen_ejecutivo,no,,,,,No hay resumen ejecutivo en ninguna de las cinco ofertas de referencia.
+solucion_tecnica,no,,,,,"BEUMER describe la solución dentro de Alcance de suministro, no en un capítulo aparte."
+continuidad_riesgos,no,,,,,La seguridad y la PRL van dentro de Condiciones técnicas (acceso a las instalaciones).
+glosario,no,,,,,No aparece en las ofertas de referencia.
+control_version,yes,,Control de versión,Version Control,,
+indice,yes,,Contenido,Contents,,
+bases_oferta,yes,,Bases de la oferta,Basis of the offer,,
+bases_oferta_documentos,yes,,Documentos y reuniones de referencia,Reference documents and meetings,,
+bases_oferta_normativa,no,,,,,"Solo se cita normativa cuando el alcance lo exige; por defecto, fuera."
+bases_oferta_premisas,no,,,,,Las premisas van agrupadas en Supuestos y dependencias.
+antecedentes,yes,,Introducción,Introduction,,
+antecedentes_instalacion,yes,,Descripción del sistema,System description,,
+antecedentes_problematica,yes,,Situación actual y obsolescencia,Current situation and obsolescence,,
+antecedentes_objetivos,yes,,Objetivo de la actuación,Purpose of the works,,
+alcance_suministro,yes,,Alcance de suministro,Scope of supply,,
+alcance_suministro_resumen,yes,,Resumen del alcance,Scope summary,,
+alcance_suministro_hardware,yes,,Hardware,Equipment,,
+alcance_suministro_recambios,yes,,Recambios,Spare parts,,
+alcance_suministro_software,yes,,Software,Software,,
+alcance_suministro_documentacion,yes,,Documentación,Documentation,,
+alcance_suministro_scada,no,,,,,BEUMER no oferta SCADA en este tipo de retrofit.
+alcance_suministro_ingenieria,no,,,,,La ingeniería de adaptación se describe dentro de Software.
+ejecucion,yes,,Ejecución de los trabajos,Project execution,,
+ejecucion_instalacion,yes,,Instalación,Installation,,
+ejecucion_puesta_marcha,yes,,Puesta en marcha,Commissioning,,
+ejecucion_pruebas,yes,,Plan de pruebas,Test plan,,
+ejecucion_transporte,yes,,Envío,Shipment,,
+ejecucion_recepcion,yes,,Aceptación de los trabajos,Acceptance,,
+ejecucion_inspeccion,no,,,,,
+ejecucion_fases,no,,,,,Las fases se describen dentro de Gestión de proyecto.
+ejecucion_demostracion,no,,,,,
+ejecucion_formacion,no,,,,,Activar con include=yes cuando la formación entre en alcance.
+custom_1,yes,62,Recurso preventivo (QHSE),Preventive resource (QHSE),,Partida propia de BEUMER en España. Su texto sale de la pestaña Content.
+custom_2,yes,64,Soporte a la operativa,Operating and monitoring period,,Periodo de acompañamiento tras la puesta en marcha (OMP).
+gestion_proyecto,yes,,Gestión de proyecto,Project management,,
+gestion_proyecto_comunicacion,yes,,Coordinación de las actuaciones,Coordination of the works,,
+gestion_proyecto_planificacion,yes,,Planificación detallada,Detailed planning,,
+gestion_proyecto_organizacion,no,,,,,
+gestion_proyecto_metodologia,no,,,,,
+gestion_proyecto_cambios,no,,,,,Las órdenes de cambio se tratan en Exclusiones y consideraciones adicionales.
+gestion_proyecto_calidad,no,,,,,
+condiciones_sitio,yes,,Condiciones técnicas,Technical conditions,,
+condiciones_sitio_entorno,yes,,Condiciones de operación y disponibilidad del sistema,System operating conditions and availability,,
+condiciones_sitio_jornadas,yes,,Ventanas de intervención y turnos de trabajo,Intervention windows and working shifts,,
+condiciones_sitio_area,yes,,Condiciones de instalación,Installation conditions,,
+condiciones_sitio_suministros,yes,,Suministros necesarios,Required supplies,,
+condiciones_sitio_accesos,yes,,Acceso a las instalaciones y seguridad,Access to the facilities and safety,,
+condiciones_sitio_obligaciones,yes,,Entregables por el Cliente,Deliverables by the Client,,
+limites_alcance,yes,,Exclusiones y consideraciones adicionales,Exclusions and additional considerations,,
+limites_alcance_exclusiones,yes,,Exclusiones,Exclusions,,
+limites_alcance_premisas,yes,,Supuestos y dependencias,Assumptions and dependencies,,
+limites_alcance_cambios,yes,,Gestión de desviaciones y órdenes de cambio,Deviations and change orders,,
+limites_alcance_interfaces,no,,,,,El límite de suministro se describe en el propio alcance.
+oferta_economica,yes,,Términos y condiciones comerciales,Commercial terms and conditions,,
+oferta_economica_resumen,yes,,Precio,Price,,
+oferta_economica_opciones,yes,,Opciones,Options,,Partidas cotizadas aparte que el Cliente puede activar.
+oferta_economica_no_incluido,yes,,Conceptos no incluidos en el precio,Not included in the price,,
+oferta_economica_revision,yes,,Indexación y revisión de precios,Indexation and price revision,,
+oferta_economica_pago,yes,,Condiciones de pago,Payment terms,,
+oferta_economica_validez,yes,,Validez,Validity,,
+oferta_economica_plazo,yes,,Plazo de entrega,Delivery time,,
+oferta_economica_moneda,yes,,Moneda,Currency,,
+oferta_economica_tarifas,no,,,,,Activar cuando la oferta incluya tarifas horarias.
+garantia_soporte,yes,,Garantía,Warranty,,
+garantia_soporte_alcance,yes,,Periodo de garantía,Warranty period,,
+garantia_soporte_exclusiones,yes,,Exclusiones de la garantía,Warranty exclusions,,
+garantia_soporte_sla,no,,,,,Activar solo en ofertas con contrato de soporte.
+garantia_soporte_recurrentes,no,,,,,
+condiciones_generales,yes,,Condiciones generales y reservas,General conditions and reservations,,
+condiciones_generales_marco,yes,,Condiciones generales de contratación,General terms of contract,,
+condiciones_generales_responsabilidad,no,,,,,Cubierto por las condiciones Orgalime referenciadas.
+condiciones_generales_pi,no,,,,,
+condiciones_generales_confidencialidad,no,,,,,
+condiciones_generales_fuerza_mayor,no,,,,,Cubierto por el párrafo de cadena de suministro en Plazo de entrega.
+proximos_pasos,yes,,Cierre,Closing,,

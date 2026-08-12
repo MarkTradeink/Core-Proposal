@@ -1,13 +1,15 @@
 key,value
 default_tier,B
-tone,"técnico, sobrio y concreto; sin superlativos ni lenguaje comercial"
-person,"primera persona del plural (proponemos, ejecutaremos)"
+tone,"técnico, sobrio y factual; frases cortas; sin superlativos ni lenguaje comercial"
+person,"tercera persona nombrando a BEUMER y al Cliente (BEUMER propone, el Cliente facilitará)"
 units,Sistema Internacional; decimal con coma en español
 date_format,dd/mm/aaaa
-forbidden_words,"revolucionario, líder mundial, solución llave en mano definitiva, best-in-class, sinergia"
-must_mention,"continuidad de la operación, trazabilidad documental"
+forbidden_words,"revolucionario, líder mundial, llave en mano definitiva, best-in-class, sinergia, innovador, puntero, óptimo"
+must_mention,"continuidad de la operación, obsolescencia de los equipos, minimizar el impacto en la producción"
 warranty_months,24
-validity_days,30
+validity_days,90
 incoterm,DAP
 term:cliente final,el Cliente
 term:máquina,equipo
+term:nosotros,BEUMER
+term:usuario,el Cliente
