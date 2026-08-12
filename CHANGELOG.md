@@ -4,6 +4,73 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Feature — a client's own cover variables, their own templates, and a real table of contents (2026-08-12)
+
+Driven by the first production client (`beumer_marcos`), whose real offers carry things the
+catalog had no room for. Three gaps, one mechanism each, and none of them needs a deploy for the
+*next* client.
+
+**The `Fields` tab: variables only this client has.** A real cover carries an offer number out of
+the client's ERP, an asset number, the legal name above it. The render context's vocabulary was
+closed, so there was nowhere to put them. The Proposal Config sheet now has a `Fields` tab whose
+rows become `{campos.<key>}` tags, with three sources: `static` (the sheet), `request` (read out
+of the RFQ email) and `auto` (wired to something the pipeline already computed —
+`proposal_number`, `date`, `project_title`, …).
+
+**`request` capture is deterministic, and that is the whole point.** These values are
+identifiers. A hallucinated offer number is strictly worse than a missing one: it lands on the
+cover of a document that reaches a customer, it looks entirely plausible, and nobody catches it.
+So `modules/proposal/field_capture.js` matches a label and nothing else — no model anywhere in the
+path. It folds case, accents and the `º`/`°` ordinals; it lets several fields share one line
+(header blocks pasted out of an ERP always do); it stops a value at the next label *including one
+this client never declared*, so `Oferta nº: 905149921  Versión: 1.0` cannot put the version inside
+the offer number; and the longest label wins, so `Project number` beats `Project`. A `required`
+field the sender omitted appends `custom_fields.<key>` to `missing_fields` and marks the RFQ
+**incomplete** — the run stops for review instead of shipping a cover with a hole in it.
+
+**The `Templates` tab: more than two documents per client.** Selection was `templates[lang] ||
+templates.en` against two Notion columns. A client is not one template per language — they have
+product lines, and a tender answers to a different document than a spare-parts quotation. Variants
+now live in the sheet with an optional keyword `match`, resolved where the sheet and the request
+are both in hand, and reported in the Telegram alert because "which template did this come out
+of" is the first question asked when a document looks wrong. The registry columns remain the
+fallback, so no existing client changes behaviour.
+
+**The `Client` tab: one place per client.** `proposals_folder_id`, `reference_docs_folder_id`,
+`pricing_sheet_id`, plus `document_version` and `author` (which previously had *no* source at all —
+the version silently defaulted to 1.0 and the version table's author column came out blank). The
+split is now stateable in a sentence: **Notion says who the client is and whether they may send;
+the sheet says what their document is made of.** `commercial_contact_email` cannot move — it is the
+key the incoming sender is matched against, and that must resolve before anyone knows which sheet
+to open. `Client Status` and `send_mode` deliberately do not move either: a copy-paste slip in a
+spreadsheet must not be able to put a client into live sending. Every key falls back to its Notion
+column, so nothing breaks for a client onboarded before the tab existed.
+
+**A real table of contents.** The contents list was a generated loop without page numbers, on the
+belief that the headless PDF leg could not refresh field-based TOCs. That is true of a bare
+`soffice --convert-to pdf`, but the conversion runs through Gotenberg's LibreOffice route, whose
+`updateIndexes` property defaults to true. The seed templates now carry a real `TOC \h \o "1-2"`
+field plus `<w:updateFields/>` — without the second half the `.docx` the client opens would show an
+empty list until someone pressed F9. Unnumbered front matter is pushed off the outline
+(`outlineLevel: 9`) so the TOC still skips it. The render context keeps emitting `indice` /
+`tabla_indice`, so a template already using the loop is unaffected. **The pagination itself is the
+one thing not checkable offline** — verify it on the first real run.
+
+**`project.title`.** A cover carries a project title, not a category. Module 1 now extracts one and
+`{proyecto.titulo}` falls back to `{proyecto.tipo}`, so older templates are unaffected.
+
+**`scripts/client-docs.js`.** Generates two documents per client from their own sheet: a setup
+guide (what they are configured to do, and the exact `{campos.*}` tags their template may use) and
+an RFQ email template carrying the exact labels the `Fields` tab declares. Generated rather than
+written because capture matches a string: hand-maintained, the sheet and the email drift the first
+time a field is added, and the failure is silent — the cover just comes out blank.
+
+**Two checks added, both for failure modes that were invisible until a live run.** The workflow
+graph checker now parses every Code node (n8n only compiles one when execution reaches it, so a
+syntax error from `mirror-cores` sat dormant until an RFQ hit that branch), and it verifies the
+Merge barrier has exactly one input port per tab read — a port with no feeder never receives data
+and *hangs* the run rather than failing it.
+
 ### Feature — `demo@cifral.io` accepts an RFQ from anyone, in draft mode (2026-08-11)
 Mark's decision, 2026-08-11: the demo address must serve `demo_client` by default and accept RFQs
 from any sender, so the "send me a real RFQ and I'll send back a sample proposal" CTA is literal.

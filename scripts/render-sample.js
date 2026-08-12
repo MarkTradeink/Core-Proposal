@@ -22,6 +22,7 @@ const jexl = require('jexl');
 const ROOT = path.join(__dirname, '..');
 const { resolveProposalConfig } = require(path.join(ROOT, 'modules/proposal/chapter_catalog'));
 const { buildRenderContext } = require(path.join(ROOT, 'modules/proposal/render_context'));
+const { captureFields } = require(path.join(ROOT, 'modules/proposal/field_capture'));
 const catalog = require(path.join(ROOT, 'schemas/chapter-catalog.json'));
 
 const lang = process.argv[2] === 'en' ? 'en' : 'es';
@@ -70,10 +71,16 @@ function readCsv(file) {
 }
 
 const SEED = path.join(ROOT, 'seed/demo_client/proposal-config');
+// The three newer tabs are optional: a client sheet created before they existed simply has none,
+// and everything still resolves. Reading them the same way keeps that path exercised.
+const readTab = (name) => (fs.existsSync(path.join(SEED, name)) ? readCsv(path.join(SEED, name)) : []);
 const sheet = {
   chapters: readCsv(path.join(SEED, 'chapters.csv')),
   content: readCsv(path.join(SEED, 'content.csv')),
   rules: readCsv(path.join(SEED, 'rules.csv')),
+  client: readTab('client.csv'),
+  templates: readTab('templates.csv'),
+  fields: readTab('fields.csv'),
 };
 sheet.rules = sheet.rules.filter((r) => r.key !== 'default_tier').concat([{ key: 'default_tier', value: tier }]);
 
@@ -101,7 +108,22 @@ for (const ch of proposalConfig.chapters) {
   }
 }
 
-const { context, sections_rendered } = buildRenderContext({
+// What Module 1 does with the client's declared `request` fields: a deterministic, label-driven
+// read of the RFQ text. Running it here means the seed's own capture labels are checked on every
+// build — a label that stops matching is otherwise invisible until a cover page comes out blank.
+const rfqText = [
+  lang === 'es' ? 'Buenos dias,' : 'Good morning,',
+  '',
+  'Att. Santiago Luna',
+  'Oferta nº: 905149921',
+  'Asset: A-4471',
+  'Project number: PRJ-2027-014',
+  '',
+  lang === 'es' ? 'Adjunto la solicitud de oferta.' : 'Please find our request attached.',
+].join('\n');
+const { values: capturedFields } = captureFields(rfqText, proposalConfig.fields);
+
+const { context, sections_rendered, fields_missing } = buildRenderContext({
   proposalConfig,
   proposalNumber: 'PROP-20260726-DEMO01',
   fecha: lang === 'es' ? '26/07/2026' : '2026-07-26',
@@ -114,6 +136,7 @@ const { context, sections_rendered } = buildRenderContext({
       { item: lang === 'es' ? 'Armario de control' : 'Control cabinet', quantity: 3, spec: 'IP54' },
     ],
     scope_of_supply: scope,
+    custom_fields: capturedFields,
   },
   content: { sections, tables },
   pricing: {
@@ -157,6 +180,11 @@ if (leftover) problems.push(`${leftover.length} unrendered brace(s) left in the 
 console.log(`rendered ${path.relative(ROOT, out)}`);
 console.log(`tier ${tier} / ${lang} — ${proposalConfig.chapters.length} chapters selected, ${sections_rendered.length} keys rendered, ${context.indice.length} index entries`);
 console.log(`clauses applied: ${proposalConfig.clauses.length} of ${sheet.content.length} rows in the sheet`);
+console.log(`client fields: ${Object.entries(context.campos).map(([k, v]) => `${k}=${v || '\u2014'}`).join(', ') || '(none declared)'}`);
+if (fields_missing.length) {
+  console.error(`\nFAIL \u2014 required client field(s) with no value: ${fields_missing.join(', ')}`);
+  process.exit(1);
+}
 if (proposalConfig.warnings.length) {
   console.error(`\nFAIL — the client config produced ${proposalConfig.warnings.length} warning(s):`);
   for (const w of proposalConfig.warnings) console.error(`  ${w}`);

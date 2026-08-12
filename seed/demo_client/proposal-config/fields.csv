@@ -1,0 +1,7 @@
+key,source,value,capture_label,required,notes
+n_oferta,request,,"Oferta nº, Offer no",,"Número de oferta del ERP del cliente. Va en el correo; se lee tal cual, sin modelo."
+n_activo,request,,"Asset, Activo",,Número de activo de la instalación.
+n_proyecto,request,,"Project number, Nº proyecto",,Código de proyecto del cliente.
+atencion,request,,"Att., Atn., Attn",,Persona a cuya atención va la oferta.
+razon_social,static,,,,"Razón social emisora tal y como debe aparecer en portada y pie."
+n_documento,auto,proposal_number,,,"Número de propuesta que genera Cifral. Úsalo si el cliente no tiene numeración propia."

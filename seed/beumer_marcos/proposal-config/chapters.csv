@@ -1,0 +1,5 @@
+chapter_id,include,order,title_es,title_en,tier,notes
+carta_presentacion,no,,,,,Se activa solo para ofertas fuera de licitación.
+solucion_tecnica_alternativas,,,,,,Solo tier C por defecto; poner include=yes para forzarla.
+anexo_cronograma,no,,,,,Activar cuando se adjunte Gantt.
+custom_1,no,,Por qué nosotros,Why us,,"Ejemplo de capítulo propio: título y texto salen de esta hoja, ningún agente lo escribe."

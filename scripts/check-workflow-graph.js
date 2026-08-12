@@ -23,6 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const vm = require('vm');
 const glob = require('fs').readdirSync(path.join(__dirname, '../workflows')).filter((f) => f.endsWith('.json'));
 
 let problems = 0;
@@ -33,11 +34,27 @@ for (const file of glob) {
   const p = path.join(__dirname, '../workflows', file);
   const wf = JSON.parse(fs.readFileSync(p, 'utf8'));
   const nodeNames = new Set(wf.nodes.map((n) => n.name));
+  // Every Code node must at least PARSE. n8n only compiles a Code node when the workflow runs and
+  // execution reaches it, so a syntax error introduced by scripts/mirror-cores.js — or by an edit
+  // to a wrapper — sits invisible until a live RFQ hits that branch. Parsing costs nothing here.
+  for (const node of wf.nodes) {
+    const code = node.parameters && node.parameters.jsCode;
+    if (!code) continue;
+    try {
+      new vm.Script(`(async function(){${code}})`);
+    } catch (e) {
+      fail(file, `Code node '${node.name}' does not parse: ${e.message}`);
+    }
+  }
+
+
   const conn = wf.connections || {};
 
   // No two Sheets/Drive/Notion "read" nodes may feed one another directly. Those nodes execute
   // once PER INPUT ITEM and replace the item with whatever they read, so chaining them multiplies
   // rows geometrically instead of just running each read once off a shared trigger item.
+  ok(file, `${wf.nodes.filter((n) => n.parameters && n.parameters.jsCode).length} Code node(s) parse`);
+
   const readTypes = new Set(['n8n-nodes-base.googleSheets', 'n8n-nodes-base.notion']);
   const readNodes = wf.nodes.filter((n) => readTypes.has(n.type)).map((n) => n.name);
   for (const name of readNodes) {
@@ -49,7 +66,7 @@ for (const file of glob) {
     }
   }
 
-  // If a "Build Proposal Config" node exists, all three Proposal Config reads must feed it in
+  // If a "Build Proposal Config" node exists, every Proposal Config read must feed it in
   // parallel through an explicit Merge barrier - not through each other (that's the chaining bug
   // above), and not by connecting all three directly into the same input index on Build Proposal
   // Config either. n8n does not reliably treat "three edges into one input" as "wait for all three,
@@ -57,11 +74,12 @@ for (const file of glob) {
   // it can run the downstream node multiple times (each real execution re-sending emails, PDFs,
   // etc.) or never resolve the wait at all. A Merge node is the node built for this: it has one
   // input PORT per branch, and only fires once every port has data.
-  const expectedFeeders = ['Read Chapters Tab', 'Read Content Tab', 'Read Rules Tab'].filter((n) => nodeNames.has(n));
+  const CONFIG_TABS = ['Read Chapters Tab', 'Read Content Tab', 'Read Rules Tab', 'Read Client Tab', 'Read Templates Tab', 'Read Fields Tab'];
+  const expectedFeeders = CONFIG_TABS.filter((n) => nodeNames.has(n));
   if (nodeNames.has('Build Proposal Config') && expectedFeeders.length) {
     const feedsDirectly = (conn['Merge Config Tabs'] && conn['Merge Config Tabs'].main || []).flat().map((l) => l.node);
     if (!nodeNames.has('Merge Config Tabs')) {
-      fail(file, `no 'Merge Config Tabs' node found - the three Proposal Config reads must converge through a Merge barrier, not straight into 'Build Proposal Config'.`);
+      fail(file, `no 'Merge Config Tabs' node found - the Proposal Config reads must converge through a Merge barrier, not straight into 'Build Proposal Config'.`);
     } else if (!feedsDirectly.includes('Build Proposal Config')) {
       fail(file, `'Merge Config Tabs' does not connect to 'Build Proposal Config'.`);
     } else {
@@ -71,8 +89,23 @@ for (const file of glob) {
           fail(file, `'${feeder}' must connect only to 'Merge Config Tabs', not ${JSON.stringify(targets)}.`);
         }
         if (targets.includes('Build Proposal Config')) {
-          fail(file, `'${feeder}' connects directly into 'Build Proposal Config', bypassing the Merge barrier - three separate edges into one input is not a reliable wait-for-all in n8n.`);
+          fail(file, `'${feeder}' connects directly into 'Build Proposal Config', bypassing the Merge barrier - several separate edges into one input is not a reliable wait-for-all in n8n.`);
         }
+      }
+      // A Merge only fires once EVERY port has data. Adding a tab read without widening the
+      // Merge leaves that branch waiting on a port nothing feeds, which hangs the run rather
+      // than failing it — the worst way to find out.
+      const merge = wf.nodes.find((n) => n.name === 'Merge Config Tabs');
+      const ports = (merge && merge.parameters && merge.parameters.numberInputs) || 2;
+      if (ports !== expectedFeeders.length) {
+        fail(file, `'Merge Config Tabs' has ${ports} input port(s) but ${expectedFeeders.length} tab read(s) feed it - a port with no feeder never receives data and the branch waits forever.`);
+      }
+      const usedPorts = new Set();
+      for (const feeder of expectedFeeders) {
+        for (const link of (conn[feeder] && conn[feeder].main || []).flat()) usedPorts.add(link.index || 0);
+      }
+      if (usedPorts.size !== expectedFeeders.length) {
+        fail(file, `the tab reads share Merge input ports (${[...usedPorts].sort().join(', ')}) - each read needs its OWN port or the Merge fires before the others have run.`);
       }
       ok(file, `all ${expectedFeeders.length} Proposal Config reads converge through 'Merge Config Tabs' before 'Build Proposal Config'`);
     }

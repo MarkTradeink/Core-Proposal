@@ -79,6 +79,70 @@
       }
     },
 
+    "client": {
+      "type": "object",
+      "description": "The sheet's `Client` tab: operational ids that used to be Notion columns. The split is deliberate — Notion says WHO the client is and whether they may send (client_id, status, send_mode, service_tier, commercial_contact_email, and the id of this sheet); this tab says what their document is made of, including which Drive folders it reads and writes. The resolving node merges these over the registry values, sheet first, so a client onboarded before this tab existed is unaffected.",
+      "additionalProperties": { "type": "string" },
+      "properties": {
+        "proposals_folder_id": { "type": "string", "description": "Drive folder the generated .docx/.pdf are written to. Overrides the registry column." },
+        "reference_docs_folder_id": { "type": "string", "description": "Drive folder of approved past proposals, for Module 2 grounding. Overrides the registry column." },
+        "pricing_sheet_id": { "type": "string", "description": "Rate-card sheet id. Overrides the registry column. Module 3 still reads the registry value — it does not open the Proposal Config sheet." },
+        "document_version": { "type": "string", "description": "Document version for the cover, the footer and the version-control table. Defaults to '1.0'." },
+        "author": { "type": "string", "description": "Author initials for the version-control table. Blank before this tab existed." }
+      }
+    },
+
+    "templates": {
+      "type": "array",
+      "description": "The sheet's `Templates` tab: this client's .docx variants. A client is not one template per language — they have product lines, and a tender answers to a different document than a spare-parts quotation. Selection order is in `template` below.",
+      "items": {
+        "type": "object",
+        "required": ["variant", "lang", "file_id"],
+        "properties": {
+          "variant": { "type": "string", "description": "Variant key, lowercased. 'default' when the row does not name one." },
+          "lang": { "type": "string", "enum": ["es", "en"] },
+          "file_id": { "type": "string", "description": "Drive file id of the .docx." },
+          "match": { "type": "array", "items": { "type": "string" }, "description": "Lowercased keywords; if one appears in the request text this variant is selected." },
+          "is_default": { "type": "boolean", "description": "This is the fallback for its language." }
+        }
+      }
+    },
+
+    "template": {
+      "type": ["object", "null"],
+      "description": "The .docx chosen for THIS request, resolved where the sheet and the request are both in hand. Order, most specific first: an explicitly requested variant, a `match` keyword found in the request text, the language default, any row in that language, the other language, and finally the registry's template_id_en/_es. Null means nothing is configured anywhere — Module 4 then fails loudly rather than rendering an arbitrary document.",
+      "properties": {
+        "file_id": { "type": "string" },
+        "variant": { "type": "string" },
+        "lang": { "type": "string" },
+        "reason": { "type": "string", "description": "Why this one was chosen, e.g. 'language_default' or \"matched 'retrofit'\". Reported in the Telegram alert: 'which template did this come out of' is the first question asked when a document looks wrong, and the finished PDF cannot answer it." }
+      }
+    },
+
+    "fields": {
+      "type": "array",
+      "description": "The sheet's `Fields` tab: this client's OWN document variables, exposed to the template as {campos.<key>}. This is what makes a cover page client-specific without a deploy — an offer number from their ERP, an asset number, the legal name in their footer. The catalog owns the chapters; this owns everything around them that only this client has.",
+      "items": {
+        "type": "object",
+        "required": ["key", "source"],
+        "properties": {
+          "key": { "type": "string", "description": "Tag name. Lowercase letters, digits and underscores only — tags are evaluated as Jexl expressions, so '-' would read as subtraction and an accent breaks the tag." },
+          "source": {
+            "type": "string",
+            "enum": ["static", "request", "auto"],
+            "description": "static -> the sheet's `value` column. request -> captured from the RFQ text by label, deterministically and never by a model (modules/proposal/field_capture.js): these are identifiers, and a plausible invented offer number on a customer's cover is worse than a blank. auto -> wired to something the pipeline already computed."
+          },
+          "value": { "type": "string", "description": "For `static`, the literal value. For `auto`, which computed value to use: proposal_number, date, version, tier, language, client_company, client_contact, client_email, client_phone, project_title, project_type, project_location, project_deadline." },
+          "labels": { "type": "array", "items": { "type": "string" }, "description": "For `request`: the label(s) to look for, from the comma-separated capture_label cell. Matching folds case, accents and the º/° ordinal marks." },
+          "required": { "type": "boolean", "description": "A required `request` field the sender did not supply appends `custom_fields.<key>` to missing_fields and marks the RFQ incomplete, so the run stops for review instead of shipping a cover with a hole in it." },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+
+    "version": { "type": "string", "description": "Document version, from the `Client` tab's document_version. Defaults to '1.0'." },
+    "author": { "type": "string", "description": "Author initials for the version-control table, from the `Client` tab." },
+
     "rules": {
       "type": "object",
       "description": "Writing rules from the sheet's Rules tab, injected verbatim into the A1/A2/A3 system prompts. Unknown keys are passed through — a client can add their own and reference them in a custom chapter.",

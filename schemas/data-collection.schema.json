@@ -16,7 +16,7 @@
     "errors": { "type": "array", "items": { "type": "string" } },
     "data": {
       "type": "object",
-      "required": ["client", "project", "technical_requirements", "language", "status", "missing_fields", "request_type", "scope_of_supply"],
+      "required": ["client", "project", "technical_requirements", "language", "status", "missing_fields", "request_type", "scope_of_supply", "custom_fields"],
       "additionalProperties": true,
       "properties": {
         "request_type": {
@@ -39,10 +39,16 @@
             "email": { "type": ["string", "null"] }
           }
         },
+        "custom_fields": {
+          "type": "object",
+          "description": "The client's OWN document variables, declared in the `Fields` tab of their Proposal Config sheet and captured from the RFQ text by label — deterministically, never by the model (modules/proposal/field_capture.js). Keys are the client's own, e.g. `offer_no`. A declared field the sender did not supply is absent here; if it was marked `required` it also appears in missing_fields as `custom_fields.<key>` and the RFQ is `incomplete`.",
+          "additionalProperties": { "type": "string" }
+        },
         "project": {
           "type": "object",
           "required": ["type", "location", "desired_deadline"],
           "properties": {
+            "title": { "type": ["string", "null"], "description": "The project's own title, as it should read on the cover. Falls back to `type` when the RFQ never names the project." },
             "type": { "type": ["string", "null"] },
             "location": { "type": ["string", "null"] },
             "desired_deadline": { "type": ["string", "null"] }

@@ -1,0 +1,3 @@
+variant,lang,file_id,match,default,notes
+default,es,,,yes,"Plantilla común en español. Pega aquí el id del .docx en Templates/."
+default,en,,,yes,"Misma plantilla en inglés."

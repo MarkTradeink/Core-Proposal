@@ -37,9 +37,11 @@ about a third is genuinely written. Cifral treats those differently: **boilerpla
 client's spreadsheet to the paper with no model anywhere in between**, prices and tables are computed,
 and the agents write the part that is actually specific to the project.
 
-Each client's chapter selection, clause library and house style live in a **Proposal Config Google
-Sheet** in their own Drive folder — see [`docs/CLIENT-DRIVE-SETUP.md`](docs/CLIENT-DRIVE-SETUP.md).
-Renaming a chapter, adding an exclusion or banning a word is a spreadsheet edit, not a deployment.
+Each client's chapter selection, clause library, house style, **own cover variables** and **`.docx`
+variants** live in one **Proposal Config Google Sheet** in their own Drive folder — see
+[`docs/CLIENT-DRIVE-SETUP.md`](docs/CLIENT-DRIVE-SETUP.md). Renaming a chapter, adding an exclusion,
+banning a word, putting the client's ERP offer number on the cover or adding a second template are
+all spreadsheet edits, not deployments.
 
 ## The four modules ↔ the website's public positioning
 
@@ -84,11 +86,14 @@ schemas/     I/O envelopes + chapter-catalog.json (the chapter superset) + scope
 modules/intake/    intake_core.js       — which intake a message came through, and the guards on it
 modules/pricing/   pricing_core.js      — the pricing formula (numbers live in Google Sheets)
 modules/proposal/  chapter_catalog.js   — resolves the catalog against a request and a client
+                   field_capture.js     — the client's own cover variables, read from the RFQ by
+                                          label (deterministic: no model ever touches an identifier)
                    render_context.js    — how proposal data is shaped for the .docx template
 templates/   build-templates.js + the seed .docx templates it generates from the catalog
 scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check),
-             check-intake-routing.js (replays the intake chain against the real node source)
-seed/        demo_client's Proposal Config CSVs — the starting point for a new client's sheet
+             check-intake-routing.js (replays the intake chain against the real node source),
+             client-docs.js (a client's setup guide + RFQ email template, from their own sheet)
+seed/        each client's Proposal Config CSVs (six tabs) — demo_client's are the starting point
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
 docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEMO-INTAKE, DEPLOYMENT,
              ONBOARDING, PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE,
@@ -104,7 +109,7 @@ and the actual `.docx` templates live in each client's Google Drive folder so th
 deploy. The repo owns the workflows, the contracts, the pricing formula, the chapter catalog and the
 render context.
 
-Four logic cores live in this repo *and* inside n8n, because a Code node cannot `require` a file.
+Five logic cores live in this repo *and* inside n8n, because a Code node cannot `require` a file.
 `npm run mirror` copies them in the one safe direction; `npm run check` fails if they have drifted.
 
 ## What's different from the legacy demo
@@ -134,7 +139,7 @@ npm install
 npm run check
 ```
 
-That runs the four core self-checks, verifies the n8n Code nodes have not drifted from the repo,
+That runs the five core self-checks, verifies the n8n Code nodes have not drifted from the repo,
 replays the intake chain end to end against the real node source
 ([`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md)), and performs four real docxtemplater renders (tiers
 A/B/C in Spanish, tier B in English) against the real templates and the real seed config — failing
