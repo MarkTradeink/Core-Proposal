@@ -32,7 +32,31 @@ story), but they are **not** individually sold, so the registry no longer has pe
 Any single **request** can override the client's default by stating what it wants (`request_type`,
 extracted by Module 1); `service_tier` is the fallback when a request doesn't say.
 
+**The override may only narrow.** `service_tier` is a **ceiling**: a `full_pipeline` client can ask
+for just a price on one RFQ, but a `proposal_only` client asking for pricing gets a proposal — they
+did not buy pricing, and one misread email must not change that. Requests outside the tier fall back
+to the tier and the substitution is reported in the Telegram alert.
+
+Behind the clamp, a pricing route still needs a rate card (`pricing_sheet_id` here, or an inline
+`client_config.rate_card`). A client contracted for pricing without one is a misconfiguration:
+`full_pipeline` degrades to `proposal_only`, `pricing_only` stops with its own alert rather than
+Module 3 throwing three modules deep. See `docs/ARCHITECTURE.md` § "Three service tiers".
+
 ## Properties
+
+> **What the registry still owns, after the Proposal Config sheet grew a `Client` tab.**
+> Notion says **who the client is and whether they may send**; the sheet says **what their document
+> is made of**. So `template_id_en/_es`, `proposals_folder_id` and `reference_docs_folder_id` are now
+> better set in the sheet (`docs/CLIENT-DRIVE-SETUP.md`) — the columns below stay as the fallback and
+> are still read when the sheet's cell is empty, so no existing client breaks.
+>
+> Two things deliberately do **not** move:
+> - `commercial_contact_email` — it is the key the incoming sender is matched against, and that has
+>   to resolve before anyone knows which sheet to open.
+> - `Client Status` and `send_mode` — the delivery gates. A copy-paste slip in a spreadsheet must not
+>   be able to put a client into live sending.
+>
+> `pricing_sheet_id` also stays authoritative here: Module 3 never opens the Proposal Config sheet.
 
 Registry-specific properties the workflows read:
 
@@ -44,8 +68,8 @@ Registry-specific properties the workflows read:
 | `send_mode` | Select: `send` / `draft` (empty → `send`) | Delivery switch. `send` replies to the reseller for real; `draft` stops at a Gmail draft and sends nothing. The per-client rollback — set it to `draft` to take one client out of live sending without touching the workflows. **Not consulted for `demo_client` or for anything that arrived through `demo@cifral.io`:** those are forced to `draft` in code, because "empty → `send`" is a permissive failure mode and a public address cannot have one ([`docs/DEMO-INTAKE.md`](DEMO-INTAKE.md) §3). |
 | `service_tier` | Select: `pricing_only` / `proposal_only` / `full_pipeline` | Default deliverable for this client. |
 | `commercial_contact_email` | Email | **Client identity + reply key.** The sender address the client is recognized by (matched against the incoming email's `From`); also the fallback reply address. The draft/quote is sent to the actual sender, never the extracted end customer. Not used as the identity key for mail delivered to `demo@cifral.io` — that route resolves by destination instead. |
-| `template_id_en` | Rich text | Google Docs master template id for English proposals. |
-| `template_id_es` | Rich text | Google Docs master template id for Spanish proposals (may be empty → EN fallback). |
+| `template_id_en` | Rich text | Fallback `.docx` template id for English proposals. Superseded by the sheet's `Templates` tab when it has a row. |
+| `template_id_es` | Rich text | Fallback `.docx` template id for Spanish proposals (may be empty → EN fallback). Superseded by the sheet's `Templates` tab. |
 | `proposals_folder_id` | Rich text | Google Drive folder to drop generated proposals into. |
 | `reference_docs_folder_id` | Rich text | Google Drive folder of the client's approved docs / past proposals for Module 2 grounding. |
 | `pricing_sheet_id` | Rich text | Google Sheet id holding this client's rate card (see `docs/PRICING-SHEET-TEMPLATE.md`). |
@@ -123,6 +147,19 @@ out from the wrong address.
 
 Set `send_mode` to `draft` for a client to keep the old review-before-sending behaviour. Leave it
 empty (or `send`) for live delivery.
+
+## Reading these properties safely
+
+Every workflow reads the registry through a `prop()` helper. It normalises whatever n8n's Notion
+node emits — a plain string, `{name}`, `{value}`, a raw `{type, select:{name}}`, a rich-text array —
+down to **a string or `null`**, with booleans passed through.
+
+That normalisation is load-bearing, not tidiness. Before it existed, `prop()` returned the raw object
+for any shape it did not recognise, and two failures went unnoticed for months because both fail
+toward the *permissive* answer: a `Select` that never matched a tier fell back to `full_pipeline`,
+and an empty rich-text property arriving as `[]` (truthy) read as "configured". A `paused` client
+would not have been rejected either. **When adding a property here, never compare its value without
+going through `prop()`, and never test it for truthiness raw.**
 
 ## Property → `client_config` mapping
 

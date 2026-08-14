@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Copy the versioned logic cores from modules/ into the n8n Code nodes that run them.
 //
-// Three pieces of business logic live in this repo AND inside n8n, because a Code node cannot
-// require a file: the pricing formula, the render context, and the chapter-catalog resolution.
+// Several pieces of business logic live in this repo AND inside n8n, because a Code node cannot
+// require a file: the pricing formula, the intake routing, the client-field capture, the render
+// context, and the chapter-catalog resolution.
 // docs/TESTING-MANUAL.md documents a drift *checker* — it tells you the two copies disagree. This
 // script is the other half: it makes them agree, in the one direction that is safe (repo -> n8n).
 //
@@ -33,6 +34,20 @@ const MIRRORS = [
     targets: [
       ['workflows/00-orchestrator-end-to-end.json', 'Build Envelope'],
       ['workflows/00-orchestrator-end-to-end.json', 'Intake Guard'],
+    ],
+  },
+  {
+    module: 'modules/proposal/field_capture.js',
+    marker: 'FIELD CAPTURE CORE',
+    // Module 1 captures the client's declared fields out of the RFQ; the three 'Build Proposal
+    // Config' nodes need the same core because chapter_catalog.js calls parseFieldDefinitions()
+    // from it. In n8n both cores land in the one node and resolve from a shared scope — which is
+    // exactly why the require() in chapter_catalog.js sits outside its core markers.
+    targets: [
+      ['workflows/01-data-collection-validation.json', 'Validate & Flag Missing Fields'],
+      ['workflows/00-orchestrator-end-to-end.json', 'Build Proposal Config'],
+      ['workflows/02-technical-content-generation.json', 'Build Proposal Config'],
+      ['workflows/04-proposal-assembly.json', 'Build Proposal Config'],
     ],
   },
   {

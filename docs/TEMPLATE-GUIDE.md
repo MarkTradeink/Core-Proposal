@@ -92,6 +92,11 @@ Every id exposes exactly this:
 
 Put the paragraph loop before the bullet loop — that is the order content is written in.
 
+**Block order is document order.** A chapter appears where its block sits in this file; the
+`order` column in the client's `Chapters` tab sets the chapter's number, not its position. To move
+a chapter, move the whole `{#has_<id>}` … `{/has_<id>}` block. The reserved `custom_1`…`custom_5`
+blocks sit at the end of the seed, so a client who uses one almost always wants to move it.
+
 Generated text and the client's own clauses arrive through the **same** loops. The template cannot
 tell them apart, and should not try to.
 
@@ -110,18 +115,37 @@ headings.
 
 ## Contents list
 
+A **real Word table of contents**, with page numbers and working links:
+
+```
+Field: TOC \h \o "1-2"
+```
+
+The seed builds it for you (`npm run templates`), so there is nothing to type.
+
+This used to be a generated loop without page numbers, on the belief that the headless PDF leg could
+not refresh field TOCs. That is true of a bare `soffice --convert-to pdf`, but the conversion runs
+through **Gotenberg's** LibreOffice route, whose `updateIndexes` property defaults to true and
+refreshes indexes before converting. The other half is `<w:updateFields/>` in `word/settings.xml`,
+which the seed sets: without it the `.docx` the client opens would show an empty contents list until
+someone pressed F9, because docxtemplater writes the new headings without touching the field's
+cached result.
+
+Unnumbered front matter is still not listed. The seed pushes every unnumbered heading off the
+outline (`outlineLevel: 9`), so the TOC skips it — a contents list that opens with
+"Índice ....... 2" is noise.
+
+The render context **still emits** `indice` and `tabla_indice`, so a client template that already
+uses the generated loop keeps working unchanged:
+
 ```
 {#indice}
 {numero}  {titulo}
 {/indice}
 ```
 
-**Not** a Word TOC field. The PDF leg runs through headless LibreOffice, which does not refresh field
-TOCs, so a field-based table of contents ships empty or stale. This loop is built from the chapters
-that actually rendered, so it can never disagree with the document. It has no page numbers — that is
-the trade, and it is the right one.
-
-Unnumbered front matter is not listed.
+> ⚠️ Verify page numbers on the first real run. Everything above is checked offline except the
+> pagination itself, which only exists once Gotenberg has converted the document.
 
 ## Tables
 
@@ -145,7 +169,35 @@ here, because docxtemplater detects that the tags span a table row and repeats t
 | `{documento.tier}` | `A`, `B` or `C` |
 | `{documento.version}` · `{documento.config_source}` | Document version; `sheet` or `catalog_default` |
 | `{cliente.empresa}` `{cliente.contacto}` `{cliente.email}` `{cliente.telefono}` | End-customer details |
+| `{proyecto.titulo}` | The project's own title, as the sender words it. Falls back to `{proyecto.tipo}` when the RFQ never names the project — so an older template that used `tipo` is unaffected |
 | `{proyecto.tipo}` `{proyecto.ubicacion}` `{proyecto.plazo}` | Project details |
+| `{campos.<key>}` | **This client's own variables** — see below |
+
+### The client's own variables: `{campos.*}`
+
+A real cover carries things no catalog can know: an offer number out of the client's ERP, an asset
+number, the legal name that goes above it. Those are declared in the `Fields` tab of the client's
+Proposal Config sheet (`docs/CLIENT-DRIVE-SETUP.md`) and land here under `campos`:
+
+```
+{campos.razon_social}
+{campos.n_oferta}          Oferta nº
+{campos.atencion}          Att.
+```
+
+Three things to know before you type one into a template:
+
+- **Only declared keys exist.** Every key the sheet declares is always present, empty rather than
+  absent — the same totality rule as the rest of the context. A key the sheet does *not* declare
+  prints the literal word `undefined`, because there is nothing to enumerate.
+- **The valid list is generated.** `node scripts/client-docs.js <client_id>` writes that client's
+  setup guide, which lists every `{campos.*}` tag their template may use. Read it before editing
+  their cover.
+- **Values captured from the email are verbatim.** No model touches them. What the sender typed
+  after `Oferta nº:` is what prints.
+
+Removing a header tag you do not want — `{proyecto.ubicacion}`, `{proyecto.plazo}` — is just a
+delete. The context still emits the key; nothing has to know the template stopped using it.
 
 ### RFQ read-back
 
@@ -281,8 +333,21 @@ already supports one per language, and it keeps templates readable for non-devel
 Offline, before anything reaches Drive:
 
 ```bash
-npm run check          # renders tiers A/B/C in Spanish and tier B in English
+# every tag in the client's own .docx, against the vocabulary that will fill it
+node scripts/check-template.js <template.docx> <client_id>
+
+# a real render of that template against that client's real configuration
+node scripts/render-sample.js es B <client_id> --template <template.docx>
+
+npm run check          # the seed templates, tiers A/B/C in Spanish and tier B in English
 ```
+
+`check-template.js` is the one to run after **any** edit in Word. It catches the two things that
+survive an edit and reach a customer: a tag nothing fills (`{cliente.empressa}`, or a `{campos.*}`
+the client's `Fields` tab does not declare), which prints the literal word `undefined`, and a tag
+Word has split across text runs. It reports the split ones as a count, because Word splits almost
+every tag it touches and docxtemplater rejoins them — the count only matters on the day one tag
+stops rendering.
 
 It fails on the two things that reach a customer silently: the literal word `undefined`, and
 unrendered braces.
@@ -295,7 +360,10 @@ Then open the generated `.docx` (`templates/sample-*.docx`):
 - Bullets can be re-indented with Tab — proof they are a native list, not "•" characters.
 - Out-of-scope chapters are gone **along with their headings**.
 - The amount column adds up to the total.
-- The contents list matches the chapters that are actually there.
+- The contents list matches the chapters that are actually there — and in the **PDF**, that it has
+  page numbers. If it is empty, Gotenberg's `updateIndexes` did not run; if the `.docx` is empty but
+  the PDF is fine, `<w:updateFields/>` was lost when the template was re-saved from Word.
+- Any `{campos.*}` you added shows the client's value, not `undefined`.
 
 Then run a real `full_pipeline` RFQ and compare the PDF against the `.docx`: headers, footers, logo
 and page breaks should match, and the numbering should survive the conversion.

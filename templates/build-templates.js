@@ -27,7 +27,7 @@ const path = require('path');
 const {
   Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, TableLayoutType,
   HeadingLevel, AlignmentType, LevelFormat, WidthType, BorderStyle, ShadingType,
-  Header, Footer, PageNumber, PageBreak, convertInchesToTwip,
+  Header, Footer, PageNumber, PageBreak, TableOfContents, convertInchesToTwip,
 } = require('docx');
 
 const ROOT = path.join(__dirname, '..');
@@ -56,7 +56,6 @@ const UI = {
     paymentTerms: 'Condiciones de pago',
     page: 'Página',
     of: 'de',
-    tocHint: 'El índice se genera con los capítulos que realmente contiene esta propuesta.',
     confidential: 'Documento confidencial. Su contenido no puede ser reproducido ni comunicado a terceros sin autorización escrita.',
   },
   en: {
@@ -77,7 +76,6 @@ const UI = {
     paymentTerms: 'Payment terms',
     page: 'Page',
     of: 'of',
-    tocHint: 'The contents list is built from the chapters this proposal actually contains.',
     confidential: 'Confidential document. Its content may not be reproduced or disclosed to third parties without written authorisation.',
   },
 };
@@ -95,6 +93,11 @@ function heading(text, level, numbering) {
   return new Paragraph({
     heading: level,
     numbering,
+    // The contents list is a real Word TOC field collecting outline levels 1-2. Front matter and
+    // the fixed pages are Heading 1s for the navigation pane's sake but carry no chapter number,
+    // and a contents list that opens with 'Indice ....... 2' is noise — so anything unnumbered is
+    // pushed off the outline and the TOC never sees it. Same rule the generated list used.
+    outlineLevel: numbering ? undefined : 9,
     spacing: { before: level === HeadingLevel.HEADING_1 ? 320 : 220, after: 120 },
     children: [new TextRun(text)],
   });
@@ -244,17 +247,24 @@ function versionAndToc(lang) {
 
   out.push(tag('{#has_indice}'));
   out.push(heading(lang === 'es' ? 'Índice' : 'Contents', HeadingLevel.HEADING_1));
-  out.push(new Paragraph({ spacing: { after: 160 }, children: [new TextRun({ text: t.tocHint, size: 16, italics: true, color: '808080' })] }));
-  // A deterministic list rather than a Word TOC field: LibreOffice does not refresh field-based
-  // tables of contents on the headless PDF conversion, so a field TOC would ship empty or stale.
-  // These numbers come from the render context, which numbers exactly what it rendered.
-  out.push(tag('{#indice}'));
-  out.push(new Paragraph({
-    spacing: { after: 40 },
-    indent: { left: convertInchesToTwip(0.25) },
-    children: [new TextRun({ text: '{numero}', bold: true }), new TextRun('  {titulo}')],
+  // A REAL Word table of contents, with page numbers and working links.
+  //
+  // The earlier design used a generated list without page numbers, on the belief that the
+  // headless PDF leg could not refresh field-based tables of contents. That is true of a bare
+  // `soffice --convert-to pdf`, but the conversion actually runs through Gotenberg's LibreOffice
+  // route, whose `updateIndexes` property defaults to true and refreshes indexes before
+  // converting — so the PDF gets real page numbers.
+  //
+  // `features.updateFields` below covers the other half: without it the .docx the client opens
+  // would show an empty contents list until someone pressed F9, because docxtemplater writes the
+  // new headings without touching the field's cached result.
+  //
+  // The render context still emits `indice` / `tabla_indice`, so a client template that already
+  // uses the generated list keeps working — see docs/TEMPLATE-GUIDE.md.
+  out.push(new TableOfContents(lang === 'es' ? 'Índice' : 'Contents', {
+    hyperlink: true,
+    headingStyleRange: '1-2',
   }));
-  out.push(tag('{/indice}'));
   out.push(tag('{/has_indice}'));
 
   out.push(new Paragraph({ children: [new PageBreak()] }));
@@ -405,6 +415,9 @@ function buildDocument(lang) {
 
   return new Document({
     creator: 'Cifral',
+    // Marks the document's fields dirty so Word repaginates the table of contents when the
+    // client opens the .docx. The PDF leg is covered by Gotenberg's updateIndexes.
+    features: { updateFields: true },
     title: t.proposal,
     description: 'Cifral seed proposal template — see docs/TEMPLATE-GUIDE.md',
     styles: {

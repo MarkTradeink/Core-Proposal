@@ -55,6 +55,38 @@ Routing is decided **per request**. Module 1 extracts a `request_type` from the 
 the orchestrator uses it, falling back to the client's `service_tier` when the request is
 `unspecified`. So the same client can ask for a price today and a full proposal tomorrow.
 
+**`service_tier` is a ceiling, not merely a default.** The sentence above is precise about which
+direction a request may move: a client *on `full_pipeline`* can narrow to one deliverable. It may
+not widen. `request_type` comes from an LLM reading free text — its prompt says to prefer
+`unspecified` over guessing, but that is a judgement call, not a guarantee — so `Resolve Route`
+clamps it to what the tier permits:
+
+| `service_tier` | a single request may ask for |
+|---|---|
+| `pricing_only` | `pricing_only` |
+| `proposal_only` | `proposal_only` |
+| `full_pipeline` | any of the three |
+
+Anything outside that set, `unspecified` included, falls back to the tier itself. This is what stops
+one misread email from buying a deliverable the client never contracted for.
+
+**A capability backstop sits behind the clamp.** Once the clamp holds, a pricing route can only
+appear because the *tier* says so — which makes the remaining check purely one of misconfiguration:
+a client contracted for pricing with no rate card anywhere (`pricing_sheet_id`, or an inline
+`client_config.rate_card`). `full_pipeline` degrades to `proposal_only` (the document is still fully
+deliverable; it loses only the commercial section); `pricing_only` has nothing to degrade to and
+routes to its own dead-end, `Pricing Not Configured`, which alerts and stops. It should never fire
+in normal operation — when it does, the Notion row and Drive disagree. It earns its place because
+`full_pipeline` runs Modules 2 and 3 in parallel, so failing here costs nothing while failing inside
+Module 3 costs a full content-generation pass first.
+
+Whenever the delivered route differs from what the email asked for, `route_note` says so in plain
+language and Module 4 prints it in the Telegram alert — a sender who asked for a price and received
+a proposal can find out why without opening an execution log.
+
+`scripts/check-routing.js` replays all 24 tier × request × pricing combinations against the real
+node source on every `npm run check`.
+
 ## Scope of supply — one per-request selector
 
 Module 1 also extracts a `scope_of_supply` map (item → boolean) against the fixed catalog in
@@ -242,16 +274,40 @@ trigger (Gmail / chat)
   → Intake Guard → Intake OK?  (junk / rate / size gates — BEFORE anything costly)
   → Load Client Config (Notion, ONCE)                 ┐ resolve-once
   → Module 1  (Execute Workflow, client_config passed) ┘
+  → IF the intake was the PUBLIC one → Telegram "Demo used — new lead" (fires first, alongside)
   → IF status == "incomplete"
-        → Telegram "RFQ needs human review" → stop     (realizes the website's Module-1 promise)
-     ELSE Resolve Route (request_type, else service_tier) → Switch:
-        • pricing_only  → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
-        • proposal_only → Module 2 → Module 4                                      (document, no pricing block)
-        • full_pipeline → Module 2 ∥ Module 3 → Merge → Module 4                   (full document)
+        → Telegram "RFQ needs human review"            (Cifral's copy — always fires, first)
+        → Build Missing Info Reply → Gmail draft → IF send_mode == send → drafts.send
+                                                        (the SENDER's copy, in their own thread)
+     ELSE Resolve Route (request_type, else service_tier, then the pricing capability guard) → Switch:
+        • pricing_only       → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
+        • proposal_only      → Module 2 → Module 4                                      (document, no pricing block)
+        • full_pipeline      → Module 2 ∥ Module 3 → Merge → Module 4                   (full document)
+        • blocked_no_pricing → Telegram "Pricing not configured" → stop                 (pricing_only requested, no rate card anywhere)
 ```
 
 Pricing inputs are entered manually and **filtered by the request's scope of supply** before
 Module 3 (phase-1 has no auto hours-estimation engine).
+
+### Who hears about what
+
+Three audiences, deliberately separated:
+
+| Event | Goes to | Why |
+|---|---|---|
+| Proposal or quote produced, config warnings, routing substitutions | **Telegram (Cifral)** | operational and debugging signal; nobody outside Cifral needs it |
+| The public demo was used, with the sender's address | **Telegram (Cifral)** | it is a lead. Fires as soon as the intake guards pass and *before* the pipeline runs, so a demo that later fails is still captured |
+| The RFQ is missing information | **Email to the sender, in their own thread** — plus Telegram for Cifral | only the sender can fix it, and an alert in Cifral's Telegram cannot ask them to |
+
+The distinction that matters is the last one: a *system* failure is Cifral's problem and stays
+internal, while an *incomplete request* is a conversation with the person who sent it. The Telegram
+alert is wired first on that branch, so the internal copy survives whatever the Gmail leg does, and
+the reply degrades to a reported `deliverable: false` rather than throwing on top of an alert that
+has already fired.
+
+The public intake still cannot send autonomously: `Build Missing Info Reply` re-asserts the
+draft-only rule for `open_intake` at the last gate before Gmail, exactly as Module 4 does. A demo
+prospect's missing-info reply is written and parked, for a human to read and release.
 
 Two envelope fields carry the email context. `client_config` holds what belongs to the *client*
 (`from_alias`, `send_mode`, both derived in "Map Client Config"); a sibling `email_context` holds

@@ -102,9 +102,39 @@ Check:
 **Send** a proposal/full request that omits the end-customer email and project type.
 
 Check:
-- [ ] Module 1: `status = incomplete`, `missing_fields` lists `client.email`, `project.type`.
-- [ ] Route is not taken — **RFQ Needs Review** Telegram fires and the run stops.
-- [ ] **No** draft and **no** document created.
+- [ ] Module 1: `status = incomplete`, `missing_fields` lists `client.email`, `project.type`, and
+      `missing_fields_detail` carries a readable label for each.
+- [ ] Route is not taken — no Module 2/3/4 call, **no** document created.
+- [ ] **RFQ Needs Review** Telegram fires, listing the missing items by their *labels*.
+- [ ] A reply to **the sender** is composed: subject is the original prefixed `Re:`, it lands in the
+      original thread, and the body lists the same items in the RFQ's language.
+- [ ] Recipient is the **sender**, never the extracted end customer.
+- [ ] With `send_mode = draft` it stays a draft and the Telegram says so; with `send` it goes out and
+      the Telegram says that instead.
+- [ ] A client field marked `required` in the `Fields` tab that the sender omitted appears in the
+      email under **the client's own label** ("Oferta nº"), not as `custom_fields.n_oferta`.
+
+## Scenario 5b — Incomplete RFQ on the public intake
+
+**Send** an incomplete RFQ to `demo@cifral.io` from an address that is not in the registry.
+
+Check:
+- [ ] The reply is composed and left as a **draft** — `open_intake` forces draft at the last gate
+      regardless of any registry value. Nothing is sent to a stranger autonomously.
+- [ ] The Telegram alert says the reply is waiting as a draft.
+
+## Scenario 5c — The demo was used (lead capture)
+
+**Send** any RFQ to `demo@cifral.io` from an address that is not in the registry.
+
+Check:
+- [ ] A **🎯 Demo used — new lead** Telegram fires, carrying the sender's address, the subject and
+      the intake address.
+- [ ] It arrives **before** the pipeline finishes — kill the run midway and the alert has still
+      fired, because the lead matters whether or not the proposal succeeds.
+- [ ] It does **not** fire for a registered client on `proposal@cifral.io`.
+- [ ] A rate-limited or junk-filtered message does not produce it — those are refused before the
+      client is even resolved, and alert separately.
 
 ## Scenario 6 — Pricing-only is more lenient
 
@@ -122,6 +152,47 @@ Check:
 Check:
 - [ ] Module 1: `request_type = unspecified`.
 - [ ] Route = the client's `service_tier` (for demo_client, `full_pipeline`).
+
+## Scenario 7b — A request outside the client's tier (the clamp)
+
+**Send**, to a client whose `service_tier` is `proposal_only`, an RFQ worded so the extractor is
+likely to read it as wanting a price ("necesitamos presupuesto para…", a budget question, a cost
+breakdown request).
+
+Check:
+- [ ] Module 1 may well report `request_type = full_pipeline` or `pricing_only` — that is allowed,
+      the extractor is not the thing being tested.
+- [ ] `Resolve Route`: `route = proposal_only`, `requested_route` echoes what the extractor said,
+      `route_note` explains the substitution.
+- [ ] **Module 3 is never called.** The switch takes the `proposal_only` branch.
+- [ ] A proposal is produced, same shape as Scenario 3 — no price table.
+- [ ] Telegram alert carries `🔀 The request read as '<x>', which is outside this client's
+      'proposal_only' tier…`.
+- [ ] The old failure mode is gone: no `Error: No pricing source for client '<id>'` from Module 3's
+      `Resolve Config` node.
+
+**Then** repeat against a `full_pipeline` client and confirm the feature the clamp must not break:
+an explicit "only a price, no proposal" request still routes to `pricing_only`, and an explicit
+"proposal only" still routes to `proposal_only` (Scenarios 2 and 3 are these cases).
+
+## Scenario 7c — Contracted for pricing, no rate card (capability backstop)
+
+Only reachable through misconfiguration: the tier says pricing, Drive says otherwise.
+
+**Set** a test client's `service_tier` to `full_pipeline` and **clear** its `pricing_sheet_id`, then
+send any RFQ.
+
+Check:
+- [ ] `Resolve Route`: `route = proposal_only`, `route_note` names the missing `pricing_sheet_id`.
+- [ ] A proposal is produced; Module 3 never runs.
+
+**Then** set `service_tier` to `pricing_only`, still with no `pricing_sheet_id`.
+
+Check:
+- [ ] `route = blocked_no_pricing`; the `Pricing Not Configured` Telegram alert fires.
+- [ ] **Nothing is produced** — no Module 2, 3 or 4 call, no draft, no send.
+
+Restore the `pricing_sheet_id` afterwards.
 
 ## Scenario 8 — Language selection
 

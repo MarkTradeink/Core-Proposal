@@ -22,6 +22,13 @@
 //
 // Quick check:  node modules/proposal/chapter_catalog.js
 
+// `parseFieldDefinitions` belongs to the field-capture core (modules/proposal/field_capture.js):
+// parsing the `Fields` tab and matching it against an RFQ are one concern, and Module 1 needs it
+// without dragging the whole catalog JSON into its node. This require sits ABOVE the core
+// markers on purpose — it never reaches n8n. There, scripts/mirror-cores.js inlines BOTH cores
+// into the same Code node, so the reference below resolves from the node's own scope.
+const { parseFieldDefinitions } = require('./field_capture');
+
 // === CHAPTER CATALOG CORE START ===
 
 // The catalog itself. A Code node cannot read files, so `node scripts/mirror-cores.js` replaces
@@ -124,6 +131,95 @@ function buildRules(rows) {
   return rules;
 }
 
+// Rows of the sheet's `Client` tab -> the operational ids that used to live in Notion columns.
+//
+// The split is now: Notion says WHO the client is and whether they may send (identity, status,
+// send_mode, service_tier, and the id of this sheet). The sheet says what their document is made
+// of — including which Drive folders it reads and writes. Notion stays the fallback for every
+// key here, so a client set up before this tab existed keeps working untouched.
+function buildClientSettings(rows) {
+  const out = {};
+  for (const r of rows || []) {
+    const key = normText(r.key);
+    if (!key) continue;
+    out[key] = normText(r.value);
+  }
+  return out;
+}
+
+// Rows of the sheet's `Templates` tab -> the client's .docx variants.
+//
+// A client is not one template per language: they have product lines, and a tender answers to a
+// different document than a spare-parts quotation. The registry only ever had room for two ids,
+// so this moves the whole selection into the sheet where the person who owns the documents can
+// change it.
+function buildTemplates(rows, warnings) {
+  const out = [];
+  const seen = new Set();
+  for (const r of rows || []) {
+    const file_id = normText(r.file_id);
+    const variant = normText(r.variant).toLowerCase() || 'default';
+    const lang = pickLang(normText(r.lang).toLowerCase());
+    if (!file_id) {
+      if (normText(r.variant) || normText(r.match)) warnings.push(`Templates tab: variant '${variant}' (${lang}) has no file_id, row ignored`);
+      continue;
+    }
+    const dedupe = `${variant}|${lang}`;
+    if (seen.has(dedupe)) { warnings.push(`Templates tab: duplicate variant '${variant}' for language '${lang}' — kept the first occurrence`); continue; }
+    seen.add(dedupe);
+    out.push({
+      variant,
+      lang,
+      file_id,
+      match: normText(r.match).split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+      is_default: truthy(r.default) === true || variant === 'default',
+    });
+  }
+  return out;
+}
+
+/**
+ * Pick the .docx for one request.
+ *
+ * Order, most specific first: an explicitly requested variant, then a keyword from the `match`
+ * column found in the request text, then the language's default row, then any row in that
+ * language, then the other language. `fallback` is the pair of registry ids, so a client with no
+ * `Templates` tab behaves exactly as before.
+ *
+ * Returns the reason it chose, because "which template did this come out of" is the first
+ * question asked when a proposal looks wrong, and the Telegram alert can then answer it.
+ */
+function selectTemplate({ templates, language, variant, text, fallback }) {
+  const rows = Array.isArray(templates) ? templates : [];
+  const lang = pickLang(language);
+  const other = lang === 'es' ? 'en' : 'es';
+  const wanted = normText(variant).toLowerCase();
+
+  if (wanted) {
+    const hit = rows.find((t) => t.variant === wanted && t.lang === lang) || rows.find((t) => t.variant === wanted);
+    if (hit) return { file_id: hit.file_id, variant: hit.variant, lang: hit.lang, reason: 'requested_variant' };
+  }
+
+  const haystack = normText(text).toLowerCase();
+  if (haystack) {
+    for (const t of rows) {
+      if (t.lang !== lang) continue;
+      const kw = t.match.find((k) => haystack.includes(k));
+      if (kw) return { file_id: t.file_id, variant: t.variant, lang: t.lang, reason: `matched '${kw}'` };
+    }
+  }
+
+  const byLang = rows.filter((t) => t.lang === lang);
+  const chosen = byLang.find((t) => t.is_default) || byLang[0] || rows.find((t) => t.lang === other && t.is_default) || rows.find((t) => t.lang === other);
+  if (chosen) return { file_id: chosen.file_id, variant: chosen.variant, lang: chosen.lang, reason: chosen.lang === lang ? 'language_default' : 'language_fallback' };
+
+  const fb = fallback || {};
+  const fbId = normText(fb[lang]) || normText(fb[other]);
+  if (fbId) return { file_id: fbId, variant: 'registry', lang: normText(fb[lang]) ? lang : other, reason: 'registry_fallback' };
+
+  return null;
+}
+
 // Rows of the sheet's `Chapters` tab -> per-chapter overrides, keyed by chapter/section id.
 function buildOverrides(rows, warnings, knownIds) {
   const map = {};
@@ -175,6 +271,9 @@ function resolveProposalConfig({ catalog, sheet, tier, language, scope, has_pric
   const warnings = [];
   const lang = pickLang(language);
   const rules = buildRules(sheet && sheet.rules);
+  const client = buildClientSettings(sheet && sheet.client);
+  const templates = buildTemplates(sheet && sheet.templates, warnings);
+  const fields = parseFieldDefinitions(sheet && sheet.fields, warnings);
 
   const wantTier = normText(tier).toUpperCase() || normText(rules.default_tier).toUpperCase() || 'B';
   const resolvedTier = wantTier in TIER_RANK ? wantTier : 'B';
@@ -311,6 +410,16 @@ function resolveProposalConfig({ catalog, sheet, tier, language, scope, has_pric
     chapters: selected,
     clauses,
     rules,
+    // The `Client` tab: Drive ids and document metadata that used to be Notion columns. The
+    // caller merges it over the registry values, sheet first, so nothing breaks for a client
+    // set up before this tab existed.
+    client,
+    templates,
+    fields,
+    // Cover/footer metadata. Both had no source at all before the `Client` tab — the version
+    // silently defaulted to 1.0 and the version table's author column came out blank.
+    version: normText(client.document_version) || '1.0',
+    author: normText(client.author),
     // The COMPLETE catalog vocabulary, rendered or not. The render context needs it to stay
     // TOTAL: a superset template may reference any chapter, and the render node prints the
     // literal word "undefined" for a key that is missing (it exposes no nullGetter).
@@ -407,6 +516,25 @@ if (require.main === module) {
       { kind: 'clause', id: 'en_01', chapter_id: 'garantia_soporte_alcance', lang: 'en', applies_when: 'always', title: '', body: 'English clause.' },
       { kind: 'clause', id: 'bad_01', chapter_id: 'ni_idea', lang: 'es', applies_when: '', title: '', body: 'Huérfana.' },
     ],
+    client: [
+      { key: 'proposals_folder_id', value: 'folder_out' },
+      { key: 'reference_docs_folder_id', value: 'folder_ref' },
+      { key: 'document_version', value: '2.1' },
+      { key: 'author', value: 'MBR' },
+    ],
+    templates: [
+      { variant: 'default', lang: 'es', file_id: 'tpl_es', match: '', default: 'yes' },
+      { variant: 'default', lang: 'en', file_id: 'tpl_en', match: '', default: 'yes' },
+      { variant: 'retrofit', lang: 'es', file_id: 'tpl_retrofit_es', match: 'retrofit, modernización', default: '' },
+      { variant: 'default', lang: 'es', file_id: 'tpl_dup', match: '', default: '' },
+      { variant: 'broken', lang: 'es', file_id: '', match: 'nada', default: '' },
+    ],
+    fields: [
+      { key: 'offer_no', source: 'request', value: '', capture_label: 'Oferta nº, Offer no', required: 'yes' },
+      { key: 'issuer_name', source: 'static', value: 'Contoso Industrial S.L.', capture_label: '', required: 'yes' },
+      { key: 'doc_version', source: 'auto', value: 'version', capture_label: '', required: '' },
+      { key: 'Bad Key', source: 'static', value: 'x', capture_label: '', required: '' },
+    ],
     rules: [
       { key: 'tone', value: 'técnico y sobrio' },
       { key: 'default_tier', value: 'C' },
@@ -449,6 +577,38 @@ if (require.main === module) {
   }
   if (!deduped.warnings.some((w) => w.includes("duplicate id 'gar_01'"))) problems.push('a duplicate clause id should raise a warning naming it');
 
+  // 9. The `Client` tab supplies what used to be Notion columns, plus the two document values
+  //    that previously had no source at all.
+  if (withSheet.client.proposals_folder_id !== 'folder_out') problems.push('Client tab did not reach the resolved config');
+  if (withSheet.version !== '2.1') problems.push(`document_version should come from the Client tab, got '${withSheet.version}'`);
+  if (withSheet.author !== 'MBR') problems.push('author should come from the Client tab');
+
+  // 10. `Fields` — the tab that makes a cover page client-specific without a deploy.
+  const fieldKeys = withSheet.fields.map((f) => f.key);
+  if (fieldKeys.join(',') !== 'offer_no,issuer_name,doc_version') problems.push(`unexpected field set: ${fieldKeys.join(',')}`);
+  if (withSheet.fields[0].labels.length !== 2) problems.push('comma-separated capture labels should parse into alternatives');
+  if (withSheet.fields[0].required !== true) problems.push('required flag not parsed');
+  if (!withSheet.warnings.some((w) => w.includes("key 'bad key'"))) problems.push('an unsafe field key should raise a warning');
+
+  // 11. `Templates` — selection order, and the registry fallback that keeps old clients working.
+  if (withSheet.templates.length !== 3) problems.push(`expected 3 usable templates, got ${withSheet.templates.length}`);
+  if (!withSheet.warnings.some((w) => w.includes('duplicate variant'))) problems.push('a duplicate variant should warn');
+  if (!withSheet.warnings.some((w) => w.includes('no file_id'))) problems.push('a template row with no file_id should warn');
+
+  const pick = (args) => selectTemplate({ templates: withSheet.templates, ...args });
+  if (pick({ language: 'es' }).file_id !== 'tpl_es') problems.push('the language default should be picked when nothing else applies');
+  if (pick({ language: 'en' }).file_id !== 'tpl_en') problems.push('English should pick the English default');
+  if (pick({ language: 'es', variant: 'retrofit' }).file_id !== 'tpl_retrofit_es') problems.push('an explicitly requested variant should win');
+  if (pick({ language: 'es', text: 'Asunto: modernización de inducciones' }).file_id !== 'tpl_retrofit_es') problems.push('a match keyword in the request text should select the variant');
+  if (pick({ language: 'es', text: 'nothing relevant here' }).file_id !== 'tpl_es') problems.push('an unmatched request should fall back to the default');
+  if (pick({ language: 'es', variant: 'retrofit', text: 'nothing' }).reason !== 'requested_variant') problems.push('an explicit variant should beat keyword matching');
+  // A client with no Templates tab keeps behaving exactly as before this feature existed.
+  const legacy = selectTemplate({ templates: [], language: 'es', fallback: { es: 'notion_es', en: 'notion_en' } });
+  if (legacy.file_id !== 'notion_es' || legacy.reason !== 'registry_fallback') problems.push('the registry fallback must still work for a client with no Templates tab');
+  const legacyEnOnly = selectTemplate({ templates: [], language: 'es', fallback: { es: '', en: 'notion_en' } });
+  if (legacyEnOnly.file_id !== 'notion_en') problems.push('the EN fallback must still apply when there is no ES template');
+  if (selectTemplate({ templates: [], language: 'es', fallback: {} }) !== null) problems.push('with nothing configured at all, selection must return null so the caller can fail loudly');
+
   // 8. all_keys is the whole vocabulary — this is what keeps the render context total.
   if (withSheet.all_keys.length !== seen.size) problems.push(`all_keys should carry every catalog id (${seen.size}), got ${withSheet.all_keys.length}`);
 
@@ -463,4 +623,4 @@ if (require.main === module) {
   console.log('\nOK — catalog is well formed and resolution honours tier, scope, pricing and the client sheet.');
 }
 
-module.exports = { resolveProposalConfig, matchesApplies, buildRules, buildOverrides, collectIds, passesGates };
+module.exports = { resolveProposalConfig, selectTemplate, buildTemplates, buildClientSettings, matchesApplies, buildRules, buildOverrides, collectIds, passesGates };

@@ -4,6 +4,180 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Change — workflow JSON now mirrors the live n8n layout (2026-08-14)
+
+Re-importing had become a chore: the repo carried its own node positions, so every import needed the
+canvas rearranged by hand, and workflow 02's agent prompts were plain text in the repo where the live
+ones were expressions — a manual fix, four nodes, every time. The Google Sheets nodes carried no
+credential reference at all, so six of them had to be re-picked from a dropdown on each import.
+
+All five workflows are now pulled from the live instance and carry its node positions, node ids,
+`settings` (including the error workflow) and credential references, with the repo's newer *logic*
+merged back over the top — `Map Client Config` in all five and `Resolve Route` in the orchestrator.
+The division is now stated in `docs/DEPLOYMENT.md`: the repo owns logic, the live instance owns
+layout, and neither silently overwrites the other.
+
+### Feature — the demo reports its own leads, and an incomplete RFQ answers the sender (2026-08-14)
+
+Telegram was carrying three different kinds of message to one audience. Two of them were in the wrong
+place:
+
+**A used demo is a lead, not a log line.** `demo@cifral.io` produced no signal beyond the ordinary
+"proposal drafted" alert, so a prospect who tried it was indistinguishable from routine traffic. A
+`Demo Used Alert` now fires with the sender's address, the subject and the intake address, wired to
+run *before* the pipeline it accompanies — a demo that later fails is still a lead worth chasing.
+
+**An incomplete RFQ is a conversation with whoever sent it.** It was reported only to Cifral's
+Telegram, which cannot ask the sender for the missing field. The orchestrator now also composes a
+reply to the sender, in their own thread, listing what is missing — in the RFQ's language, and using
+readable labels rather than machine keys. For a client's own declared fields the label is the one
+*they* chose in their `Fields` tab, which is also the exact string the capture looks for, so the
+reply asks for the value using the words that will match it. Module 1 emits `missing_fields_detail`
+for this; `missing_fields` is unchanged, because the orchestrator and the alerts branch on it.
+
+Three properties this was built around, all of them the kind that only announce themselves in
+production:
+- **Cifral's Telegram alert is wired first** on that branch, so the internal copy fires whatever the
+  Gmail leg does, and a missing reply address is reported as `deliverable: false` rather than thrown
+  on top of an alert that has already gone out.
+- **The public intake still cannot send.** `Build Missing Info Reply` re-asserts the draft-only rule
+  for `open_intake` at the last gate before Gmail, exactly as Module 4 does.
+- **The reply goes to the sender, never the extracted end customer** — legacy gap G1. That rule was
+  only ever a manual test; `scripts/check-workflow-graph.js` now enforces it statically, failing any
+  Gmail node whose recipient reads from the extracted data or is hard-coded.
+
+### Fix — Notion property shapes leaked through `prop()` and defeated the routing clamp (2026-08-12)
+
+The tier clamp below was correct and the route was *still* `full_pipeline` in production. Cause: the
+`prop()` helper that reads the Notion registry ends in `?? p ?? null`, so any property shape it does
+not recognise is returned as the **raw object**. Two live failures, and they had to coincide to
+produce the symptom:
+
+- **`service_tier` as a Select** arrived as an object, not `'proposal_only'`, so `TIER_ALLOWS[…]`
+  missed and the tier fell back to `full_pipeline` — the permissive option;
+- **`pricing_sheet_id`, empty**, arrived as `[]` or `{}` — both **truthy** — so the capability
+  backstop read "no sheet id" as "pricing configured" and declined to downgrade.
+
+Either alone was survivable: a bad tier still got caught by the backstop, and a truthy-empty sheet id
+still got caught by the clamp. Together they cancelled each other out. Neither was visible, because
+both fail toward the permissive answer and the only client that existed before this one was
+`full_pipeline` anyway — the same failure class the intake code already calls out in a comment about
+`send_mode` resolving `undefined` to `'send'`.
+
+`prop()` now normalises to a string or `null` through an `asText()` that understands the shapes n8n
+and the Notion API actually emit (plain string, `{name}`, `{value}`, `{type,select:{name}}`,
+`{type,status:{name}}`, rich-text arrays), passing booleans through untouched. Fixed in all five
+workflows. `Resolve Route` normalises again on its own input rather than trusting its caller, and now
+echoes `service_tier_raw` and `has_pricing` in its output, so the next misroute is one glance at the
+node instead of a debugging round.
+
+`scripts/check-routing.js` gained the shape matrix: 8 registry value shapes for `service_tier` and
+4 empty shapes for `pricing_sheet_id`. Replayed against the previous node source, the new cases fail
+— which is the only evidence worth having that a regression test tests anything.
+
+### Fix — `service_tier` is now a ceiling, not just a default (2026-08-12)
+
+Found live: a `proposal_only` client sent a technical RFQ, the extractor read it as `full_pipeline`,
+and the orchestrator followed that classification into Module 3, which threw
+`No pricing source for client '<id>'` three steps downstream of where the information to prevent it
+lived. `service_tier` was never consulted, because `request_type` only fell back to it when the
+extractor said `unspecified` — and here it didn't.
+
+The first cut of this fix added a capability guard: if the client has no rate card, don't route to
+pricing. That fixed the crash and missed the cause. Mark pushed back — the Notion row already
+carries the three tiers, so why is routing this complicated? — and he was right. The README had
+described the correct behaviour all along: *"a client **on `full_pipeline`** can still ask for just
+a price on a given RFQ"*. That is narrowing **within** what was contracted. The code implemented it
+as "the email wins outright", which also permitted widening past it, and widening is what broke.
+
+`Resolve Route` now clamps `request_type` to what the tier permits — `pricing_only` and
+`proposal_only` admit only themselves, `full_pipeline` admits all three; anything else, including
+`unspecified`, falls back to the tier. One misread email can no longer buy a deliverable the client
+never contracted for, and the documented per-request narrowing survives untouched.
+
+The capability check stays as a **backstop**, now with a much narrower job: once the clamp holds, a
+pricing route can only appear because the tier says so, so a missing rate card is purely
+misconfiguration. `full_pipeline` degrades to `proposal_only`, `pricing_only` stops at a new
+`Pricing Not Configured` alert. It should never fire in normal operation; it earns its place because
+`full_pipeline` runs Modules 2 and 3 in parallel, so failing here costs nothing while failing inside
+Module 3 costs a full content-generation pass first.
+
+Any substitution is reported as `route_note` and printed in Module 4's Telegram alert, alongside
+`config_warnings` and `fields_missing` — both computed since the client-fields work but never
+actually surfaced, contrary to what `docs/CLIENT-DRIVE-SETUP.md` already promised.
+
+`scripts/check-routing.js` replays all 24 tier × request × pricing combinations against the real
+node source on every `npm run check`, asserting three invariants that all fail silently otherwise:
+a route never exceeds its tier, Module 3 is never entered without a rate card, and no route changes
+without a note explaining it. Writing it caught a wrong expectation in its own first draft.
+
+### Feature — a client's own cover variables, their own templates, and a real table of contents (2026-08-12)
+
+Driven by the first production client (`beumer_marcos`), whose real offers carry things the
+catalog had no room for. Three gaps, one mechanism each, and none of them needs a deploy for the
+*next* client.
+
+**The `Fields` tab: variables only this client has.** A real cover carries an offer number out of
+the client's ERP, an asset number, the legal name above it. The render context's vocabulary was
+closed, so there was nowhere to put them. The Proposal Config sheet now has a `Fields` tab whose
+rows become `{campos.<key>}` tags, with three sources: `static` (the sheet), `request` (read out
+of the RFQ email) and `auto` (wired to something the pipeline already computed —
+`proposal_number`, `date`, `project_title`, …).
+
+**`request` capture is deterministic, and that is the whole point.** These values are
+identifiers. A hallucinated offer number is strictly worse than a missing one: it lands on the
+cover of a document that reaches a customer, it looks entirely plausible, and nobody catches it.
+So `modules/proposal/field_capture.js` matches a label and nothing else — no model anywhere in the
+path. It folds case, accents and the `º`/`°` ordinals; it lets several fields share one line
+(header blocks pasted out of an ERP always do); it stops a value at the next label *including one
+this client never declared*, so `Oferta nº: 905149921  Versión: 1.0` cannot put the version inside
+the offer number; and the longest label wins, so `Project number` beats `Project`. A `required`
+field the sender omitted appends `custom_fields.<key>` to `missing_fields` and marks the RFQ
+**incomplete** — the run stops for review instead of shipping a cover with a hole in it.
+
+**The `Templates` tab: more than two documents per client.** Selection was `templates[lang] ||
+templates.en` against two Notion columns. A client is not one template per language — they have
+product lines, and a tender answers to a different document than a spare-parts quotation. Variants
+now live in the sheet with an optional keyword `match`, resolved where the sheet and the request
+are both in hand, and reported in the Telegram alert because "which template did this come out
+of" is the first question asked when a document looks wrong. The registry columns remain the
+fallback, so no existing client changes behaviour.
+
+**The `Client` tab: one place per client.** `proposals_folder_id`, `reference_docs_folder_id`,
+`pricing_sheet_id`, plus `document_version` and `author` (which previously had *no* source at all —
+the version silently defaulted to 1.0 and the version table's author column came out blank). The
+split is now stateable in a sentence: **Notion says who the client is and whether they may send;
+the sheet says what their document is made of.** `commercial_contact_email` cannot move — it is the
+key the incoming sender is matched against, and that must resolve before anyone knows which sheet
+to open. `Client Status` and `send_mode` deliberately do not move either: a copy-paste slip in a
+spreadsheet must not be able to put a client into live sending. Every key falls back to its Notion
+column, so nothing breaks for a client onboarded before the tab existed.
+
+**A real table of contents.** The contents list was a generated loop without page numbers, on the
+belief that the headless PDF leg could not refresh field-based TOCs. That is true of a bare
+`soffice --convert-to pdf`, but the conversion runs through Gotenberg's LibreOffice route, whose
+`updateIndexes` property defaults to true. The seed templates now carry a real `TOC \h \o "1-2"`
+field plus `<w:updateFields/>` — without the second half the `.docx` the client opens would show an
+empty list until someone pressed F9. Unnumbered front matter is pushed off the outline
+(`outlineLevel: 9`) so the TOC still skips it. The render context keeps emitting `indice` /
+`tabla_indice`, so a template already using the loop is unaffected. **The pagination itself is the
+one thing not checkable offline** — verify it on the first real run.
+
+**`project.title`.** A cover carries a project title, not a category. Module 1 now extracts one and
+`{proyecto.titulo}` falls back to `{proyecto.tipo}`, so older templates are unaffected.
+
+**`scripts/client-docs.js`.** Generates two documents per client from their own sheet: a setup
+guide (what they are configured to do, and the exact `{campos.*}` tags their template may use) and
+an RFQ email template carrying the exact labels the `Fields` tab declares. Generated rather than
+written because capture matches a string: hand-maintained, the sheet and the email drift the first
+time a field is added, and the failure is silent — the cover just comes out blank.
+
+**Two checks added, both for failure modes that were invisible until a live run.** The workflow
+graph checker now parses every Code node (n8n only compiles one when execution reaches it, so a
+syntax error from `mirror-cores` sat dormant until an RFQ hit that branch), and it verifies the
+Merge barrier has exactly one input port per tab read — a port with no feeder never receives data
+and *hangs* the run rather than failing it.
+
 ### Feature — `demo@cifral.io` accepts an RFQ from anyone, in draft mode (2026-08-11)
 Mark's decision, 2026-08-11: the demo address must serve `demo_client` by default and accept RFQs
 from any sender, so the "send me a real RFQ and I'll send back a sample proposal" CTA is literal.

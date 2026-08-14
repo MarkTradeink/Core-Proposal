@@ -176,6 +176,56 @@ function formatNumber(value, lang) {
 // An empty section object. Every catalog id gets one of these before anything is populated, so a
 // superset template can reference a chapter this request does not render without printing
 // "undefined".
+// Where a `source: auto` field gets its value. These are the things the pipeline already knows
+// by the time the document is assembled, exposed under the client's OWN key so a cover can say
+// {campos.n_documento} while the value is still the deterministic proposal number.
+function autoFieldValue(name, ctx) {
+  switch (name) {
+    case 'proposal_number': return ctx.proposalNumber;
+    case 'date': return ctx.fecha;
+    case 'version': return ctx.version;
+    case 'tier': return ctx.tier;
+    case 'language': return ctx.lang;
+    case 'client_company': return ctx.client.company;
+    case 'client_contact': return ctx.client.contacto;
+    case 'client_email': return ctx.client.email;
+    case 'client_phone': return ctx.client.phone;
+    case 'project_title': return ctx.project.title;
+    case 'project_type': return ctx.project.type;
+    case 'project_location': return ctx.project.location;
+    case 'project_deadline': return ctx.project.deadline;
+    default: return '';
+  }
+}
+
+/**
+ * Build `campos` — the client's own document variables.
+ *
+ * Three sources, one namespace. `static` comes from their sheet, `request` was captured from the
+ * RFQ by Module 1 (deterministically — see modules/proposal/field_capture.js), `auto` is wired to
+ * something the pipeline computed. Every declared key is always present, empty rather than
+ * absent, for the same reason the rest of the context is total: the render node has no
+ * nullGetter, so a missing key prints the literal word "undefined" on a customer's cover page.
+ *
+ * A tag referring to a field the sheet never declared is the one case this cannot cover — there
+ * is nothing to enumerate. That is why `fields_missing` is reported: it is the closest thing to
+ * a warning the template itself can raise.
+ */
+function buildFields(definitions, captured, ctx) {
+  const campos = {};
+  const missing = [];
+  for (const def of definitions || []) {
+    if (!def || !def.key) continue;
+    let value = '';
+    if (def.source === 'static') value = textOf(def.value);
+    else if (def.source === 'request') value = textOf(captured && captured[def.key]);
+    else if (def.source === 'auto') value = textOf(autoFieldValue(def.value, ctx));
+    campos[def.key] = value;
+    if (!value && def.required) missing.push(def.key);
+  }
+  return { campos, missing };
+}
+
 function emptySection() {
   return { titulo: '', numero: '', parrafos: [], bullets: [], has_parrafos: false, has_bullets: false };
 }
@@ -231,6 +281,10 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
       telefono: textOf(client.phone),
     },
     proyecto: {
+      // The cover of a real offer carries a project TITLE ('Modernización de convertidores de
+      // frecuencia del Shipping Sorter'), not a category. `type` stays for the clients whose
+      // templates already use it; `titulo` falls back to it so no existing cover goes blank.
+      titulo: textOf(project.title) || textOf(project.type),
       tipo: textOf(project.type),
       ubicacion: textOf(project.location),
       plazo: textOf(project.desired_deadline),
@@ -244,6 +298,16 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
     has_alcance_incluido: incluido.length > 0,
     has_alcance_excluido: excluido.length > 0,
   };
+
+  // --- the client's own variables -------------------------------------------
+  const built = buildFields(cfg.fields, rfq.custom_fields, {
+    proposalNumber, fecha, lang,
+    version: context.documento.version,
+    tier: context.documento.tier,
+    client: { company: context.cliente.empresa, contacto: context.cliente.contacto, email: context.cliente.email, phone: context.cliente.telefono },
+    project: { title: context.proyecto.titulo, type: context.proyecto.tipo, location: context.proyecto.ubicacion, deadline: context.proyecto.plazo },
+  });
+  context.campos = built.campos;
 
   // --- totality -------------------------------------------------------------
   // Every id in the catalog gets an empty section and a false flag FIRST. Chapters this request
@@ -419,7 +483,7 @@ function buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNum
   };
   if (pricing) sections_rendered.push('economic');
 
-  return { context, sections_rendered, language: lang, clauses_applied: clausesApplied };
+  return { context, sections_rendered, language: lang, clauses_applied: clausesApplied, fields_missing: built.missing };
 }
 // === PROPOSAL RENDER CORE END ===
 
@@ -444,6 +508,13 @@ if (require.main === module) {
         { kind: 'obligation', id: 'obl_01', chapter_id: 'condiciones_sitio_obligaciones', lang: 'es', applies_when: 'always', title: '', body: 'Facilitar acceso al área de trabajo.' },
       ],
       rules: [{ key: 'default_tier', value: 'B' }],
+      client: [{ key: 'document_version', value: '1.2' }, { key: 'author', value: 'MBR' }],
+      fields: [
+        { key: 'offer_no', source: 'request', capture_label: 'Oferta nº', required: 'yes' },
+        { key: 'asset_no', source: 'request', capture_label: 'Asset', required: 'yes' },
+        { key: 'issuer_name', source: 'static', value: 'Contoso Industrial S.L.', required: 'yes' },
+        { key: 'n_documento', source: 'auto', value: 'proposal_number', required: '' },
+      ],
     },
     language: 'es',
     scope,
@@ -451,14 +522,17 @@ if (require.main === module) {
     sheet_id: 'sheet123',
   });
 
-  const { context, sections_rendered, language, clauses_applied } = buildRenderContext({
+  const { context, sections_rendered, language, clauses_applied, fields_missing } = buildRenderContext({
     proposalConfig,
     proposalNumber: 'PROP-20260725-A1B2C3',
     fecha: '25/07/2026',
     rfq: {
       language: 'es',
       client: { company: 'Acme Foods', contact_name: 'Ana', contact_last_name: 'Ruiz', email: 'ana@acme.example', phone: '+34 600 000 000' },
-      project: { type: 'Línea de transporte', location: 'Zaragoza', desired_deadline: 'Q4 2026' },
+      project: { title: 'Ampliación de la línea de transporte del almacén 3', type: 'Línea de transporte', location: 'Zaragoza', desired_deadline: 'Q4 2026' },
+      // What Module 1 captured from the RFQ text. `asset_no` was declared and required but the
+      // sender never wrote it — the cover must come out empty, not invented.
+      custom_fields: { offer_no: '905149921' },
       technical_requirements: [
         { item: 'Cinta transportadora', quantity: 2, spec: '10 m, 400 mm' },
         { item: 'Cuadro eléctrico', quantity: 1, spec: 'IP54' },
@@ -566,6 +640,23 @@ if (require.main === module) {
   const idxIds = context.indice.map((e) => e.titulo);
   if (idxIds.includes('Alternativas evaluadas y justificación')) problems.push('indice must not list a section that was dropped');
 
+  // The client's own variables. Three sources, one namespace, and totality holds here too.
+  if (context.campos.offer_no !== '905149921') problems.push(`a captured field did not reach the cover: ${JSON.stringify(context.campos.offer_no)}`);
+  if (context.campos.issuer_name !== 'Contoso Industrial S.L.') problems.push('a static field did not reach the cover');
+  if (context.campos.n_documento !== 'PROP-20260725-A1B2C3') problems.push(`an auto field should resolve to what the pipeline computed: ${JSON.stringify(context.campos.n_documento)}`);
+  if (!('asset_no' in context.campos)) problems.push('a declared field must always exist, or the template prints "undefined"');
+  if (context.campos.asset_no !== '') problems.push('a declared field with no value must be empty, never invented');
+  if (fields_missing.join(',') !== 'asset_no') problems.push(`a required field with no value must be reported: ${fields_missing.join(',')}`);
+
+  // The cover's project title, with the fallback that keeps older templates working.
+  if (context.proyecto.titulo !== 'Ampliación de la línea de transporte del almacén 3') problems.push('project title did not reach the context');
+  const noTitle = buildRenderContext({ rfq: { language: 'es', project: { type: 'Solo tipo' } }, content: {}, pricing: null, proposalNumber: 'X', fecha: 'Y' });
+  if (noTitle.context.proyecto.titulo !== 'Solo tipo') problems.push('titulo must fall back to tipo when the RFQ has no title');
+
+  // Version and author now have a source; before the Client tab they silently defaulted.
+  if (context.documento.version !== '1.2') problems.push(`document version should come from the sheet: ${context.documento.version}`);
+  if (context.tabla_versiones[0].autor !== 'MBR') problems.push('the version table author should come from the sheet');
+
   // Money formatting, unchanged from Phase 11.
   // Spanish puts the symbol last and uses a decimal comma. Note it does NOT group four-digit
   // amounts (CLDR minimumGroupingDigits=2 for es), so grouping only shows from five digits up —
@@ -582,9 +673,11 @@ if (require.main === module) {
   // A run with no configuration at all must still be total, not crash.
   const bare = buildRenderContext({ rfq: { language: 'en' }, content: {}, pricing: null, proposalNumber: 'X', fecha: 'Y' });
   if (bare.context.has_pricing !== false) problems.push('a config-less run should still produce a total context');
+  if (typeof bare.context.campos !== 'object') problems.push('campos must exist even with no configuration at all');
 
   console.log(`language: ${language} | tier: ${context.documento.tier} | config: ${context.documento.config_source}`);
   console.log(`context keys: ${Object.keys(context).length}`);
+  console.log(`campos: ${Object.entries(context.campos).map(([k, v]) => `${k}=${v || '—'}`).join(', ')}`);
   console.log(`sections rendered (${sections_rendered.length}): ${sections_rendered.slice(0, 12).join(', ')}…`);
   console.log(`index:\n${context.indice.map((e) => `  ${e.nivel === '1' ? '' : '   '}${e.numero}. ${e.titulo}`).join('\n')}`);
 
@@ -595,4 +688,4 @@ if (require.main === module) {
   console.log('\nOK — context is total (no undefined/null leaves), tier and scope gating work, and boilerplate reaches the document without an LLM.');
 }
 
-module.exports = { buildRenderContext, parseNarrative, formatMoney, formatNumber, SCOPE_LABELS, COST_CATEGORY_LABELS, CLAUSE_TABLES };
+module.exports = { buildRenderContext, buildFields, parseNarrative, formatMoney, formatNumber, SCOPE_LABELS, COST_CATEGORY_LABELS, CLAUSE_TABLES };

@@ -16,12 +16,18 @@ This is the same split already used for pricing:
 
 ```
 Google Drive / Clients / <Client Name> /
-├── Templates/              proposal-template-es.docx · proposal-template-en.docx
+├── Templates/              the client's .docx variants
 ├── Generated Proposals/    Module 4 output (.docx + .pdf)
 ├── Reference Docs/         approved past proposals, for grounding
-├── Pricing Rules           Google Sheet — docs/PRICING-SHEET-TEMPLATE.md
-└── Proposal Config         Google Sheet — this document
+├── Proposal Config         Google Sheet — this document, SIX tabs
+├── <client>-setup-guide    generated from the sheet — what this client is configured to do
+├── <client>-rfq-template   generated from the sheet — the email to send, with the exact labels
+└── Pricing Rules           Google Sheet — docs/PRICING-SHEET-TEMPLATE.md
 ```
+
+The two generated documents come from `node scripts/client-docs.js <client_id>`. Regenerate them
+whenever the sheet changes — especially the RFQ template, whose labels have to match the `Fields`
+tab exactly (see below).
 
 Copy the Proposal Config sheet's id from its URL
 (`https://docs.google.com/spreadsheets/d/<THIS_IS_THE_ID>/edit`) into the client's
@@ -34,14 +40,143 @@ real boilerplate.
 
 ## Getting started
 
-`seed/demo_client/proposal-config/` holds three CSVs — `chapters.csv`, `content.csv`, `rules.csv` —
-with a complete, industry-neutral starting set in Spanish and English. Create a Google Sheet with
-three tabs named exactly **`Chapters`**, **`Content`** and **`Rules`**, and import one CSV into each
-(File → Import → *Insert new sheet*, then rename the tab). Share the sheet with the Google account
-n8n uses.
+`seed/demo_client/proposal-config/` holds six CSVs with a complete, industry-neutral starting set in
+Spanish and English. Create a Google Sheet with six tabs named **exactly** as below and import one
+CSV into each (File → Import → *Insert new sheet*, then rename the tab). Share the sheet with the
+Google account n8n uses.
+
+| Tab | What it decides |
+|---|---|
+| **`Client`** | Drive folder ids and document metadata — what used to be Notion columns |
+| **`Templates`** | which `.docx` this client renders, and when |
+| **`Fields`** | this client's own cover/footer variables |
+| **`Chapters`** | which chapters they use, in what order, under what name |
+| **`Content`** | their clauses, exclusions, assumptions, obligations and glossary |
+| **`Rules`** | their house style |
+
+The tab names are read literally. A tab named `Chapters ` or `Capítulos` is not found, the config
+falls back to the catalog defaults, and the only sign is `config_source: catalog_default` in the
+Telegram alert — so check that on the first run.
 
 Then replace the seed text with the client's own. The seed is deliberately generic; the value comes
 from putting the client's real terms in.
+
+---
+
+## Tab — `Client`
+
+Two columns, `key` and `value`. This is where the ids that used to live in the Notion registry now
+live, so that everything about a client's *document* is in one place they can edit.
+
+| `key` | What it does |
+|---|---|
+| `proposals_folder_id` | Drive folder the generated `.docx` and `.pdf` are written to |
+| `reference_docs_folder_id` | Drive folder of approved past proposals, for Module 2's grounding |
+| `pricing_sheet_id` | Rate-card sheet. **Module 3 still reads the Notion column** — it never opens this sheet — so set it in both places if you use pricing |
+| `document_version` | Version on the cover, in the footer and in the version-control table. Defaults to `1.0` |
+| `author` | Initials for the version-control table's *author* column |
+| `default_language` | Only used by `scripts/client-docs.js` when generating this client's guide |
+
+Every one of these falls back to its Notion column when the cell is empty, so a client set up before
+this tab existed keeps working untouched.
+
+> **What stays in Notion, and why.** Identity and the delivery gates: `client_id`, `Client Status`,
+> `send_mode`, `service_tier`, `commercial_contact_email`, `notification_chat_id` and the id of this
+> sheet. `commercial_contact_email` *cannot* move here — it is the key the incoming email is matched
+> against, and that has to be resolved before anyone knows which sheet to open. The rest stay out on
+> purpose: a copy-paste slip in a spreadsheet should not be able to put a client into live sending.
+
+---
+
+## Tab — `Templates`
+
+Which `.docx` gets rendered. A client is not one template per language: they have product lines, and
+a tender answers to a different document than a spare-parts quotation.
+
+| Column | What it does |
+|---|---|
+| `variant` | A name of your choosing, e.g. `retrofit`. Empty means `default` |
+| `lang` | `es` or `en` |
+| `file_id` | The Drive file id of the `.docx`. A row with no `file_id` is ignored, with a warning |
+| `match` | Comma-separated keywords. If one appears in the request, this variant is chosen |
+| `default` | `yes` marks the fallback for that language |
+| `notes` | For humans |
+
+Selection order, most specific first:
+
+1. a variant the request asked for by name;
+2. a `match` keyword found in the request — the project title and type, the notes, and the
+   requirement lines (not the raw email, so it behaves the same whether a module runs standalone or
+   from the orchestrator);
+3. the `default` row for the proposal's language;
+4. any row in that language, then the other language;
+5. the registry's `template_id_es` / `template_id_en`.
+
+Leave the tab empty and step 5 is all that happens — exactly the old behaviour. Which template was
+chosen, and why, is reported in the Telegram alert.
+
+---
+
+## Tab — `Fields`
+
+**This is the tab that makes a cover page theirs.** The catalog owns the chapters; this owns
+everything around them that only this client has — an offer number out of their ERP, an asset
+number, the legal name in their footer.
+
+Each row becomes a template tag: `{campos.<key>}`.
+
+| Column | What it does |
+|---|---|
+| `key` | The tag name. Lowercase letters, digits and `_` only — tags are Jexl expressions, so a `-` reads as subtraction and an accent breaks the tag |
+| `source` | `static`, `request` or `auto` — see below |
+| `value` | For `static`, the literal text. For `auto`, which computed value to use |
+| `capture_label` | For `request`: the label(s) to look for, comma-separated alternatives |
+| `required` | `yes` stops the proposal when the value is missing |
+| `notes` | For humans |
+
+### The three sources
+
+| `source` | Where the value comes from |
+|---|---|
+| `static` | The `value` cell. Their legal name, a copyright line — things that do not change per request |
+| `request` | Read out of the RFQ email by label |
+| `auto` | Something the pipeline already computed: `proposal_number`, `date`, `version`, `tier`, `language`, `client_company`, `client_contact`, `client_email`, `client_phone`, `project_title`, `project_type`, `project_location`, `project_deadline` |
+
+### How `request` capture works, and why there is no model in it
+
+These values are **identifiers**. A hallucinated offer number is worse than a missing one: it lands
+on the cover of a document that goes to a customer, it looks entirely plausible, and nobody catches
+it. So capture is a labelled-value match and nothing else.
+
+- The label must start its line, or follow another label on the same line. Both work, because a
+  header block pasted out of an ERP puts several on one line.
+- Case, accents and the `º`/`°` ordinal marks are all folded — `Oferta nº`, `OFERTA Nº` and
+  `Oferta n°` are the same label.
+- The value ends at the next label — **including one this client never declared**, so
+  `Oferta nº: 905149921  Versión: 1.0` does not put the version inside the offer number.
+- A label with nothing after it counts as absent, not as an empty value.
+- The longest matching label wins, so `Project number` beats `Project`.
+
+A `required` field the sender did not supply appends `custom_fields.<key>` to the RFQ's
+`missing_fields` and marks it **incomplete** — the run stops for review instead of shipping a cover
+with a hole in it.
+
+### Keep the labels and the RFQ template in sync
+
+Capture works by matching a string, so the label in this tab and the label in the email have to be
+the same string. Do not maintain that by hand — run:
+
+```bash
+node scripts/client-docs.js <client_id>
+```
+
+It reads this tab and writes the client's own RFQ email template with the exact labels, plus a setup
+guide listing every `{campos.*}` tag their template may use. Written by hand, those two drift the
+first time you add a field, and the failure is silent: the cover simply comes out blank.
+
+> A `{campos.*}` tag for a key this tab does *not* declare prints the literal word `undefined` into
+> the customer's document. It is the one thing the totality rule cannot cover — there is nothing to
+> enumerate — which is why the generated guide lists the valid tags.
 
 ---
 
@@ -54,12 +189,27 @@ the sheet empty and the catalog decides everything.
 |---|---|
 | `chapter_id` | An id from `schemas/chapter-catalog.json`. Applies to chapters *and* subsections. |
 | `include` | `yes` forces the chapter in, `no` forces it out. **Empty means "let the catalog decide"** — which is usually what you want, because the catalog already drops chapters that are out of tier or out of scope. |
-| `order` | A number that moves the chapter. Chapters are ordered by this value; the catalog uses multiples of ten, so `15` puts something between chapter 1 and chapter 2. Leave empty to keep the default position. |
+| `order` | A number that sets the chapter's **number** and its place in the resolved chapter list. The catalog uses multiples of ten, so `15` puts something between chapter 1 and chapter 2. Leave empty to keep the default. **It does not move the chapter in the document** — see below. |
 | `title_es` / `title_en` | Rename the chapter. Empty keeps the catalog title. |
 | `tier` | Reserved for per-chapter tier overrides. Leave empty. |
 | `notes` | For humans. Nothing reads it. |
 
 An unknown `chapter_id` is ignored and reported as a warning — it does not silently do nothing.
+
+### `order` numbers a chapter; the template positions it
+
+Where a chapter physically appears is decided by **where its block sits in the `.docx`**, because
+docxtemplater fills each block where it finds it. `order` cannot move it.
+
+In practice this does not produce a document that contradicts itself, because the contents list is
+a real Word TOC built from the finished document, and Word numbers the headings by their position
+too — so what the reader sees is always consistent. What `order` does change is `{<id>.numero}`,
+which is what cross-references in body text use.
+
+So: **to move a chapter, move its `{#has_<id>}` … `{/has_<id>}` block in the template**, and set
+`order` to match if anything cross-references it.
+
+
 
 ### Adding a chapter the catalog does not have
 

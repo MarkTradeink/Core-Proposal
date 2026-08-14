@@ -7,10 +7,10 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
       "position": [
-        -128,
-        672
+        16,
+        608
       ],
-      "id": "5a0dccb3-304b-41c0-bf1c-dd77847ca5a0",
+      "id": "da61e2ed-5fc1-44d5-b062-f51bff399fad",
       "name": "When chat message received",
       "webhookId": "6cdee61f-dd54-4866-8724-2f0c956a7b64"
     },
@@ -18,13 +18,13 @@
       "parameters": {
         "inputSource": "passthrough"
       },
-      "id": "6fe89d3b-69de-49d3-b3b2-0c9f5109733e",
+      "id": "5d15edf0-dfee-4559-82a3-4332c36079e7",
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        -112,
-        368
+        32,
+        304
       ]
     },
     {
@@ -51,13 +51,13 @@
         },
         "options": {}
       },
-      "id": "417d0668-e968-4c9b-803f-2601b2a01346",
+      "id": "5ce776a6-d5bc-41b5-8901-7390e9832996",
       "name": "Config Provided?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        96,
-        368
+        240,
+        304
       ]
     },
     {
@@ -74,13 +74,13 @@
         "returnAll": true,
         "options": {}
       },
-      "id": "b9a472e5-e390-4293-9def-5e727c2640ac",
+      "id": "7a26d603-c088-42bf-aded-c5d76d151bb2",
       "name": "Load Client Registry",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        320,
-        544
+        464,
+        480
       ],
       "credentials": {
         "notionApi": {
@@ -91,28 +91,28 @@
     },
     {
       "parameters": {
-        "jsCode": "// Standalone fallback: resolve the pricing-relevant client_config from Notion by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(p===undefined||p===null) return null; if(typeof p==='string') return p; return p.value ?? p.name ?? p.email ?? p.checkbox ?? p.text ?? p ?? null; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
+        "jsCode": "// Standalone fallback: resolve the pricing-relevant client_config from Notion by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\n// Notion hands each property over in whatever shape n8n's node uses for that property type. The\n// previous prop() ended in `?? p ?? null`, so an unrecognised shape leaked out as the RAW OBJECT\n// and every downstream string comparison failed SILENTLY. Two of those failures were live: a\n// Select ({name:'proposal_only'}) never matched a tier, and an EMPTY rich_text arrived as [] or\n// {} — both truthy — so \"no pricing_sheet_id\" read as \"pricing configured\". Together they routed\n// a proposal_only client into Module 3. Normalise to a string or null; booleans pass through.\nfunction asText(v){ if(v==null) return ''; if(typeof v==='string') return v.trim(); if(typeof v==='number'||typeof v==='boolean') return String(v); if(Array.isArray(v)) return v.map(asText).filter(Boolean).join(' ').trim(); if(typeof v==='object') return asText(v.name ?? v.value ?? v.plain_text ?? v.content ?? (v.select&&v.select.name) ?? (v.status&&v.status.name) ?? v.text ?? ''); return ''; }\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(typeof p==='boolean') return p; const t=asText(p); return t===''?null:t; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  pricing_sheet_id: prop(match,'pricing_sheet_id'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
       },
-      "id": "1dff03e2-fb1f-442e-acb2-354a348f72fa",
+      "id": "f3aec93c-21c8-401d-85bc-b82428afd469",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        544,
-        544
+        688,
+        480
       ]
     },
     {
       "parameters": {
         "jsCode": "// Single merge point for both branches (config passed in vs looked up standalone).\n// Emits a uniform { client_id, client_config, data } that downstream nodes reference by name.\nconst j = $json;\nconst client_config = j.client_config || {};\nif (!client_config.pricing_sheet_id && !client_config.rate_card) {\n  throw new Error(`No pricing source for client '${j.client_id}': set 'pricing_sheet_id' in the Notion registry (the client's pricing Google Sheet) or pass client_config.rate_card. See docs/PRICING-SHEET-TEMPLATE.md.`);\n}\nreturn [{ json: { client_id: j.client_id, client_config, data: j.data || {} } }];"
       },
-      "id": "79573987-1d4c-48e3-84c4-bc66e2398433",
+      "id": "6d6f4eaf-9173-4314-b82c-19944c831dc3",
       "name": "Resolve Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        800,
-        368
+        944,
+        288
       ]
     },
     {
@@ -129,13 +129,13 @@
         },
         "options": {}
       },
-      "id": "66c559a1-c232-4ce5-91ad-f906e095df98",
+      "id": "c4f73029-177a-4a48-885d-1c418bfa611e",
       "name": "Read Pricing Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        1040,
-        368
+        1184,
+        288
       ],
       "credentials": {
         "googleSheetsOAuth2Api": {
@@ -148,26 +148,26 @@
       "parameters": {
         "jsCode": "// Assemble the rate_card object from the client's pricing sheet rows.\n// Expected sheet columns (tab named 'Pricing'): type | key | value  (docs/PRICING-SHEET-TEMPLATE.md).\n//   type='rate'  -> key is a labour category, value is its hourly rate.\n//   type='param' -> key is one of margin_pct, risk_pct, discount_pct, payment_terms, currency.\n// An inline client_config.rate_card (if provided) overrides the sheet entirely.\nconst env = $('Resolve Config').first().json;\nconst cfg = env.client_config || {};\n\nlet rate_card;\nif (cfg.rate_card) {\n  rate_card = cfg.rate_card;\n} else {\n  const rows = $('Read Pricing Sheet').all().map(i => i.json);\n  const rate_by_category = {};\n  let margin_pct = 0, risk_pct = 0, discount_pct = 0, payment_terms = '', currency = null;\n  for (const r of rows) {\n    const type = String(r.type ?? '').trim().toLowerCase();\n    const key = String(r.key ?? '').trim();\n    const val = r.value;\n    if (!key) continue;\n    if (type === 'rate') { rate_by_category[key] = Number(val); }\n    else if (type === 'param') {\n      if (key === 'margin_pct') margin_pct = Number(val);\n      else if (key === 'risk_pct') risk_pct = Number(val);\n      else if (key === 'discount_pct') discount_pct = Number(val);\n      else if (key === 'payment_terms') payment_terms = String(val);\n      else if (key === 'currency') currency = String(val);\n    }\n  }\n  if (Object.keys(rate_by_category).length === 0) {\n    throw new Error(`Pricing sheet for '${env.client_id}' produced no rate rows. Check the 'Pricing' tab has columns type|key|value and at least one type='rate' row. See docs/PRICING-SHEET-TEMPLATE.md.`);\n  }\n  rate_card = { rate_by_category, margin_pct, risk_pct, discount_pct, payment_terms, currency };\n}\nreturn [{ json: { client_id: env.client_id, client_config: cfg, data: env.data, rate_card } }];"
       },
-      "id": "de573613-6f02-40f0-a38a-84a13aee515a",
+      "id": "fc132f8a-28b0-4c82-a48c-787a02a0ee55",
       "name": "Build Rate Card",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1280,
-        368
+        1424,
+        288
       ]
     },
     {
       "parameters": {
         "jsCode": "// Cifral pricing logic — SOURCE OF TRUTH mirrored in modules/pricing/pricing_core.js.\n// Plain JavaScript (self-hosted n8n has no Python). If the formula changes, change both.\n// Pricing DATA (rates/margins) comes from the client's Google Sheet, not from here.\n// === PRICING CORE START ===\nfunction isNumber(value) { return typeof value === 'number' && Number.isFinite(value); }\nfunction roundMoney(value) { return Math.round((value + Number.EPSILON) * 100) / 100; }\n\nfunction computePricing({ materialsCost, hoursByCategory, rateByCategory, marginPct, riskPct, discountPct, paymentTerms, currency = null }) {\n  hoursByCategory = hoursByCategory ?? {};\n  rateByCategory = rateByCategory ?? {};\n  if (!isNumber(materialsCost) || materialsCost < 0) throw new Error('materials_cost must be a number >= 0');\n  if (!isNumber(marginPct) || marginPct < 0) throw new Error('margin_pct must be a number >= 0');\n  if (!isNumber(riskPct) || riskPct < 0) throw new Error('risk_pct must be a number >= 0');\n  if (!isNumber(discountPct) || discountPct < 0 || discountPct > 1) throw new Error('discount_pct must be a number between 0 and 1');\n  let labor = 0;\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    if (!isNumber(hours) || hours < 0) throw new Error(`hours for '${category}' must be a number >= 0`);\n    if (!Object.prototype.hasOwnProperty.call(rateByCategory, category)) throw new Error(`no rate configured for category '${category}'`);\n    const rate = rateByCategory[category];\n    if (!isNumber(rate) || rate < 0) throw new Error(`rate for '${category}' must be a number >= 0`);\n    labor += hours * rate;\n  }\n  const subtotal = materialsCost + labor;\n  const multiplier = (1 + riskPct) * (1 + marginPct) * (1 - discountPct);\n  const total = subtotal * multiplier;\n\n  // Per-line breakdown, so the proposal can show a price table instead of a bare total. Each line\n  // carries the internal cost basis (amount) AND the customer-facing price (sell_amount = amount\n  // scaled by the same multiplier as the total). A quotation shows sell prices only — margin and\n  // risk are baked in, never itemised for the customer.\n  const lines = [];\n  if (materialsCost > 0) lines.push({ category: 'materials', hours: null, rate: null, amount: roundMoney(materialsCost) });\n  for (const [category, hours] of Object.entries(hoursByCategory)) {\n    lines.push({ category, hours, rate: rateByCategory[category], amount: roundMoney(hours * rateByCategory[category]) });\n  }\n  for (const line of lines) line.sell_amount = roundMoney(line.amount * multiplier);\n  // Absorb per-line rounding into the largest line: a price table that doesn't add up is worse\n  // than no table.\n  const roundedTotal = roundMoney(total);\n  const residual = roundMoney(roundedTotal - lines.reduce((sum, l) => sum + l.sell_amount, 0));\n  if (residual !== 0 && lines.length > 0) {\n    const largest = lines.reduce((a, b) => (b.sell_amount > a.sell_amount ? b : a));\n    largest.sell_amount = roundMoney(largest.sell_amount + residual);\n  }\n\n  const result = { subtotal: roundMoney(subtotal), margin_pct: marginPct, risk_pct: riskPct, discount_pct: discountPct, total: roundedTotal, payment_terms: paymentTerms, lines };\n  if (currency) result.currency = currency;\n  return result;\n}\n// === PRICING CORE END ===\n\n// --- n8n wrapper ---\nconst output = [];\nfor (const item of $input.all()) {\n  const src = item.json ?? {};\n  const data = src.data ?? {};\n  const rateCard = src.rate_card ?? {};\n  const hours = data.hours_by_category ?? {};\n  const result = computePricing({\n    materialsCost: data.materials_cost ?? 0,\n    hoursByCategory: hours,\n    rateByCategory: rateCard.rate_by_category ?? {},\n    marginPct: rateCard.margin_pct ?? 0,\n    riskPct: rateCard.risk_pct ?? 0,\n    discountPct: rateCard.discount_pct ?? 0,\n    paymentTerms: rateCard.payment_terms ?? '',\n    currency: rateCard.currency ?? null,\n  });\n  result.priced_categories = Object.keys(hours);\n  output.push({ json: { client_id: src.client_id ?? null, client_config: src.client_config ?? null, status: 'ok', errors: [], data: result } });\n}\nreturn output;"
       },
-      "id": "5481d71b-262a-4edb-8c00-ce1afb13eb8c",
+      "id": "7f54f35c-4964-429c-85d2-bb707449e5bc",
       "name": "Compute Pricing",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1520,
-        368
+        1664,
+        288
       ]
     },
     {
@@ -176,13 +176,13 @@
         "height": 260,
         "width": 900
       },
-      "id": "e1cc08c4-ab20-4a8d-9fac-c15b8274773b",
+      "id": "725c0802-5e92-4c8a-9197-5bce6ea0bbf1",
       "name": "Note — Module 3",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -144,
-        64
+        0,
+        0
       ]
     }
   ],
@@ -287,5 +287,12 @@
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "6cf691ae4b818c0fa5987ac19eaf2f8dd5a147702425d4e31b1029a1cf278c82"
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": "OKIZQXKaYLlsdZaV"
   }
 }
