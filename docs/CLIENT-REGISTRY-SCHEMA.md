@@ -148,6 +148,19 @@ out from the wrong address.
 Set `send_mode` to `draft` for a client to keep the old review-before-sending behaviour. Leave it
 empty (or `send`) for live delivery.
 
+## Reading these properties safely
+
+Every workflow reads the registry through a `prop()` helper. It normalises whatever n8n's Notion
+node emits — a plain string, `{name}`, `{value}`, a raw `{type, select:{name}}`, a rich-text array —
+down to **a string or `null`**, with booleans passed through.
+
+That normalisation is load-bearing, not tidiness. Before it existed, `prop()` returned the raw object
+for any shape it did not recognise, and two failures went unnoticed for months because both fail
+toward the *permissive* answer: a `Select` that never matched a tier fell back to `full_pipeline`,
+and an empty rich-text property arriving as `[]` (truthy) read as "configured". A `paused` client
+would not have been rejected either. **When adding a property here, never compare its value without
+going through `prop()`, and never test it for truthiness raw.**
+
 ## Property → `client_config` mapping
 
 The "Map Client Config" node maps Notion properties into the envelope's `client_config`:

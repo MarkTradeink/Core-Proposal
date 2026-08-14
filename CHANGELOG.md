@@ -4,6 +4,35 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — Notion property shapes leaked through `prop()` and defeated the routing clamp (2026-08-12)
+
+The tier clamp below was correct and the route was *still* `full_pipeline` in production. Cause: the
+`prop()` helper that reads the Notion registry ends in `?? p ?? null`, so any property shape it does
+not recognise is returned as the **raw object**. Two live failures, and they had to coincide to
+produce the symptom:
+
+- **`service_tier` as a Select** arrived as an object, not `'proposal_only'`, so `TIER_ALLOWS[…]`
+  missed and the tier fell back to `full_pipeline` — the permissive option;
+- **`pricing_sheet_id`, empty**, arrived as `[]` or `{}` — both **truthy** — so the capability
+  backstop read "no sheet id" as "pricing configured" and declined to downgrade.
+
+Either alone was survivable: a bad tier still got caught by the backstop, and a truthy-empty sheet id
+still got caught by the clamp. Together they cancelled each other out. Neither was visible, because
+both fail toward the permissive answer and the only client that existed before this one was
+`full_pipeline` anyway — the same failure class the intake code already calls out in a comment about
+`send_mode` resolving `undefined` to `'send'`.
+
+`prop()` now normalises to a string or `null` through an `asText()` that understands the shapes n8n
+and the Notion API actually emit (plain string, `{name}`, `{value}`, `{type,select:{name}}`,
+`{type,status:{name}}`, rich-text arrays), passing booleans through untouched. Fixed in all five
+workflows. `Resolve Route` normalises again on its own input rather than trusting its caller, and now
+echoes `service_tier_raw` and `has_pricing` in its output, so the next misroute is one glance at the
+node instead of a debugging round.
+
+`scripts/check-routing.js` gained the shape matrix: 8 registry value shapes for `service_tier` and
+4 empty shapes for `pricing_sheet_id`. Replayed against the previous node source, the new cases fail
+— which is the only evidence worth having that a regression test tests anything.
+
 ### Fix — `service_tier` is now a ceiling, not just a default (2026-08-12)
 
 Found live: a `proposal_only` client sent a technical RFQ, the extractor read it as `full_pipeline`,

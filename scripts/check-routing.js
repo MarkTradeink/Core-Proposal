@@ -88,9 +88,41 @@ for (const badTier of [undefined, '', 'nonsense_tier']) {
 const incident = run('proposal_only', 'full_pipeline', null);
 check(incident.route === 'proposal_only' && !!incident.route_note, 'the reported incident is not fixed');
 
-console.log(`replayed ${TIERS.length * ASKS.length * 2} routing combinations against the real 'Resolve Route' source`);
+// SHAPE TOLERANCE. The clamp above was correct and still misrouted in production, because
+// 'Map Client Config' hands Notion values over in whatever shape its prop() helper failed to
+// recognise — it ends in `?? p ?? null`, so an unrecognised property leaks out as the raw object.
+// A Select arriving as {name:'proposal_only'} fails every string comparison silently, and fails
+// toward full_pipeline because that is the permissive fallback. These are the shapes n8n's Notion
+// node and the raw API actually produce for a Select, plus the human variants of the same value.
+const TIER_SHAPES = [
+  ['plain string', 'proposal_only'],
+  ['n8n select object', { name: 'proposal_only' }],
+  ['raw Notion select', { type: 'select', select: { name: 'proposal_only' } }],
+  ['raw Notion status', { type: 'status', status: { name: 'proposal_only' } }],
+  ['half-simplified', { value: 'proposal_only' }],
+  ['title-cased with a space', 'Proposal Only'],
+  ['hyphenated', 'proposal-only'],
+  ['padded', '  proposal_only  '],
+];
+for (const [label, shape] of TIER_SHAPES) {
+  const r = run(shape, 'full_pipeline', null);
+  check(r.route === 'proposal_only', `service_tier as ${label} was not understood -> routed '${r.route}'`);
+}
+
+// An empty rich_text property is the mirror image: n8n can hand back [] or {}, both TRUTHY, so a
+// bare `cfg.pricing_sheet_id ||` reads "no sheet id" as "sheet id present" and routes into
+// Module 3 with nothing to read.
+for (const [label, empty] of [['empty string', ''], ['empty array', []], ['empty object', {}], ['null', null]]) {
+  const r = run('full_pipeline', 'full_pipeline', empty);
+  check(r.route === 'proposal_only', `pricing_sheet_id as ${label} was read as configured -> routed '${r.route}'`);
+}
+// ...and a real id in a wrapped shape must still count as configured.
+check(run('full_pipeline', 'full_pipeline', [{ plain_text: 'sheet_abc' }]).route === 'full_pipeline',
+  'a rich_text pricing_sheet_id was not recognised as configured');
+
+console.log(`replayed ${TIERS.length * ASKS.length * 2} routing combinations + ${TIER_SHAPES.length} registry value shapes against the real 'Resolve Route' source`);
 if (problems.length) {
   console.error(`\nFAIL:\n  ${problems.join('\n  ')}`);
   process.exit(1);
 }
-console.log('OK — service_tier is a ceiling, Module 3 is never entered without a rate card, and no route changes silently.');
+console.log('OK — service_tier is a ceiling whatever shape Notion sends it in, Module 3 is never entered without a rate card, and no route changes silently.');
