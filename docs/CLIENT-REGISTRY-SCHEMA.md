@@ -32,14 +32,15 @@ story), but they are **not** individually sold, so the registry no longer has pe
 Any single **request** can override the client's default by stating what it wants (`request_type`,
 extracted by Module 1); `service_tier` is the fallback when a request doesn't say.
 
-**The override cannot exceed what the client can actually deliver.** A route that needs pricing
-(`full_pipeline` or `pricing_only`) only reaches Module 3 if the client has a rate card — a
-`pricing_sheet_id` here, or a sheet-level one once Module 3 reads the `Client` tab. A client with
-`service_tier: proposal_only` and no rate card configured anywhere (the normal state while
-onboarding, or for a client who genuinely never sells pricing through this channel) has any
-pricing-shaped request downgraded to `proposal_only` — or, for a bare `pricing_only` request with
-nothing to fall back to, stopped with its own Telegram alert instead of Module 3 throwing three
-modules deep. See `docs/ARCHITECTURE.md` § "Three service tiers".
+**The override may only narrow.** `service_tier` is a **ceiling**: a `full_pipeline` client can ask
+for just a price on one RFQ, but a `proposal_only` client asking for pricing gets a proposal — they
+did not buy pricing, and one misread email must not change that. Requests outside the tier fall back
+to the tier and the substitution is reported in the Telegram alert.
+
+Behind the clamp, a pricing route still needs a rate card (`pricing_sheet_id` here, or an inline
+`client_config.rate_card`). A client contracted for pricing without one is a misconfiguration:
+`full_pipeline` degrades to `proposal_only`, `pricing_only` stops with its own alert rather than
+Module 3 throwing three modules deep. See `docs/ARCHITECTURE.md` § "Three service tiers".
 
 ## Properties
 

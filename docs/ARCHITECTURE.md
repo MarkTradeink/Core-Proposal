@@ -55,17 +55,37 @@ Routing is decided **per request**. Module 1 extracts a `request_type` from the 
 the orchestrator uses it, falling back to the client's `service_tier` when the request is
 `unspecified`. So the same client can ask for a price today and a full proposal tomorrow.
 
-**A capability guard runs before the route is trusted.** `request_type` comes from an LLM reading
-free text, and the extractor's own prompt tells it to prefer `unspecified` over guessing — but a
-technical RFQ that merely mentions cost or "presupuesto" can still read as a pricing request. Before
-`Route by Request Type`, `Resolve Route` checks whether the resolved client can actually price
-anything (a `pricing_sheet_id`, or an inline `client_config.rate_card`): a `full_pipeline` route with
-no pricing capability downgrades to `proposal_only` (the document is still fully deliverable — it
-just drops the commercial section this request happened to ask for); a `pricing_only` route with no
-pricing capability has nothing to fall back to and routes to its own dead-end, `Pricing Not
-Configured`, which alerts and stops — the same "warn, don't crash three modules deep" shape as the
-proposal config sheet's own missing-sheet warning. Either way the gap is reported in the Telegram
-alert as `pricing_capability_gap`, so a downgrade is visible without opening n8n's execution log.
+**`service_tier` is a ceiling, not merely a default.** The sentence above is precise about which
+direction a request may move: a client *on `full_pipeline`* can narrow to one deliverable. It may
+not widen. `request_type` comes from an LLM reading free text — its prompt says to prefer
+`unspecified` over guessing, but that is a judgement call, not a guarantee — so `Resolve Route`
+clamps it to what the tier permits:
+
+| `service_tier` | a single request may ask for |
+|---|---|
+| `pricing_only` | `pricing_only` |
+| `proposal_only` | `proposal_only` |
+| `full_pipeline` | any of the three |
+
+Anything outside that set, `unspecified` included, falls back to the tier itself. This is what stops
+one misread email from buying a deliverable the client never contracted for.
+
+**A capability backstop sits behind the clamp.** Once the clamp holds, a pricing route can only
+appear because the *tier* says so — which makes the remaining check purely one of misconfiguration:
+a client contracted for pricing with no rate card anywhere (`pricing_sheet_id`, or an inline
+`client_config.rate_card`). `full_pipeline` degrades to `proposal_only` (the document is still fully
+deliverable; it loses only the commercial section); `pricing_only` has nothing to degrade to and
+routes to its own dead-end, `Pricing Not Configured`, which alerts and stops. It should never fire
+in normal operation — when it does, the Notion row and Drive disagree. It earns its place because
+`full_pipeline` runs Modules 2 and 3 in parallel, so failing here costs nothing while failing inside
+Module 3 costs a full content-generation pass first.
+
+Whenever the delivered route differs from what the email asked for, `route_note` says so in plain
+language and Module 4 prints it in the Telegram alert — a sender who asked for a price and received
+a proposal can find out why without opening an execution log.
+
+`scripts/check-routing.js` replays all 24 tier × request × pricing combinations against the real
+node source on every `npm run check`.
 
 ## Scope of supply — one per-request selector
 

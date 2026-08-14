@@ -4,7 +4,7 @@
   "private": true,
   "description": "Cifral proposal pipeline \u2014 versioned logic cores, schemas and seed .docx templates for the n8n workflows.",
   "scripts": {
-    "check": "node modules/pricing/pricing_core.js >/dev/null && node modules/intake/intake_core.js && node modules/proposal/field_capture.js && node modules/proposal/chapter_catalog.js && node modules/proposal/render_context.js >/dev/null && node scripts/mirror-cores.js --check && node scripts/check-workflow-graph.js && node scripts/check-intake-routing.js && npm run render",
+    "check": "node modules/pricing/pricing_core.js >/dev/null && node modules/intake/intake_core.js && node modules/proposal/field_capture.js && node modules/proposal/chapter_catalog.js && node modules/proposal/render_context.js >/dev/null && node scripts/mirror-cores.js --check && node scripts/check-workflow-graph.js && node scripts/check-intake-routing.js && node scripts/check-routing.js && npm run render",
     "render": "node scripts/render-sample.js es A && node scripts/render-sample.js es B && node scripts/render-sample.js es C && node scripts/render-sample.js en B",
     "mirror": "node scripts/mirror-cores.js",
     "templates": "node templates/build-templates.js",

@@ -4,34 +4,41 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
-### Fix — pricing requested for a client who cannot price crashed Module 3 instead of degrading or alerting (2026-08-12)
+### Fix — `service_tier` is now a ceiling, not just a default (2026-08-12)
 
-Found live: a `proposal_only` client with no `pricing_sheet_id` (the normal state — they were never
-meant to price anything through this channel) sent a technical RFQ; the extractor read it as
-`full_pipeline` — its prompt says to prefer `unspecified` when unsure, but it is a judgment call on
-free text, not a guarantee — and the orchestrator followed that classification straight through
-`Route by Request Type` into Module 3, which threw `No pricing source for client '<id>'` deep inside
-its `Resolve Config` node. The client's own `service_tier` was never consulted at that point:
-`request_type` only falls back to it when the extractor says `unspecified`, and here it didn't.
+Found live: a `proposal_only` client sent a technical RFQ, the extractor read it as `full_pipeline`,
+and the orchestrator followed that classification into Module 3, which threw
+`No pricing source for client '<id>'` three steps downstream of where the information to prevent it
+lived. `service_tier` was never consulted, because `request_type` only fell back to it when the
+extractor said `unspecified` — and here it didn't.
 
-`Resolve Route` now runs a **capability guard** after resolving the route and before the switch
-sees it: a route that needs pricing (`full_pipeline` or `pricing_only`) is only trusted when the
-client actually has a rate card (`pricing_sheet_id` or an inline `client_config.rate_card`).
-Without one, `full_pipeline` downgrades to `proposal_only` — the written document is still fully
-deliverable, it simply drops the commercial section this particular request happened to ask for —
-and `pricing_only` has nothing to fall back to, so it routes to a new terminal branch,
-`blocked_no_pricing`, which fires a `Pricing Not Configured` Telegram alert and stops. Same shape as
-the existing "no Proposal Config sheet → catalog defaults + warning" pattern: a missing optional
-capability degrades and says so, it does not crash three modules downstream of where the config
-lived.
+The first cut of this fix added a capability guard: if the client has no rate card, don't route to
+pricing. That fixed the crash and missed the cause. Mark pushed back — the Notion row already
+carries the three tiers, so why is routing this complicated? — and he was right. The README had
+described the correct behaviour all along: *"a client **on `full_pipeline`** can still ask for just
+a price on a given RFQ"*. That is narrowing **within** what was contracted. The code implemented it
+as "the email wins outright", which also permitted widening past it, and widening is what broke.
 
-The gap travels to Module 4 as `pricing_capability_gap` and is now shown in its Telegram alert,
-alongside `config_warnings` and `fields_missing` — both computed since the client-fields work but
-never actually surfaced there, so a proposal could carry an unknown `chapter_id` warning or a
-missing required field and nobody would see it without opening n8n's execution log, contrary to
-what `docs/CLIENT-DRIVE-SETUP.md` already promised ("Watch for these in the Telegram alert").
+`Resolve Route` now clamps `request_type` to what the tier permits — `pricing_only` and
+`proposal_only` admit only themselves, `full_pipeline` admits all three; anything else, including
+`unspecified`, falls back to the tier. One misread email can no longer buy a deliverable the client
+never contracted for, and the documented per-request narrowing survives untouched.
 
-`docs/TESTING-MANUAL.md` Scenario 7b exercises both halves of the guard.
+The capability check stays as a **backstop**, now with a much narrower job: once the clamp holds, a
+pricing route can only appear because the tier says so, so a missing rate card is purely
+misconfiguration. `full_pipeline` degrades to `proposal_only`, `pricing_only` stops at a new
+`Pricing Not Configured` alert. It should never fire in normal operation; it earns its place because
+`full_pipeline` runs Modules 2 and 3 in parallel, so failing here costs nothing while failing inside
+Module 3 costs a full content-generation pass first.
+
+Any substitution is reported as `route_note` and printed in Module 4's Telegram alert, alongside
+`config_warnings` and `fields_missing` — both computed since the client-fields work but never
+actually surfaced, contrary to what `docs/CLIENT-DRIVE-SETUP.md` already promised.
+
+`scripts/check-routing.js` replays all 24 tier × request × pricing combinations against the real
+node source on every `npm run check`, asserting three invariants that all fail silently otherwise:
+a route never exceeds its tier, Module 3 is never entered without a rate card, and no route changes
+without a note explaining it. Writing it caught a wrong expectation in its own first draft.
 
 ### Feature — a client's own cover variables, their own templates, and a real table of contents (2026-08-12)
 
