@@ -292,7 +292,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Decide what to produce. The request's own request_type wins; if the reseller didn't\n// specify ('unspecified'), fall back to the client's default service_tier from the registry.\nconst j = $json;\nconst rt = j.data && j.data.request_type;\nconst tier = (j.client_config && j.client_config.service_tier) || 'full_pipeline';\nlet route = (rt && rt !== 'unspecified') ? rt : tier;\nif (!['pricing_only', 'proposal_only', 'full_pipeline'].includes(route)) route = 'full_pipeline';\nreturn [{ json: { ...j, route } }];"
+        "jsCode": "// Decide what to produce. The request's own request_type wins; if the reseller didn't\n// specify ('unspecified'), fall back to the client's default service_tier from the registry.\nconst j = $json;\nconst cfg = j.client_config || {};\nconst rt = j.data && j.data.request_type;\nconst tier = cfg.service_tier || 'full_pipeline';\nlet route = (rt && rt !== 'unspecified') ? rt : tier;\nif (!['pricing_only', 'proposal_only', 'full_pipeline'].includes(route)) route = 'full_pipeline';\n\n// CAPABILITY GUARD. request_type is extracted by an LLM from free-text email, and its prompt is\n// explicitly told to prefer 'unspecified' over guessing — but a technical RFQ that merely mentions\n// budget, cost or \"presupuesto\" can still read as asking for a price even when the sender did not\n// mean it that way. Before this guard, that misclassification reached Module 3's pricing lookup\n// and threw a raw exception (\"No pricing source for client 'X'\") for a client who was never\n// configured to price anything through this channel in the first place — a crash three modules\n// deep instead of a decision made where the information to make it actually lives.\n//\n// A route needs pricing only when it is 'full_pipeline' or 'pricing_only'; a client can only\n// deliver that when it has a rate card, in the sheet's Client tab or the registry's\n// pricing_sheet_id, or an inline client_config.rate_card. See docs/PRICING-SHEET-TEMPLATE.md.\nconst requested_route = route;\nconst hasPricing = !!(cfg.pricing_sheet_id || cfg.rate_card);\nlet pricing_capability_gap = null;\n\nif (!hasPricing && (route === 'full_pipeline' || route === 'pricing_only')) {\n  if (route === 'full_pipeline') {\n    // The written proposal is still fully deliverable without a price — same as any other\n    // proposal_only run, just missing the commercial section this request happened to ask for.\n    route = 'proposal_only';\n    pricing_capability_gap = `Requested '${requested_route}' but '${j.client_id}' has no pricing configured (no pricing_sheet_id) — delivered 'proposal_only' instead.`;\n  } else {\n    // pricing_only has nothing else to fall back to: a price is the ENTIRE deliverable, and\n    // there is no rate card to compute one from. This is a config gap, not a bad request, so it\n    // is routed to its own alert rather than the generic 'RFQ Needs Review' (missing DATA) or\n    // 'Client Rejected' (client not allowed) paths.\n    route = 'blocked_no_pricing';\n    pricing_capability_gap = `Requested 'pricing_only' but '${j.client_id}' has no pricing configured (no pricing_sheet_id) — nothing could be produced.`;\n  }\n}\n\nreturn [{ json: { ...j, route, requested_route, pricing_capability_gap } }];"
       },
       "id": "8a411494-1822-4769-a18d-75f00b3318e2",
       "name": "Resolve Route",
@@ -372,6 +372,28 @@
               },
               "renameOutput": true,
               "outputKey": "full_pipeline"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.route }}",
+                    "rightValue": "blocked_no_pricing",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "blocked_no_pricing"
             }
           ]
         },
@@ -599,7 +621,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\n// email_context is per-request (which thread to reply in) so it travels beside client_config,\n// not inside it; Module 4 treats it as optional and falls back to a fresh mail without it.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  proposal_config: $('Build Proposal Config').first().json.proposal_config,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
+        "jsCode": "// proposal_only: assemble the document from RFQ + generated content, with NO pricing block.\n// email_context is per-request (which thread to reply in) so it travels beside client_config,\n// not inside it; Module 4 treats it as optional and falls back to a fresh mail without it.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  proposal_config: $('Build Proposal Config').first().json.proposal_config,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  // Set only on the downgrade path (Resolve Route): a full_pipeline request this client\n  // could not price, delivered as proposal_only instead. Surfaced in Module 4's Telegram\n  // alert so the gap is visible without opening n8n's execution log.\n  pricing_capability_gap: $('Resolve Route').first().json.pricing_capability_gap || null,\n  data: { rfq: m1.data, content: m2.data, pricing: null }\n} }];"
       },
       "id": "45fe16b8-fc84-4b40-a780-da9ddad459f6",
       "name": "Build Module 4 Input (proposal)",
@@ -739,7 +761,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  proposal_config: $('Build Proposal Config').first().json.proposal_config,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
+        "jsCode": "// full_pipeline: assemble from RFQ + generated content + pricing.\nconst m1 = $('Call Module 1').first().json;\nconst m2 = $('Call Module 2 (full)').first().json;\nconst m3 = $('Call Module 3 (full)').first().json;\nreturn [{ json: {\n  client_id: m1.client_id,\n  proposal_config: $('Build Proposal Config').first().json.proposal_config,\n  client_config: m1.client_config || null,\n  email_context: $('Build Envelope').first().json.email_context || null,\n  status: 'ok',\n  errors: [],\n  // Set only on the downgrade path (Resolve Route): a full_pipeline request this client\n  // could not price, delivered as proposal_only instead. Surfaced in Module 4's Telegram\n  // alert so the gap is visible without opening n8n's execution log.\n  pricing_capability_gap: $('Resolve Route').first().json.pricing_capability_gap || null,\n  data: { rfq: m1.data, content: m2.data, pricing: m3.data }\n} }];"
       },
       "id": "ef2ffd4f-48a2-4405-8796-807903864b2d",
       "name": "Build Module 4 Input (full)",
@@ -1027,6 +1049,30 @@
       "name": "Read Fields Tab",
       "alwaysOutputData": true,
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.client_config.notification_chat_id }}",
+        "text": "=⛔ Pricing not configured — request needs a price, client cannot produce one.\n\nClient: {{ $json.client_id }}\nRequested: {{ $json.requested_route }}\nGap: {{ $json.pricing_capability_gap }}\n\nNothing was produced. Add a pricing_sheet_id (Client tab or Notion registry) and re-send, or ask the reseller for a proposal_only request.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d586344c-8993-43d4-a0f4-490bec2f565a",
+      "name": "Pricing Not Configured",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        -3104,
+        336
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "PrgBGa5bFXJdkcMb",
+          "name": "Telegram-CifralDemo01"
+        }
+      }
     }
   ],
   "connections": {
@@ -1196,6 +1242,13 @@
           },
           {
             "node": "Prep Pricing Input (full)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pricing Not Configured",
             "type": "main",
             "index": 0
           }

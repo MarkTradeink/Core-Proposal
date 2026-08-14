@@ -4,6 +4,35 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — pricing requested for a client who cannot price crashed Module 3 instead of degrading or alerting (2026-08-12)
+
+Found live: a `proposal_only` client with no `pricing_sheet_id` (the normal state — they were never
+meant to price anything through this channel) sent a technical RFQ; the extractor read it as
+`full_pipeline` — its prompt says to prefer `unspecified` when unsure, but it is a judgment call on
+free text, not a guarantee — and the orchestrator followed that classification straight through
+`Route by Request Type` into Module 3, which threw `No pricing source for client '<id>'` deep inside
+its `Resolve Config` node. The client's own `service_tier` was never consulted at that point:
+`request_type` only falls back to it when the extractor says `unspecified`, and here it didn't.
+
+`Resolve Route` now runs a **capability guard** after resolving the route and before the switch
+sees it: a route that needs pricing (`full_pipeline` or `pricing_only`) is only trusted when the
+client actually has a rate card (`pricing_sheet_id` or an inline `client_config.rate_card`).
+Without one, `full_pipeline` downgrades to `proposal_only` — the written document is still fully
+deliverable, it simply drops the commercial section this particular request happened to ask for —
+and `pricing_only` has nothing to fall back to, so it routes to a new terminal branch,
+`blocked_no_pricing`, which fires a `Pricing Not Configured` Telegram alert and stops. Same shape as
+the existing "no Proposal Config sheet → catalog defaults + warning" pattern: a missing optional
+capability degrades and says so, it does not crash three modules downstream of where the config
+lived.
+
+The gap travels to Module 4 as `pricing_capability_gap` and is now shown in its Telegram alert,
+alongside `config_warnings` and `fields_missing` — both computed since the client-fields work but
+never actually surfaced there, so a proposal could carry an unknown `chapter_id` warning or a
+missing required field and nobody would see it without opening n8n's execution log, contrary to
+what `docs/CLIENT-DRIVE-SETUP.md` already promised ("Watch for these in the Telegram alert").
+
+`docs/TESTING-MANUAL.md` Scenario 7b exercises both halves of the guard.
+
 ### Feature — a client's own cover variables, their own templates, and a real table of contents (2026-08-12)
 
 Driven by the first production client (`beumer_marcos`), whose real offers carry things the

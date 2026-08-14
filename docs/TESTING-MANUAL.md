@@ -123,6 +123,32 @@ Check:
 - [ ] Module 1: `request_type = unspecified`.
 - [ ] Route = the client's `service_tier` (for demo_client, `full_pipeline`).
 
+## Scenario 7b — Pricing requested, client not configured to price (capability guard)
+
+**Send** a `full_pipeline`-shaped request (or one the extractor is likely to read as wanting a
+price) to a client whose registry row has **no `pricing_sheet_id`** and no `client_config.rate_card`
+— `proposal_only` clients typically have neither, since they were never meant to price anything
+through this channel.
+
+Check:
+- [ ] `Resolve Route` output: `route = proposal_only`, `requested_route` is whatever was actually
+      resolved before the guard (`full_pipeline`, usually), `pricing_capability_gap` is a non-null
+      string naming the client and the gap.
+- [ ] Module 3 is **never called** — the switch takes the `proposal_only` branch, not `full_pipeline`.
+- [ ] A proposal is produced (document only, no price table) — the same shape as Scenario 3.
+- [ ] Telegram alert shows the gap: `💶 Requested 'full_pipeline' but '<client>' has no pricing
+      configured…`.
+
+**Then send** a request that resolves to exactly `pricing_only` against the same unconfigured
+client (no fallback deliverable exists — a price is the whole ask).
+
+Check:
+- [ ] `Resolve Route` output: `route = blocked_no_pricing`.
+- [ ] The `Pricing Not Configured` Telegram alert fires; **nothing is produced** — no Module 2, 3 or
+      4 call, no draft, no send.
+- [ ] The old failure mode is gone: no raw `Error: No pricing source for client '<id>'` exception
+      surfacing from Module 3's `Resolve Config` node in the execution log instead of an alert.
+
 ## Scenario 8 — Language selection
 
 **Send** the RFQ in Spanish.

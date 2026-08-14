@@ -55,6 +55,18 @@ Routing is decided **per request**. Module 1 extracts a `request_type` from the 
 the orchestrator uses it, falling back to the client's `service_tier` when the request is
 `unspecified`. So the same client can ask for a price today and a full proposal tomorrow.
 
+**A capability guard runs before the route is trusted.** `request_type` comes from an LLM reading
+free text, and the extractor's own prompt tells it to prefer `unspecified` over guessing — but a
+technical RFQ that merely mentions cost or "presupuesto" can still read as a pricing request. Before
+`Route by Request Type`, `Resolve Route` checks whether the resolved client can actually price
+anything (a `pricing_sheet_id`, or an inline `client_config.rate_card`): a `full_pipeline` route with
+no pricing capability downgrades to `proposal_only` (the document is still fully deliverable — it
+just drops the commercial section this request happened to ask for); a `pricing_only` route with no
+pricing capability has nothing to fall back to and routes to its own dead-end, `Pricing Not
+Configured`, which alerts and stops — the same "warn, don't crash three modules deep" shape as the
+proposal config sheet's own missing-sheet warning. Either way the gap is reported in the Telegram
+alert as `pricing_capability_gap`, so a downgrade is visible without opening n8n's execution log.
+
 ## Scope of supply — one per-request selector
 
 Module 1 also extracts a `scope_of_supply` map (item → boolean) against the fixed catalog in
@@ -244,10 +256,11 @@ trigger (Gmail / chat)
   → Module 1  (Execute Workflow, client_config passed) ┘
   → IF status == "incomplete"
         → Telegram "RFQ needs human review" → stop     (realizes the website's Module-1 promise)
-     ELSE Resolve Route (request_type, else service_tier) → Switch:
-        • pricing_only  → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
-        • proposal_only → Module 2 → Module 4                                      (document, no pricing block)
-        • full_pipeline → Module 2 ∥ Module 3 → Merge → Module 4                   (full document)
+     ELSE Resolve Route (request_type, else service_tier, then the pricing capability guard) → Switch:
+        • pricing_only       → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
+        • proposal_only      → Module 2 → Module 4                                      (document, no pricing block)
+        • full_pipeline      → Module 2 ∥ Module 3 → Merge → Module 4                   (full document)
+        • blocked_no_pricing → Telegram "Pricing not configured" → stop                 (pricing_only requested, no rate card anywhere)
 ```
 
 Pricing inputs are entered manually and **filtered by the request's scope of supply** before
