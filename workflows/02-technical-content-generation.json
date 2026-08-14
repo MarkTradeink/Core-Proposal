@@ -1,4 +1,5 @@
 {
+  "name": "02-technical-content-generation",
   "nodes": [
     {
       "parameters": {
@@ -7,10 +8,10 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.4,
       "position": [
-        -976,
-        976
+        656,
+        704
       ],
-      "id": "39dd3053-aa8f-4a90-8fc1-477e0306a3ca",
+      "id": "d405b4f4-adf2-4f26-827a-69585fc3b1c7",
       "name": "When chat message received",
       "webhookId": "58d0a33d-cc69-46a3-baae-ca8d2cdfa10c"
     },
@@ -18,13 +19,13 @@
       "parameters": {
         "inputSource": "passthrough"
       },
-      "id": "9fc9a107-fc0e-4acf-8c2e-7e03d94ce21b",
+      "id": "5e1002d3-7cd7-4dc6-9285-41e454a1f237",
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        -944,
-        752
+        688,
+        480
       ]
     },
     {
@@ -51,13 +52,13 @@
         },
         "options": {}
       },
-      "id": "4c976db7-927e-4bb5-be10-d4e1d1405cac",
+      "id": "e16355dd-6c06-40b5-834c-94b90da54ede",
       "name": "Config Provided?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -736,
-        752
+        896,
+        480
       ]
     },
     {
@@ -74,13 +75,13 @@
         "returnAll": true,
         "options": {}
       },
-      "id": "be6f7f7b-18c0-4d01-8c18-aba9255e87ad",
+      "id": "b8964bc3-ccea-48a7-9d57-53716aaa64bb",
       "name": "Load Client Registry",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        -512,
-        944
+        1120,
+        672
       ],
       "credentials": {
         "notionApi": {
@@ -93,13 +94,13 @@
       "parameters": {
         "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\n// The n8n Notion node flattens properties as 'property_<snake_cased_name>'; prop() tolerates both.\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\n// Notion hands each property over in whatever shape n8n's node uses for that property type. The\n// previous prop() ended in `?? p ?? null`, so an unrecognised shape leaked out as the RAW OBJECT\n// and every downstream string comparison failed SILENTLY. Two of those failures were live: a\n// Select ({name:'proposal_only'}) never matched a tier, and an EMPTY rich_text arrived as [] or\n// {} — both truthy — so \"no pricing_sheet_id\" read as \"pricing configured\". Together they routed\n// a proposal_only client into Module 3. Normalise to a string or null; booleans pass through.\nfunction asText(v){ if(v==null) return ''; if(typeof v==='string') return v.trim(); if(typeof v==='number'||typeof v==='boolean') return String(v); if(Array.isArray(v)) return v.map(asText).filter(Boolean).join(' ').trim(); if(typeof v==='object') return asText(v.name ?? v.value ?? v.plain_text ?? v.content ?? (v.select&&v.select.name) ?? (v.status&&v.status.name) ?? v.text ?? ''); return ''; }\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(typeof p==='boolean') return p; const t=asText(p); return t===''?null:t; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  reference_docs_folder_id: prop(match,'reference_docs_folder_id')\n};\nreturn [{ json: { client_id: wantId, client_config, data: trigger.data, status: 'ok', errors: [] } }];"
       },
-      "id": "027de5ba-b21f-4cd3-84e9-f9934fbb7e27",
+      "id": "bafb7f2e-ac49-4d13-806d-e3d8dd76a1de",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -288,
-        944
+        1344,
+        672
       ]
     },
     {
@@ -126,13 +127,13 @@
         },
         "options": {}
       },
-      "id": "ea40638f-9616-4216-bfd0-fd3ae4b28bbc",
+      "id": "ce16d803-f1cc-486c-a690-b6c50e5ec343",
       "name": "Has Reference Folder?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -64,
-        752
+        3088,
+        912
       ]
     },
     {
@@ -144,13 +145,13 @@
         "filter": {},
         "options": {}
       },
-      "id": "0e1b2b6b-471f-4bea-b169-d517d1ef1ed6",
+      "id": "2f299ca2-08d8-410c-92bd-35bf0882207a",
       "name": "Search Reference Docs",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        144,
-        608
+        3296,
+        768
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -184,13 +185,13 @@
         },
         "options": {}
       },
-      "id": "f6956e68-9494-437b-bb72-8d5206f677c2",
+      "id": "dd5308cf-58ce-4f22-887f-45a408dfa150",
       "name": "Found Docs?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        368,
-        608
+        3520,
+        768
       ]
     },
     {
@@ -210,13 +211,13 @@
           }
         }
       },
-      "id": "2717a739-bd49-4731-a2f9-ce733fbb0b25",
+      "id": "caf8e1ce-63b0-43b9-91a5-3f5497dccdce",
       "name": "Download as Text",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        592,
-        512
+        3744,
+        672
       ],
       "credentials": {
         "googleDriveOAuth2Api": {
@@ -231,26 +232,26 @@
         "destinationKey": "text",
         "options": {}
       },
-      "id": "e81ab64d-a78d-415f-9d33-9ea90514ae0f",
+      "id": "eb6da82f-1389-488a-88b5-82fdce7678d1",
       "name": "Extract Text",
       "type": "n8n-nodes-base.extractFromFile",
       "typeVersion": 1,
       "position": [
-        816,
-        512
+        3968,
+        672
       ]
     },
     {
       "parameters": {
         "jsCode": "// Concatenate the extracted text of the client's reference docs into one grounding block.\n// The old caps (1500 chars/doc, 6000 total) allowed about a thousand words of evidence to\n// ground a document that should run to eight thousand. Raised, and split per agent in\n// 'Plan Chapters'. grounded_on records provenance for traceability.\nconst items = $input.all();\nconst parts = [];\nconst names = [];\nfor (const it of items) {\n  const t = it.json.text || it.json.data || '';\n  if (t) parts.push(String(t).slice(0, 6000));\n  if (it.json.name) names.push(it.json.name);\n}\nconst grounding = parts.join('\\n\\n---\\n\\n').slice(0, 24000);\nreturn [{ json: { grounding, grounded_on: names } }];"
       },
-      "id": "9aff35cd-b6eb-4997-9134-ca8b58b244d7",
+      "id": "0c05f907-2122-4cdf-a074-96051a6494b4",
       "name": "Aggregate Grounding",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1024,
-        512
+        4176,
+        672
       ]
     },
     {
@@ -267,13 +268,13 @@
         },
         "options": {}
       },
-      "id": "8913964b-e038-4494-91bf-6290f94d1d6a",
+      "id": "1f95b63f-85c1-4d61-837b-574f8ab1f192",
       "name": "No Grounding",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        352,
-        864
+        3968,
+        992
       ]
     },
     {
@@ -289,13 +290,13 @@
           "temperature": 0.3
         }
       },
-      "id": "03221235-d736-4b9f-bbdc-7177fa973776",
+      "id": "9c6b802f-998e-4d9d-b0e9-d4f54299549c",
       "name": "Anthropic Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.3,
       "position": [
-        1456,
-        960
+        4992,
+        1376
       ],
       "credentials": {
         "anthropicApi": {
@@ -310,13 +311,13 @@
         "height": 560,
         "width": 620
       },
-      "id": "b0c06cae-a67f-4473-9fcd-f9305a33e445",
+      "id": "9665baf6-03dd-4dbb-a480-6438e19dfd7d",
       "name": "Note — Module 2",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -928,
-        272
+        704,
+        -208
       ]
     },
     {
@@ -348,10 +349,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -64,
-        1180
+        1664,
+        656
       ],
-      "id": null,
+      "id": "0f139912-e658-4c1c-92bc-69dd22726af1",
       "name": "Has Config Sheet?"
     },
     {
@@ -371,13 +372,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        176,
-        1100
+        1984,
+        -496
       ],
-      "id": null,
+      "id": "715fa849-40ea-443f-b2b5-2d84fba906b6",
       "name": "Read Chapters Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -396,13 +403,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        384,
-        1100
+        1984,
+        -304
       ],
-      "id": null,
+      "id": "ad9c4e43-875a-49e2-8b5f-9d2aa7e81753",
       "name": "Read Content Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -421,13 +434,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        592,
-        1100
+        1984,
+        -112
       ],
-      "id": null,
+      "id": "8d176438-3a05-4dcd-862f-7522edccfb8c",
       "name": "Read Rules Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -436,10 +455,10 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        816,
-        1180
+        2800,
+        912
       ],
-      "id": null,
+      "id": "cf74739b-dee1-410b-8fa6-896bfdb611c6",
       "name": "Build Proposal Config"
     },
     {
@@ -449,28 +468,28 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1264,
-        752
+        4416,
+        912
       ],
-      "id": null,
+      "id": "47cb1a09-c072-4c68-82b7-b5c5345358c8",
       "name": "Plan Chapters"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "Proposal language: {{ $json.langName }}. Document tier: {{ $json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($json.rfq) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($json.briefs.A1) }}\n\nTables you must return, with their columns:\n{{ $json.tables_A1 }}\n\nClient writing rules:\n{{ $json.rules_text }}\n\nReference material from this client's approved past proposals — match this terminology and level of detail, do not copy verbatim, do not lift prices or brand names from it:\n{{ $json.grounding_full }}",
+        "text": "=Proposal language: {{ $json.langName }}. Document tier: {{ $json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($json.rfq) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($json.briefs.A1) }}\n\nTables you must return, with their columns:\n{{ $json.tables_A1 }}\n\nClient writing rules:\n{{ $json.rules_text }}\n\nReference material from this client's approved past proposals — match this terminology and level of detail, do not copy verbatim, do not lift prices or brand names from it:\n{{ $json.grounding_full }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "You are a senior control & automation engineer writing the technical chapters of an industrial proposal (intralogistics, material handling, brownfield modernisation). You have delivered these systems; write like it.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE CHAPTERS GOOD:\n- Lead with the architecture, then what physically changes, then how it is controlled.\n- Scope of supply is a DELIVERABLES list — what changes hands. Anything about how it is installed, tested or handed over belongs to another agent; do not write it.\n- Be enumerable, not lyrical: procurement compares this line by line against their specification.\n- Where the RFQ implies a constraint (existing PLC family, network, available space, operating hours), say how the design respects it. That is the sentence that wins the technical evaluation.\n- On a brownfield job, be explicit about what is reused versus replaced.\n- If cybersecurity is in your brief, talk about segmentation, zones and conduits, hardening and remote access — an OT network handed over flat is a finding waiting to happen.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
+          "systemMessage": "=You are a senior control & automation engineer writing the technical chapters of an industrial proposal (intralogistics, material handling, brownfield modernisation). You have delivered these systems; write like it.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE CHAPTERS GOOD:\n- Lead with the architecture, then what physically changes, then how it is controlled.\n- Scope of supply is a DELIVERABLES list — what changes hands. Anything about how it is installed, tested or handed over belongs to another agent; do not write it.\n- Be enumerable, not lyrical: procurement compares this line by line against their specification.\n- Where the RFQ implies a constraint (existing PLC family, network, available space, operating hours), say how the design respects it. That is the sentence that wins the technical evaluation.\n- On a brownfield job, be explicit about what is reused versus replaced.\n- If cybersecurity is in your brief, talk about segmentation, zones and conduits, hardening and remote access — an OT network handed over flat is a finding waiting to happen.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
       "position": [
-        1504,
-        752
+        4656,
+        912
       ],
-      "id": null,
+      "id": "fe646a2e-7b2e-4d04-a09e-d26cd28987cb",
       "name": "A1 — Technical Solution"
     },
     {
@@ -481,28 +500,28 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        1552,
-        976
+        4800,
+        1184
       ],
-      "id": null,
+      "id": "2b2f4594-8f9a-4f27-a8d1-7d1fd5b15b21",
       "name": "Parser A1"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "Proposal language: {{ $('Plan Chapters').first().json.langName }}. Document tier: {{ $('Plan Chapters').first().json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nThe technical solution just written by the engineering agent — your plan must be consistent with it:\n{{ JSON.stringify($('A1 — Technical Solution').first().json.output.sections) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($('Plan Chapters').first().json.briefs.A2) }}\n\nTables you must return, with their columns:\n{{ $('Plan Chapters').first().json.tables_A2 }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}\n\nReference material from this client's approved past proposals:\n{{ $('Plan Chapters').first().json.grounding_full }}",
+        "text": "=Proposal language: {{ $('Plan Chapters').first().json.langName }}. Document tier: {{ $('Plan Chapters').first().json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nThe technical solution just written by the engineering agent — your plan must be consistent with it:\n{{ JSON.stringify($('A1 — Technical Solution').first().json.output.sections) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($('Plan Chapters').first().json.briefs.A2) }}\n\nTables you must return, with their columns:\n{{ $('Plan Chapters').first().json.tables_A2 }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}\n\nReference material from this client's approved past proposals:\n{{ $('Plan Chapters').first().json.grounding_full }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "You are a senior project and commissioning manager writing the execution chapters of an industrial proposal. Your speciality is brownfield: replacing equipment in a plant that cannot stop.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE CHAPTERS GOOD:\n- These are SERVICES: sequence, duration, who does what, what has to be true before each step starts.\n- The reader's first fear is \"will this stop my operation?\". Answer it in plain words: what keeps running, what is worked on at a time, what the fallback is if a step fails, how long the old system stays available as a rollback.\n- A test plan is only worth writing if it has acceptance criteria someone could sign against.\n- The risk register must contain risks a customer would recognise, each with a mitigation that is actually in the scope. Generic risks (\"delays may occur\") are worse than none.\n- Health and safety on a client site is coordination of business activities, permits and a designated safety resource — treat it as real work, not a disclaimer.\n- You can see the technical solution the engineering agent just wrote. Stay consistent with it; if it proposes a staged migration, your phases must match.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
+          "systemMessage": "=You are a senior project and commissioning manager writing the execution chapters of an industrial proposal. Your speciality is brownfield: replacing equipment in a plant that cannot stop.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE CHAPTERS GOOD:\n- These are SERVICES: sequence, duration, who does what, what has to be true before each step starts.\n- The reader's first fear is \"will this stop my operation?\". Answer it in plain words: what keeps running, what is worked on at a time, what the fallback is if a step fails, how long the old system stays available as a rollback.\n- A test plan is only worth writing if it has acceptance criteria someone could sign against.\n- The risk register must contain risks a customer would recognise, each with a mitigation that is actually in the scope. Generic risks (\"delays may occur\") are worse than none.\n- Health and safety on a client site is coordination of business activities, permits and a designated safety resource — treat it as real work, not a disclaimer.\n- You can see the technical solution the engineering agent just wrote. Stay consistent with it; if it proposes a staged migration, your phases must match.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
       "position": [
-        1808,
-        752
+        4960,
+        912
       ],
-      "id": null,
+      "id": "20d95e7e-8a9f-4bea-9df4-6d0cf97a92bb",
       "name": "A2 — Execution & Risk"
     },
     {
@@ -513,28 +532,28 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        1856,
-        976
+        5008,
+        1136
       ],
-      "id": null,
+      "id": "a8795d53-7e1d-418b-9f0d-0a5163ec0ab6",
       "name": "Parser A2"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "Proposal language: {{ $('Plan Chapters').first().json.langName }}. Document tier: {{ $('Plan Chapters').first().json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nTechnical solution and scope, as written by the engineering agent:\n{{ JSON.stringify($('A1 — Technical Solution').first().json.output.sections) }}\n\nExecution plan and risk, as written by the execution agent:\n{{ JSON.stringify($('A2 — Execution & Risk').first().json.output.sections) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($('Plan Chapters').first().json.briefs.A3) }}\n\nTables you must return, with their columns:\n{{ $('Plan Chapters').first().json.tables_A3 }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}\n\nReference material — use it for voice and structure:\n{{ $('Plan Chapters').first().json.grounding_tone }}",
+        "text": "=Proposal language: {{ $('Plan Chapters').first().json.langName }}. Document tier: {{ $('Plan Chapters').first().json.tier }}.\n\nRFQ data:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nTechnical solution and scope, as written by the engineering agent:\n{{ JSON.stringify($('A1 — Technical Solution').first().json.output.sections) }}\n\nExecution plan and risk, as written by the execution agent:\n{{ JSON.stringify($('A2 — Execution & Risk').first().json.output.sections) }}\n\nWrite these sections (use these exact ids):\n{{ JSON.stringify($('Plan Chapters').first().json.briefs.A3) }}\n\nTables you must return, with their columns:\n{{ $('Plan Chapters').first().json.tables_A3 }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}\n\nReference material — use it for voice and structure:\n{{ $('Plan Chapters').first().json.grounding_tone }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "You are an experienced sales engineer writing the executive-facing parts of an industrial proposal. Your reader signs the contract, is not an engineer, and reads two pages.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE SECTIONS GOOD:\n- The executive summary must read standalone. Someone who reads only it knows what problem is being solved, what is being bought, what it changes, and roughly when and for how much.\n- Their words, not ours. No acronym without expanding it once. No component names where an outcome will do.\n- Lead with the client's problem, not with our company.\n- The background section proves we understood the situation before proposing anything. Quantify the pain only with numbers the RFQ actually gives; never manufacture a figure to sound precise.\n- Next steps must be actionable: who to contact, what to send back, what happens in the first weeks after the order.\n- You can see everything the engineering and execution agents wrote. Summarise THAT — do not invent a solution of your own, and do not contradict them.\n- No superlatives, no \"world-leading\", no marketing adjectives. Confidence comes from specifics.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
+          "systemMessage": "=You are an experienced sales engineer writing the executive-facing parts of an industrial proposal. Your reader signs the contract, is not an engineer, and reads two pages.\n\nYou write ONLY the sections you are given. Return a JSON object with two keys:\n  \"sections\": { \"<section_id>\": \"<plain text body>\" }\n  \"tables\":   { \"<table_id>\": [ { \"<column>\": \"<value>\" } ] }\nUse the exact section ids given to you. Do not add ids that are not in your brief — text under an unknown id is discarded.\n\nWHAT MAKES THESE SECTIONS GOOD:\n- The executive summary must read standalone. Someone who reads only it knows what problem is being solved, what is being bought, what it changes, and roughly when and for how much.\n- Their words, not ours. No acronym without expanding it once. No component names where an outcome will do.\n- Lead with the client's problem, not with our company.\n- The background section proves we understood the situation before proposing anything. Quantify the pain only with numbers the RFQ actually gives; never manufacture a figure to sound precise.\n- Next steps must be actionable: who to contact, what to send back, what happens in the first weeks after the order.\n- You can see everything the engineering and execution agents wrote. Summarise THAT — do not invent a solution of your own, and do not contradict them.\n- No superlatives, no \"world-leading\", no marketing adjectives. Confidence comes from specifics.\n\nHARD RULES — a proposal is a contractual document:\n- Never invent prices, discounts or payment terms. Pricing is computed elsewhere.\n- Never invent brand names, part numbers, or specific performance figures. Name component CATEGORIES (e.g. 'variador de frecuencia', not a manufacturer's model).\n- Never invent dates, durations or headcount that the RFQ does not support. If a duration is genuinely unknown, describe the sequence without committing to weeks.\n- Never promise a certification, approval or test the scope does not include.\n- If the RFQ does not give you enough for a section, write less. A short honest section beats a padded one, and an empty string drops the heading cleanly.\n\nFORMATTING (the text is parsed into real Word paragraphs and native bullet lists):\n- Plain text only. NO markdown: no #, no **, no backticks, no markdown tables.\n- Do NOT write the section heading yourself — the template supplies it.\n- Separate paragraphs with a single blank line.\n- For any list, start each line with a bullet character followed by two spaces: '\\u2022  item'. Do not use '-' or '*'.\n- Write in the proposal language given below, not in the language of these instructions."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
       "position": [
-        2112,
-        752
+        5264,
+        912
       ],
-      "id": null,
+      "id": "8f45142f-8239-4707-a629-3e87739400d2",
       "name": "A3 — Executive & Commercial"
     },
     {
@@ -545,10 +564,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        2160,
-        976
+        5312,
+        1136
       ],
-      "id": null,
+      "id": "e3193046-1889-4548-a2c4-c4c65eb581a1",
       "name": "Parser A3"
     },
     {
@@ -558,28 +577,28 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2416,
-        752
+        5568,
+        912
       ],
-      "id": null,
+      "id": "07c468a1-d58e-4809-bc61-4e77333aa75a",
       "name": "Assemble Draft"
     },
     {
       "parameters": {
         "promptType": "define",
-        "text": "Proposal language: {{ $('Plan Chapters').first().json.langName }}.\n\nRFQ the proposal must answer:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nGENERATED sections (you may patch these):\n{{ JSON.stringify($json.sections) }}\n\nTables produced:\n{{ JSON.stringify($json.tables) }}\n\nBOILERPLATE sections (read-only — the client's own contract text, taken verbatim from their clause library; report problems as findings, never patch):\n{{ JSON.stringify($('Plan Chapters').first().json.boilerplate_sections) }}\n\nContract clauses that will be inserted into those chapters:\n{{ JSON.stringify(($('Plan Chapters').first().json.proposal_config.clauses || []).map(c => ({ id: c.id, chapter: c.chapter_id, body: c.body }))) }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}",
+        "text": "=Proposal language: {{ $('Plan Chapters').first().json.langName }}.\n\nRFQ the proposal must answer:\n{{ JSON.stringify($('Plan Chapters').first().json.rfq) }}\n\nGENERATED sections (you may patch these):\n{{ JSON.stringify($json.sections) }}\n\nTables produced:\n{{ JSON.stringify($json.tables) }}\n\nBOILERPLATE sections (read-only — the client's own contract text, taken verbatim from their clause library; report problems as findings, never patch):\n{{ JSON.stringify($('Plan Chapters').first().json.boilerplate_sections) }}\n\nContract clauses that will be inserted into those chapters:\n{{ JSON.stringify(($('Plan Chapters').first().json.proposal_config.clauses || []).map(c => ({ id: c.id, chapter: c.chapter_id, body: c.body }))) }}\n\nClient writing rules:\n{{ $('Plan Chapters').first().json.rules_text }}",
         "hasOutputParser": true,
         "options": {
-          "systemMessage": "You are a proposal reviewer. You receive a complete assembled draft and check it the way an experienced bid manager would before it goes out the door.\n\nReturn a JSON object:\n  \"findings\": [ { \"severity\": \"blocker\" | \"warning\" | \"note\", \"section\": \"<section_id or empty>\", \"message\": \"<what is wrong>\" } ]\n  \"patches\":  [ { \"section\": \"<section_id>\", \"text\": \"<the corrected full body of that section>\" } ]\n\nCHECK, IN THIS ORDER:\n1. Contradictions between chapters. Does the execution plan assume something the technical solution does not deliver? Do the exclusions exclude something the scope promises? Does the schedule fit the stated deadline?\n2. Unsupported commitments. Any invented price, brand, part number, duration, certification or performance figure that the RFQ does not support is a BLOCKER.\n3. Coverage. Does every requirement in the RFQ get answered somewhere? A requirement with no answer is a blocker on a tender.\n4. Scope leakage. Work described in the document that is not in the scope of supply, or vice versa.\n5. Tone and house rules. Violations of the client's writing rules are warnings, not blockers.\n\nRULES FOR PATCHES:\n- Patch only sections listed as GENERATED in the input. Sections listed as BOILERPLATE are the client's own contract text: report a problem with them as a finding, never patch them.\n- A patch must be the COMPLETE replacement body of that section, in the same plain-text format (no markdown; paragraphs separated by a blank line; bullets as '\\u2022  item').\n- Do not patch to add flourish. Patch to remove an unsupported claim, fix a contradiction, or close a gap.\n- If nothing needs changing, return an empty patches array. That is a good outcome, not a failure."
+          "systemMessage": "=You are a proposal reviewer. You receive a complete assembled draft and check it the way an experienced bid manager would before it goes out the door.\n\nReturn a JSON object:\n  \"findings\": [ { \"severity\": \"blocker\" | \"warning\" | \"note\", \"section\": \"<section_id or empty>\", \"message\": \"<what is wrong>\" } ]\n  \"patches\":  [ { \"section\": \"<section_id>\", \"text\": \"<the corrected full body of that section>\" } ]\n\nCHECK, IN THIS ORDER:\n1. Contradictions between chapters. Does the execution plan assume something the technical solution does not deliver? Do the exclusions exclude something the scope promises? Does the schedule fit the stated deadline?\n2. Unsupported commitments. Any invented price, brand, part number, duration, certification or performance figure that the RFQ does not support is a BLOCKER.\n3. Coverage. Does every requirement in the RFQ get answered somewhere? A requirement with no answer is a blocker on a tender.\n4. Scope leakage. Work described in the document that is not in the scope of supply, or vice versa.\n5. Tone and house rules. Violations of the client's writing rules are warnings, not blockers.\n\nRULES FOR PATCHES:\n- Patch only sections listed as GENERATED in the input. Sections listed as BOILERPLATE are the client's own contract text: report a problem with them as a finding, never patch them.\n- A patch must be the COMPLETE replacement body of that section, in the same plain-text format (no markdown; paragraphs separated by a blank line; bullets as '\\u2022  item').\n- Do not patch to add flourish. Patch to remove an unsupported claim, fix a contradiction, or close a gap.\n- If nothing needs changing, return an empty patches array. That is a good outcome, not a failure."
         }
       },
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 3,
       "position": [
-        2640,
-        752
+        5792,
+        912
       ],
-      "id": null,
+      "id": "689a20a1-3c2d-4013-b03a-fa5118c58ea5",
       "name": "A4 — QA Review"
     },
     {
@@ -590,10 +609,10 @@
       "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
       "typeVersion": 1.3,
       "position": [
-        2688,
-        976
+        5968,
+        1296
       ],
-      "id": null,
+      "id": "c14b3020-943d-4f09-aa83-cddff40cbc80",
       "name": "Parser A4"
     },
     {
@@ -612,11 +631,17 @@
       "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
       "typeVersion": 1.3,
       "position": [
-        2848,
-        976
+        5744,
+        1168
       ],
-      "id": null,
-      "name": "Anthropic Chat Model (QA)"
+      "id": "1c6d83ee-5d3e-42f6-8a93-f2a42ec1701e",
+      "name": "Anthropic Chat Model (QA)",
+      "credentials": {
+        "anthropicApi": {
+          "id": "IeHNLdLXPGjr3JlL",
+          "name": "Anthropic account"
+        }
+      }
     },
     {
       "parameters": {
@@ -625,25 +650,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2896,
-        752
+        6112,
+        912
       ],
-      "id": null,
+      "id": "f5dca1a8-74f5-4f00-a818-71239ce56280",
       "name": "Apply QA Patches"
     },
     {
       "parameters": {
-        "mode": "append",
-        "numberInputs": 6,
-        "options": {}
+        "numberInputs": 6
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        800,
-        1196
+        2496,
+        624
       ],
-      "id": null,
+      "id": "575b1103-7343-4d64-b4e8-530d68108cb5",
       "name": "Merge Config Tabs"
     },
     {
@@ -663,13 +686,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        176,
-        1670
+        1984,
+        64
       ],
-      "id": null,
+      "id": "a8eadf18-fcce-4318-9126-1e69e4d7abe1",
       "name": "Read Client Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -688,13 +717,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        176,
-        1860
+        1984,
+        256
       ],
-      "id": null,
+      "id": "5f194fbf-3944-4011-b1f7-7a6b630d3c66",
       "name": "Read Templates Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -713,13 +748,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        176,
-        2050
+        1984,
+        448
       ],
-      "id": null,
+      "id": "11bf4dc0-2cb1-47be-a46c-fa357c3fbf67",
       "name": "Read Fields Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     }
   ],
   "connections": {
@@ -1150,124 +1191,11 @@
       ]
     }
   },
-  "pinData": {
-    "Execute Workflow Trigger": [
-      {
-        "client_id": "demo_client",
-        "client_config": {
-          "client_id": "demo_client",
-          "client_name": "Demo Client",
-          "status": "trial",
-          "service_tier": "full_pipeline",
-          "commercial_contact_email": "markbmx360@gmail.com",
-          "reply_to": "markbmx360@gmail.com",
-          "templates": {
-            "en": "1szdkO1MVKVsIXizYQd_x-6WJMP8OPK50oSif4Uw5LQA",
-            "es": "1HJPjVMACtEkWSIZzUoG0I9QWLbXYNoo2"
-          },
-          "proposals_folder_id": "1vmm_AQf8FGtc7E_ujJsetwNpuzzVXCxc",
-          "reference_docs_folder_id": "151TIx0qu7LXDWrWPAmKWSVNQK-9DUR9X",
-          "pricing_sheet_id": "1mWyS3Dfvq9yytx3pwtPh_Tiawe3nI9XVcVIW4y11MQw",
-          "notification_chat_id": "1748634056",
-          "from_alias": "demo@cifral.io",
-          "send_mode": "draft"
-        },
-        "data": {
-          "client": {
-            "company": "Sistemas de Bombeo del Golfo, S.L.",
-            "contact_name": "Javier",
-            "contact_last_name": "Ortega",
-            "email": "javier.ortega@sistemasbombeo.es"
-          },
-          "project": {
-            "type": "Skid dúplex de bombeo de agua de refrigeración de proceso",
-            "location": "Planta industrial de Tarragona, España",
-            "desired_deadline": "21 de agosto de 2026"
-          },
-          "technical_requirements": [
-            {
-              "item": "Skid dúplex de bombeo de agua de refrigeración",
-              "quantity": "1",
-              "spec": "Dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100% de la capacidad del sistema"
-            },
-            {
-              "item": "Caudal de diseño",
-              "quantity": "1",
-              "spec": "100 m³/h"
-            },
-            {
-              "item": "Altura manométrica requerida",
-              "quantity": "1",
-              "spec": "Aproximadamente 34 m"
-            },
-            {
-              "item": "Fluido",
-              "quantity": "1",
-              "spec": "Agua tratada de refrigeración de proceso"
-            },
-            {
-              "item": "Temperatura de operación",
-              "quantity": "1",
-              "spec": "Aproximadamente 7–35 °C"
-            },
-            {
-              "item": "Presión de diseño",
-              "quantity": "1",
-              "spec": "10 bar(g)"
-            },
-            {
-              "item": "Tuberías principales de proceso",
-              "quantity": "1",
-              "spec": "Acero al carbono, con conexiones de aspiración e impulsión de aproximadamente DN100"
-            },
-            {
-              "item": "Motores de las bombas",
-              "quantity": "2",
-              "spec": "400 VCA, trifásicos, 50 Hz, protección IP55"
-            },
-            {
-              "item": "Cuadro de control",
-              "quantity": "1",
-              "spec": "Cuadro apto para instalación exterior con PLC, HMI y un variador de frecuencia independiente para cada bomba"
-            },
-            {
-              "item": "Funciones de control",
-              "quantity": "1",
-              "spec": "Alternancia automática entre bomba principal y reserva, arranque de la bomba de reserva en caso de fallo, control local de marcha y paro y señal de alarma general"
-            },
-            {
-              "item": "Instrumentación",
-              "quantity": "1",
-              "spec": "Indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas"
-            },
-            {
-              "item": "Bastidor del skid",
-              "quantity": "1",
-              "spec": "Estructura soldada de acero al carbono con puntos de elevación y accesos para carretilla elevadora"
-            }
-          ],
-          "notes": "El conjunto deberá entregarse montado, cableado y probado en taller antes del envío. Incluid en la propuesta un plano preliminar de disposición general y un P&ID. Las conexiones mecánicas y eléctricas externas deberán estar agrupadas y claramente identificadas para simplificar la instalación en planta. Indicad claramente las hipótesis de cálculo, desviaciones, recomendaciones técnicas y cualquier información pendiente de confirmar. La selección final de las bombas, el diámetro definitivo de las tuberías, la potencia de los motores y las dimensiones del skid podrán confirmarse durante la fase de ingeniería de detalle. Presentad el precio desglosado, como mínimo, en ingeniería, equipos principales, fabricación, controles, pruebas, transporte y servicios de puesta en marcha. Entrega requerida: Segundo trimestre de 2027.",
-          "language": "es",
-          "request_type": "full_pipeline",
-          "scope_of_supply": {
-            "materials": true,
-            "engineering": true,
-            "installation": true,
-            "commissioning": true,
-            "project_management": true,
-            "spare_parts": false,
-            "shipping": true,
-            "training": false,
-            "warranty": true
-          },
-          "status": "complete",
-          "missing_fields": []
-        }
-      }
-    ]
-  },
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "6cf691ae4b818c0fa5987ac19eaf2f8dd5a147702425d4e31b1029a1cf278c82"
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": "OKIZQXKaYLlsdZaV"
   }
 }

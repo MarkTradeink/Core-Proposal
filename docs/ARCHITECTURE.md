@@ -274,8 +274,11 @@ trigger (Gmail / chat)
   → Intake Guard → Intake OK?  (junk / rate / size gates — BEFORE anything costly)
   → Load Client Config (Notion, ONCE)                 ┐ resolve-once
   → Module 1  (Execute Workflow, client_config passed) ┘
+  → IF the intake was the PUBLIC one → Telegram "Demo used — new lead" (fires first, alongside)
   → IF status == "incomplete"
-        → Telegram "RFQ needs human review" → stop     (realizes the website's Module-1 promise)
+        → Telegram "RFQ needs human review"            (Cifral's copy — always fires, first)
+        → Build Missing Info Reply → Gmail draft → IF send_mode == send → drafts.send
+                                                        (the SENDER's copy, in their own thread)
      ELSE Resolve Route (request_type, else service_tier, then the pricing capability guard) → Switch:
         • pricing_only       → Module 3 → Build Quote Draft → draft → send → Telegram  (price estimate, no doc)
         • proposal_only      → Module 2 → Module 4                                      (document, no pricing block)
@@ -285,6 +288,26 @@ trigger (Gmail / chat)
 
 Pricing inputs are entered manually and **filtered by the request's scope of supply** before
 Module 3 (phase-1 has no auto hours-estimation engine).
+
+### Who hears about what
+
+Three audiences, deliberately separated:
+
+| Event | Goes to | Why |
+|---|---|---|
+| Proposal or quote produced, config warnings, routing substitutions | **Telegram (Cifral)** | operational and debugging signal; nobody outside Cifral needs it |
+| The public demo was used, with the sender's address | **Telegram (Cifral)** | it is a lead. Fires as soon as the intake guards pass and *before* the pipeline runs, so a demo that later fails is still captured |
+| The RFQ is missing information | **Email to the sender, in their own thread** — plus Telegram for Cifral | only the sender can fix it, and an alert in Cifral's Telegram cannot ask them to |
+
+The distinction that matters is the last one: a *system* failure is Cifral's problem and stays
+internal, while an *incomplete request* is a conversation with the person who sent it. The Telegram
+alert is wired first on that branch, so the internal copy survives whatever the Gmail leg does, and
+the reply degrades to a reported `deliverable: false` rather than throwing on top of an alert that
+has already fired.
+
+The public intake still cannot send autonomously: `Build Missing Info Reply` re-asserts the
+draft-only rule for `open_intake` at the last gate before Gmail, exactly as Module 4 does. A demo
+prospect's missing-info reply is written and parked, for a human to read and release.
 
 Two envelope fields carry the email context. `client_config` holds what belongs to the *client*
 (`from_alias`, `send_mode`, both derived in "Map Client Config"); a sibling `email_context` holds

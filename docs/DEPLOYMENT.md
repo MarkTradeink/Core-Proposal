@@ -1,5 +1,15 @@
 # Deployment
 
+> **The workflow JSON in this repo mirrors the live n8n layout.** It carries the deployed node
+> positions, node ids, `settings` (including the error workflow) and credential references, so an
+> import lands laid out the way it was left and with credentials already linked — nothing to drag
+> around and nothing to re-pick from a dropdown.
+>
+> That only stays true if it is maintained in that direction. **After changing a workflow by hand in
+> n8n, pull it back** rather than letting the repo drift: the repo is the source of truth for logic,
+> and the live instance is the source of truth for layout. Where the two disagree on *logic*, the
+> repo wins; where they disagree on *placement*, live wins.
+
 This repo is the source of truth. Deploying means importing the git-tracked `workflows/*.json` into
 the live n8n instance **by hand** (there is no deploy script — you manage the import yourself). Edit
 here, commit, then re-import the changed workflow.

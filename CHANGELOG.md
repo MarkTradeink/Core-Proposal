@@ -4,6 +4,48 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Change — workflow JSON now mirrors the live n8n layout (2026-08-14)
+
+Re-importing had become a chore: the repo carried its own node positions, so every import needed the
+canvas rearranged by hand, and workflow 02's agent prompts were plain text in the repo where the live
+ones were expressions — a manual fix, four nodes, every time. The Google Sheets nodes carried no
+credential reference at all, so six of them had to be re-picked from a dropdown on each import.
+
+All five workflows are now pulled from the live instance and carry its node positions, node ids,
+`settings` (including the error workflow) and credential references, with the repo's newer *logic*
+merged back over the top — `Map Client Config` in all five and `Resolve Route` in the orchestrator.
+The division is now stated in `docs/DEPLOYMENT.md`: the repo owns logic, the live instance owns
+layout, and neither silently overwrites the other.
+
+### Feature — the demo reports its own leads, and an incomplete RFQ answers the sender (2026-08-14)
+
+Telegram was carrying three different kinds of message to one audience. Two of them were in the wrong
+place:
+
+**A used demo is a lead, not a log line.** `demo@cifral.io` produced no signal beyond the ordinary
+"proposal drafted" alert, so a prospect who tried it was indistinguishable from routine traffic. A
+`Demo Used Alert` now fires with the sender's address, the subject and the intake address, wired to
+run *before* the pipeline it accompanies — a demo that later fails is still a lead worth chasing.
+
+**An incomplete RFQ is a conversation with whoever sent it.** It was reported only to Cifral's
+Telegram, which cannot ask the sender for the missing field. The orchestrator now also composes a
+reply to the sender, in their own thread, listing what is missing — in the RFQ's language, and using
+readable labels rather than machine keys. For a client's own declared fields the label is the one
+*they* chose in their `Fields` tab, which is also the exact string the capture looks for, so the
+reply asks for the value using the words that will match it. Module 1 emits `missing_fields_detail`
+for this; `missing_fields` is unchanged, because the orchestrator and the alerts branch on it.
+
+Three properties this was built around, all of them the kind that only announce themselves in
+production:
+- **Cifral's Telegram alert is wired first** on that branch, so the internal copy fires whatever the
+  Gmail leg does, and a missing reply address is reported as `deliverable: false` rather than thrown
+  on top of an alert that has already gone out.
+- **The public intake still cannot send.** `Build Missing Info Reply` re-asserts the draft-only rule
+  for `open_intake` at the last gate before Gmail, exactly as Module 4 does.
+- **The reply goes to the sender, never the extracted end customer** — legacy gap G1. That rule was
+  only ever a manual test; `scripts/check-workflow-graph.js` now enforces it statically, failing any
+  Gmail node whose recipient reads from the extracted data or is hard-coded.
+
 ### Fix — Notion property shapes leaked through `prop()` and defeated the routing clamp (2026-08-12)
 
 The tier clamp below was correct and the route was *still* `full_pipeline` in production. Cause: the

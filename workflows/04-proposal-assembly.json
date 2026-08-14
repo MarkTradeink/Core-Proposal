@@ -1,16 +1,17 @@
 {
+  "name": "04-proposal-assembly",
   "nodes": [
     {
       "parameters": {
         "inputSource": "passthrough"
       },
-      "id": "76bcdf13-3784-480a-afbf-5cad097c69de",
+      "id": "bac0dc9f-66bb-483d-8bb8-ec447897b2f1",
       "name": "Execute Workflow Trigger",
       "type": "n8n-nodes-base.executeWorkflowTrigger",
       "typeVersion": 1.1,
       "position": [
-        -848,
-        80
+        688,
+        416
       ]
     },
     {
@@ -37,13 +38,13 @@
         },
         "options": {}
       },
-      "id": "a0bf0fb2-e71e-4f68-a0bf-43b48490a678",
+      "id": "1b87953e-dc53-40cb-a7e9-7798bd15adf5",
       "name": "Config Provided?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -624,
-        80
+        912,
+        416
       ]
     },
     {
@@ -60,13 +61,13 @@
         "returnAll": true,
         "options": {}
       },
-      "id": "3871b1c7-a869-4bab-a79a-0d7b2f6eabe0",
+      "id": "26059ac7-90b8-4cf7-b7e6-6ace4f3f6e4a",
       "name": "Load Client Registry",
       "type": "n8n-nodes-base.notion",
       "typeVersion": 2.2,
       "position": [
-        -416,
-        272
+        1136,
+        736
       ],
       "credentials": {
         "notionApi": {
@@ -79,26 +80,26 @@
       "parameters": {
         "jsCode": "// Standalone fallback: resolve client_config from the Notion registry by client_id.\nconst DEMO_CLIENT_ID = 'demo_client';\nconst trigger = $('Execute Workflow Trigger').first().json;\nconst wantId = trigger.client_id;\nconst rows = $input.all();\n// Notion hands each property over in whatever shape n8n's node uses for that property type. The\n// previous prop() ended in `?? p ?? null`, so an unrecognised shape leaked out as the RAW OBJECT\n// and every downstream string comparison failed SILENTLY. Two of those failures were live: a\n// Select ({name:'proposal_only'}) never matched a tier, and an EMPTY rich_text arrived as [] or\n// {} — both truthy — so \"no pricing_sheet_id\" read as \"pricing configured\". Together they routed\n// a proposal_only client into Module 3. Normalise to a string or null; booleans pass through.\nfunction asText(v){ if(v==null) return ''; if(typeof v==='string') return v.trim(); if(typeof v==='number'||typeof v==='boolean') return String(v); if(Array.isArray(v)) return v.map(asText).filter(Boolean).join(' ').trim(); if(typeof v==='object') return asText(v.name ?? v.value ?? v.plain_text ?? v.content ?? (v.select&&v.select.name) ?? (v.status&&v.status.name) ?? v.text ?? ''); return ''; }\nfunction prop(props, name){ const keys=[name,'property_'+name,'property_'+String(name).toLowerCase().replace(/ /g,'_')]; let p; for(const k of keys){ const v=props&&props[k]; if(v!==undefined&&v!==null){ p=v; break; } } if(typeof p==='boolean') return p; const t=asText(p); return t===''?null:t; }\nlet match=null;\nfor(const r of rows){ const props=r.json.properties||r.json; if(prop(props,'client_id')===wantId){ match=props; break; } }\nif(!match) throw new Error(`No client registry row found for client_id='${wantId}'`);\n\n// Outbound identity — keep in sync with 00-orchestrator-end-to-end.json -> 'Map Client Config'.\n// Both addresses must be VERIFIED 'Send mail as' aliases on the Gmail account that owns the\n// credential, or Gmail rejects drafts.send.\nconst DEMO_FROM_ALIAS = 'demo@cifral.io';\nconst PROD_FROM_ALIAS = 'proposal@cifral.io';\nconst clientStatus = prop(match,'Client Status');\n\nconst client_config = {\n  client_id: wantId,\n  client_name: prop(match,'Client Name'),\n  status: clientStatus,\n  from_alias: clientStatus === 'trial' ? DEMO_FROM_ALIAS : PROD_FROM_ALIAS,\n  // The demo tenant is the public one (demo@cifral.io accepts RFQs from anyone), so it is\n  // draft-only by construction here too — a standalone Module 4 run must not be the way a\n  // stranger gets an autonomous reply. Keep in sync with the orchestrator's 'Map Client Config'.\n  open_intake: wantId === DEMO_CLIENT_ID,\n  send_mode: wantId === DEMO_CLIENT_ID ? 'draft'\n    : (String(prop(match,'send_mode') || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send'),\n  service_tier: prop(match,'service_tier'),\n  commercial_contact_email: prop(match,'commercial_contact_email'),\n  templates: { en: prop(match,'template_id_en'), es: prop(match,'template_id_es') },\n  proposals_folder_id: prop(match,'proposals_folder_id'),\n  notification_chat_id: prop(match,'notification_chat_id')\n};\nreturn [{ json: { client_id: wantId, client_config, email_context: trigger.email_context || null, data: trigger.data, status: 'ok', errors: [] } }];"
       },
-      "id": "869cc7c9-2123-4521-bb24-9ba6fd3863d4",
+      "id": "694932b4-b59a-4205-9486-fccb45355c9a",
       "name": "Map Client Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -192,
-        272
+        1312,
+        736
       ]
     },
     {
       "parameters": {
         "jsCode": "// Deterministic, scope-aware proposal assembly.\n// Legacy fixes kept: B2 deterministic number; G2 template by language w/ EN fallback; G1 recipient\n// = the client's own commercial contact; B1 requirements read the 'quantity' key.\n//\n// Phase 10 (delivery): resolves the send-as alias, the send mode and the RFQ thread to reply into.\n// Phase 11 (document): emits a STRUCTURED render context for docxtemplater instead of\n// pre-formatted text. Real headings, native bullets and a price table are structure, and structure\n// cannot travel through a text placeholder — which is why the Google Docs find-and-replace\n// pipeline was replaced. Template authoring: docs/TEMPLATE-GUIDE.md.\n//\n// SOURCE OF TRUTH mirrored in modules/proposal/render_context.js — change both, and check with\n// `node modules/proposal/render_context.js`.\n// === PROPOSAL RENDER CORE START ===\n\n// Scope-of-supply labels — source of truth: schemas/scope-catalog.json.\nconst SCOPE_LABELS = {\n  materials: { en: 'Materials & Equipment Supply', es: 'Suministro de materiales y equipos' },\n  engineering: { en: 'Engineering & Design', es: 'Ingeniería y diseño' },\n  installation: { en: 'Installation / Assembly', es: 'Instalación / Montaje' },\n  commissioning: { en: 'Commissioning & Start-up', es: 'Puesta en marcha' },\n  project_management: { en: 'Project Management', es: 'Gestión de proyecto' },\n  spare_parts: { en: 'Spare Parts', es: 'Repuestos' },\n  shipping: { en: 'Shipping & Logistics', es: 'Transporte y logística' },\n  training: { en: 'Training', es: 'Formación' },\n  warranty: { en: 'Warranty', es: 'Garantía' },\n};\nconst SCOPE_ORDER = Object.keys(SCOPE_LABELS);\n\n// Pricing line labels. These are COST categories (Module 3 / the client's rate card), which are\n// not quite scope keys — the rate card calls on-site labour 'assembly' where the scope calls it\n// 'installation'.\nconst COST_CATEGORY_LABELS = {\n  materials: { en: 'Materials & Equipment', es: 'Materiales y equipos' },\n  engineering: { en: 'Engineering & Design', es: 'Ingeniería y diseño' },\n  assembly: { en: 'Installation / Assembly', es: 'Instalación / Montaje' },\n  commissioning: { en: 'Commissioning & Start-up', es: 'Puesta en marcha' },\n  project_management: { en: 'Project Management', es: 'Gestión de proyecto' },\n  training: { en: 'Training', es: 'Formación' },\n};\n\n// Boilerplate `kind`s that become numbered table rows instead of prose, and where they land.\n// Source: the client's Proposal Config sheet, tab 'Content'.\nconst CLAUSE_TABLES = {\n  exclusion: { table: 'tabla_exclusiones', column: 'exclusion' },\n  premise: { table: 'tabla_premisas', column: 'premisa' },\n  obligation: { table: 'tabla_obligaciones', column: 'obligacion' },\n};\n\n// Chapters whose content is the price table itself rather than a text section. They have no\n// entry in content.sections and no clause, so the \"empty means gone\" rule would drop them even\n// though Module 3 produced a price. Presence follows the pricing payload instead.\nconst PRICING_DRIVEN = ['oferta_economica', 'oferta_economica_resumen', 'oferta_economica_pago', 'resumen_ejecutivo_economico'];\n\n// Chapters that are always present when selected, because their body is computed rather than\n// written: dropping them for \"emptiness\" would lose the version table and the contents list.\nconst ALWAYS_PRESENT = ['control_version', 'indice', 'portada'];\n\nconst BULLET_RE = /^[•‣◦⁃∙*\\-–—]\\s+/;\n\nfunction pickLanguage(value) {\n  return value === 'es' ? 'es' : 'en';\n}\n\nfunction labelFor(map, key, lang) {\n  const entry = map[key];\n  return (entry && entry[lang]) || key;\n}\n\nfunction textOf(value) {\n  return value == null ? '' : String(value).trim();\n}\n\n/**\n * Turn a plain-text section into paragraphs and bullet lines.\n *\n * Module 2's system prompts pin the format: no markdown, paragraphs separated by a blank line,\n * list items as '•  item'. Clause bodies from the client's sheet use the same convention, so\n * generated text and boilerplate go through this one function and come out indistinguishable —\n * the template has no idea which is which, which is the point.\n *\n * Paragraphs and bullets are returned as two separate lists. Every section is either all\n * paragraphs, all bullets, or an intro paragraph followed by bullets, so ordering survives. If a\n * model ever interleaves them, nothing is lost — the bullets simply group after the paragraphs.\n */\nfunction parseNarrative(raw) {\n  const text = (raw == null ? '' : String(raw)).replace(/\\r\\n/g, '\\n').trim();\n  const parrafos = [];\n  const bullets = [];\n\n  for (const block of text.split(/\\n\\s*\\n/)) {\n    let buffer = [];\n    const flush = () => {\n      if (buffer.length) parrafos.push({ texto: buffer.join(' ') });\n      buffer = [];\n    };\n    for (const rawLine of block.split('\\n')) {\n      const line = cleanInline(rawLine);\n      if (!line) continue;\n      if (BULLET_RE.test(line)) {\n        flush();\n        const item = line.replace(BULLET_RE, '').trim();\n        if (item) bullets.push({ texto: item });\n      } else {\n        buffer.push(line);\n      }\n    }\n    flush();\n  }\n\n  return {\n    parrafos,\n    bullets,\n    has_parrafos: parrafos.length > 0,\n    has_bullets: bullets.length > 0,\n  };\n}\n\n// Module 2 is told to emit plain text. Strip markdown emphasis / heading marks anyway so a drifting\n// model can never put a literal '**' or '#' in front of a customer.\nfunction cleanInline(line) {\n  return String(line)\n    .replace(/\\*\\*(.+?)\\*\\*/g, '$1')\n    .replace(/__(.+?)__/g, '$1')\n    .replace(/`([^`]+)`/g, '$1')\n    .replace(/^#{1,6}\\s+/, '')\n    .trim();\n}\n\nfunction formatMoney(value, currency, lang) {\n  const n = Number(value);\n  if (value == null || !Number.isFinite(n)) return '';\n  const locale = lang === 'es' ? 'es-ES' : 'en-US';\n  if (currency) {\n    try {\n      return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(n);\n    } catch (e) {\n      // Unknown/invalid ISO code — fall through to a plain number plus the raw code.\n    }\n  }\n  const plain = new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);\n  return currency ? `${plain} ${currency}` : plain;\n}\n\nfunction formatNumber(value, lang) {\n  const n = Number(value);\n  if (value == null || !Number.isFinite(n)) return '';\n  return new Intl.NumberFormat(lang === 'es' ? 'es-ES' : 'en-US', { maximumFractionDigits: 2 }).format(n);\n}\n\n// An empty section object. Every catalog id gets one of these before anything is populated, so a\n// superset template can reference a chapter this request does not render without printing\n// \"undefined\".\n// Where a `source: auto` field gets its value. These are the things the pipeline already knows\n// by the time the document is assembled, exposed under the client's OWN key so a cover can say\n// {campos.n_documento} while the value is still the deterministic proposal number.\nfunction autoFieldValue(name, ctx) {\n  switch (name) {\n    case 'proposal_number': return ctx.proposalNumber;\n    case 'date': return ctx.fecha;\n    case 'version': return ctx.version;\n    case 'tier': return ctx.tier;\n    case 'language': return ctx.lang;\n    case 'client_company': return ctx.client.company;\n    case 'client_contact': return ctx.client.contacto;\n    case 'client_email': return ctx.client.email;\n    case 'client_phone': return ctx.client.phone;\n    case 'project_title': return ctx.project.title;\n    case 'project_type': return ctx.project.type;\n    case 'project_location': return ctx.project.location;\n    case 'project_deadline': return ctx.project.deadline;\n    default: return '';\n  }\n}\n\n/**\n * Build `campos` — the client's own document variables.\n *\n * Three sources, one namespace. `static` comes from their sheet, `request` was captured from the\n * RFQ by Module 1 (deterministically — see modules/proposal/field_capture.js), `auto` is wired to\n * something the pipeline computed. Every declared key is always present, empty rather than\n * absent, for the same reason the rest of the context is total: the render node has no\n * nullGetter, so a missing key prints the literal word \"undefined\" on a customer's cover page.\n *\n * A tag referring to a field the sheet never declared is the one case this cannot cover — there\n * is nothing to enumerate. That is why `fields_missing` is reported: it is the closest thing to\n * a warning the template itself can raise.\n */\nfunction buildFields(definitions, captured, ctx) {\n  const campos = {};\n  const missing = [];\n  for (const def of definitions || []) {\n    if (!def || !def.key) continue;\n    let value = '';\n    if (def.source === 'static') value = textOf(def.value);\n    else if (def.source === 'request') value = textOf(captured && captured[def.key]);\n    else if (def.source === 'auto') value = textOf(autoFieldValue(def.value, ctx));\n    campos[def.key] = value;\n    if (!value && def.required) missing.push(def.key);\n  }\n  return { campos, missing };\n}\n\nfunction emptySection() {\n  return { titulo: '', numero: '', parrafos: [], bullets: [], has_parrafos: false, has_bullets: false };\n}\n\n/**\n * Build the docxtemplater render context for one proposal.\n *\n * `proposalConfig` is the resolved per-client configuration (schemas/proposal-config.schema.json)\n * produced by modules/proposal/chapter_catalog.js. When it is absent the context still comes out\n * total — it simply has no chapters, which is what a Module 4 run with no configuration should\n * honestly produce rather than guessing a structure.\n */\nfunction buildRenderContext({ rfq, content, pricing, proposalConfig, proposalNumber, fecha }) {\n  rfq = rfq || {};\n  content = content || {};\n  const cfg = proposalConfig || {};\n\n  const lang = pickLanguage(cfg.language || rfq.language);\n  const client = rfq.client || {};\n  const project = rfq.project || {};\n  const scope = rfq.scope_of_supply || {};\n  const reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\n\n  // Module 2 emits { sections, tables }. Tolerate a bare map of id -> text as well, so a hand-run\n  // of Module 4 with a scratch payload still works.\n  const sections = (content && content.sections) || content || {};\n  const genTables = (content && content.tables) || {};\n\n  // B1: the extractor's key is 'quantity'; the legacy demo read 'qty' and silently dropped it.\n  const requisitos = reqs.map((r) => ({\n    item: textOf(r && r.item),\n    cantidad: r && r.quantity != null ? formatNumber(r.quantity, lang) : '',\n    spec: textOf(r && r.spec),\n  }));\n\n  const incluido = SCOPE_ORDER.filter((k) => scope[k] === true).map((k) => ({ etiqueta: labelFor(SCOPE_LABELS, k, lang) }));\n  const excluido = SCOPE_ORDER.filter((k) => scope[k] === false).map((k) => ({ etiqueta: labelFor(SCOPE_LABELS, k, lang) }));\n\n  const context = {\n    numero_propuesta: textOf(proposalNumber),\n    fecha: textOf(fecha),\n    idioma: lang,\n    documento: {\n      tier: textOf(cfg.tier) || 'B',\n      version: textOf(cfg.version) || '1.0',\n      config_source: textOf(cfg.source) || 'catalog_default',\n    },\n\n    cliente: {\n      empresa: textOf(client.company),\n      contacto: [client.contact_name, client.contact_last_name].filter(Boolean).join(' ').trim(),\n      email: textOf(client.email),\n      telefono: textOf(client.phone),\n    },\n    proyecto: {\n      // The cover of a real offer carries a project TITLE ('Modernización de convertidores de\n      // frecuencia del Shipping Sorter'), not a category. `type` stays for the clients whose\n      // templates already use it; `titulo` falls back to it so no existing cover goes blank.\n      titulo: textOf(project.title) || textOf(project.type),\n      tipo: textOf(project.type),\n      ubicacion: textOf(project.location),\n      plazo: textOf(project.desired_deadline),\n    },\n\n    requisitos,\n    has_requisitos: requisitos.length > 0,\n\n    alcance_incluido: incluido,\n    alcance_excluido: excluido,\n    has_alcance_incluido: incluido.length > 0,\n    has_alcance_excluido: excluido.length > 0,\n  };\n\n  // --- the client's own variables -------------------------------------------\n  const built = buildFields(cfg.fields, rfq.custom_fields, {\n    proposalNumber, fecha, lang,\n    version: context.documento.version,\n    tier: context.documento.tier,\n    client: { company: context.cliente.empresa, contacto: context.cliente.contacto, email: context.cliente.email, phone: context.cliente.telefono },\n    project: { title: context.proyecto.titulo, type: context.proyecto.tipo, location: context.proyecto.ubicacion, deadline: context.proyecto.plazo },\n  });\n  context.campos = built.campos;\n\n  // --- totality -------------------------------------------------------------\n  // Every id in the catalog gets an empty section and a false flag FIRST. Chapters this request\n  // renders then overwrite them. This is the single invariant the whole design rests on.\n  const allKeys = Array.isArray(cfg.all_keys) ? cfg.all_keys : [];\n  for (const key of allKeys) {\n    context[key] = emptySection();\n    context[`has_${key}`] = false;\n  }\n\n  const tableColumns = cfg.table_columns || {};\n  const tableRows = {};\n  const ensureTable = (name) => {\n    if (!tableRows[name]) tableRows[name] = [];\n    return tableRows[name];\n  };\n  for (const name of Object.keys(tableColumns)) ensureTable(name);\n\n  // --- boilerplate from the client's sheet ----------------------------------\n  // Prose clauses are keyed by the chapter/section they attach to; numbered kinds become table\n  // rows. Nothing here has been near a language model.\n  const proseByKey = {};\n  const clauses = Array.isArray(cfg.clauses) ? cfg.clauses : [];\n  const clausesApplied = [];\n  for (const c of clauses) {\n    if (!c || !c.chapter_id || !c.body) continue;\n    clausesApplied.push(c.id);\n    const spec = CLAUSE_TABLES[c.kind];\n    if (spec) {\n      const rows = ensureTable(spec.table);\n      rows.push({ numero: String(rows.length + 1), [spec.column]: textOf(c.body) });\n    } else if (c.kind === 'term') {\n      ensureTable('tabla_glosario').push({ termino: textOf(c.title), definicion: textOf(c.body) });\n    } else {\n      const lead = textOf(c.title);\n      const body = textOf(c.body);\n      proseByKey[c.chapter_id] = [proseByKey[c.chapter_id], lead, body].filter(Boolean).join('\\n\\n');\n    }\n  }\n\n  // --- chapters this request renders ----------------------------------------\n  // Pass 1: parse content and decide what is actually present. A chapter can be selected by the\n  // catalog and still come out empty — the agent had nothing to say, or the client's sheet has no\n  // clause for it — and an empty heading is worse than no heading.\n  const fill = (entry) => {\n    const key = entry.id;\n    // A chapter the sheet enabled but the catalog does not know cannot be rendered — the\n    // template has no block for it. chapter_catalog.js already warned about it.\n    if (!(key in context)) return null;\n\n    const merged = [textOf(sections[key]), proseByKey[key]].filter(Boolean).join('\\n\\n');\n    const parsed = parseNarrative(merged);\n\n    let hasTable = false;\n    for (const t of entry.tables || []) {\n      const incoming = Array.isArray(genTables[t]) ? genTables[t] : [];\n      const rows = ensureTable(t);\n      for (const row of incoming) rows.push(row);\n      if (rows.length) hasTable = true;\n    }\n\n    context[key] = {\n      titulo: textOf(entry.title),\n      numero: '',\n      parrafos: parsed.parrafos,\n      bullets: parsed.bullets,\n      has_parrafos: parsed.has_parrafos,\n      has_bullets: parsed.has_bullets,\n    };\n    const priced = !!pricing && PRICING_DRIVEN.includes(key);\n    return { entry, own: parsed.has_parrafos || parsed.has_bullets || hasTable || priced || ALWAYS_PRESENT.includes(key) };\n  };\n\n  const plan = [];\n  for (const chapter of cfg.chapters || []) {\n    const head = fill(chapter);\n    if (!head) continue;\n    const kids = [];\n    for (const section of chapter.sections || []) {\n      const kid = fill(section);\n      if (kid && kid.own) kids.push(kid);\n    }\n    // A container chapter survives on its children alone — dropping it would orphan them.\n    if (head.own || kids.length) plan.push({ head, kids });\n  }\n\n  // Pass 2: number what survived. Doing this here rather than at resolve time is what keeps the\n  // numbering gapless — chapter_catalog.js cannot know which chapters will come back empty, so a\n  // number assigned there would leave holes like \"5.2\" with no \"5.1\".\n  const sections_rendered = [];\n  const indice = [];\n  const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';\n  let bodyN = 0;\n  let annexN = 0;\n\n  for (const { head, kids } of plan) {\n    const key = head.entry.id;\n    let numero = '';\n    if (head.entry.group === 'body') numero = String((bodyN += 1));\n    else if (head.entry.group === 'annex') { numero = ALPHA[annexN] || `A${annexN}`; annexN += 1; }\n\n    context[key].numero = numero;\n    context[`has_${key}`] = true;\n    sections_rendered.push(key);\n    // Front matter carries no number and does not belong in the contents list — a table of\n    // contents that lists itself is noise.\n    if (numero) indice.push({ numero, titulo: context[key].titulo, nivel: '1' });\n\n    kids.forEach((kid, i) => {\n      const sub = numero ? `${numero}.${i + 1}` : '';\n      context[kid.entry.id].numero = sub;\n      context[`has_${kid.entry.id}`] = true;\n      sections_rendered.push(kid.entry.id);\n      if (sub) indice.push({ numero: sub, titulo: context[kid.entry.id].titulo, nivel: '2' });\n    });\n  }\n\n  // --- tables ---------------------------------------------------------------\n  // Rows are padded to their declared columns so a {precio} cell cannot come out as \"undefined\"\n  // because one agent omitted the field.\n  for (const [name, rows] of Object.entries(tableRows)) {\n    const cols = tableColumns[name] || (rows.length ? Object.keys(rows[0]) : []);\n    context[name] = rows.map((row) => {\n      const out = {};\n      for (const col of cols) out[col] = textOf(row && row[col]);\n      return out;\n    });\n    context[`has_${name}`] = context[name].length > 0;\n  }\n\n  // Version control is a calculated table, not something an agent writes. Building it here from\n  // the same `fecha` the cover and the footer use is what stops the document doing what the real\n  // reference offer did: a footer dated 03/02 next to a version table dated 16/02.\n  if (!tableRows.tabla_versiones || !tableRows.tabla_versiones.length) {\n    context.tabla_versiones = [{\n      version: context.documento.version,\n      fecha: context.fecha,\n      autor: textOf(cfg.author),\n      cambios: lang === 'es' ? 'Emisión inicial' : 'Initial issue',\n    }];\n    context.has_tabla_versiones = true;\n  }\n\n  context.indice = indice;\n  context.has_indice = indice.length > 0;\n  context.tabla_indice = indice;\n  context.has_tabla_indice = indice.length > 0;\n\n  // --- economic section -----------------------------------------------------\n  // Lines are the CUSTOMER-FACING sell prices (Module 3's sell_amount), which sum exactly to the\n  // total.\n  //\n  // The internal `subtotal` is deliberately NOT exposed here. It is the pre-margin cost basis, and\n  // this document is forwarded by the reseller to their own end customer — printing the cost basis\n  // beside the total hands the customer the reseller's margin. The reseller still sees the subtotal\n  // in the quote email the orchestrator sends them.\n  const cur = (pricing && pricing.currency) || '';\n  const lineasSrc = pricing && Array.isArray(pricing.lines) ? pricing.lines : [];\n  const lineas = lineasSrc.map((l) => ({\n    concepto: labelFor(COST_CATEGORY_LABELS, l && l.category, lang),\n    cantidad: l && l.hours != null ? formatNumber(l.hours, lang) : '',\n    precio_unitario: l && l.rate != null ? formatMoney(l.rate, cur, lang) : '',\n    importe: formatMoney(l && (l.sell_amount != null ? l.sell_amount : l.amount), cur, lang),\n  }));\n\n  context.has_pricing = !!pricing;\n  context.pricing = {\n    lineas,\n    has_lineas: lineas.length > 0,\n    total: pricing ? formatMoney(pricing.total, cur, lang) : '',\n    condiciones_pago: pricing ? textOf(pricing.payment_terms) : '',\n    moneda: cur,\n  };\n  if (pricing) sections_rendered.push('economic');\n\n  return { context, sections_rendered, language: lang, clauses_applied: clausesApplied, fields_missing: built.missing };\n}\n// === PROPOSAL RENDER CORE END ===\n\n// --- n8n wrapper ---\nconst cfg = $json.client_config || {};\nconst data = $json.data || {};\nconst rfq = data.rfq || {};\nconst client = rfq.client || {};\nconst reqs = Array.isArray(rfq.technical_requirements) ? rfq.technical_requirements : [];\nconst lang = pickLanguage(rfq.language);\n\n// B2: same RFQ in, same number out — no Date.now(), no random.\nfunction hash36(str){ let h=5381; for(let i=0;i<str.length;i++){ h=((h<<5)+h+str.charCodeAt(i))>>>0; } return h.toString(36); }\nconst identity = [ $json.client_id, client.company, client.email, (reqs[0]&&reqs[0].item)||'' ].join('|');\nconst suffix = (hash36(identity) + '000000').slice(0,6).toUpperCase();\nconst proposal_number = `PROP-${$now.toFormat('yyyyMMdd')}-${suffix}`;\nconst fecha = $now.toFormat(lang === 'es' ? 'dd/MM/yyyy' : 'yyyy-MM-dd');\n\n// G2: WHICH .docx. The client's `Templates` tab decides (variant, then a keyword match, then the\n// language default); 'Build Proposal Config' resolved that upstream, where the sheet and the\n// request are both in hand. The registry's template_id_en/_es stay as the fallback, so a client\n// onboarded before that tab existed behaves exactly as before — by language, with an EN fallback.\nconst chosenTemplate = (($json.proposal_config || (($json.data || {}).proposal_config)) || {}).template || null;\nconst templates = cfg.templates || {};\nconst template_id = (chosenTemplate && chosenTemplate.file_id) || templates[lang] || templates.en;\nif(!template_id) throw new Error(`No .docx template configured for client '${$json.client_id}' (language '${lang}'): the Templates tab resolved nothing and the registry has no template_id_${lang}/template_id_en.`);\n\n// G1: never the extracted end customer. This mail is DELIVERED, not parked as a draft.\nconst recipient_email = cfg.reply_to || cfg.commercial_contact_email;\nif(!recipient_email) throw new Error(`No reply address for '${$json.client_id}' (sender email + commercial_contact_email both empty). Refusing to send to the extracted end customer (legacy gap G1).`);\n\n// Outbound identity. The Gmail node's Send operation rebuilds From from the authenticated mailbox,\n// so the alias only survives the create-draft -> drafts.send pair.\nconst from_alias = cfg.from_alias || '';\nif(!from_alias) throw new Error(`No from_alias resolved for '${$json.client_id}'. Refusing to send from the raw mailbox address.`);\n// GUARD 1, re-asserted at the last gate before Gmail. A proposal answering a public RFQ is\n// parked as a draft for a human to read, whatever the registry says and whatever an upstream\n// refactor might do to send_mode on the way here.\nconst send_mode = cfg.open_intake === true ? 'draft'\n  : (String(cfg.send_mode || 'send').trim().toLowerCase() === 'draft' ? 'draft' : 'send');\n\n// Reply inside the reseller's original RFQ thread. Gmail threads on threadId AND a matching\n// subject; '' rather than null so the Gmail node treats it as falsy and omits the field.\nconst ec = $json.email_context || {};\nconst thread_id = ec.thread_id || '';\nconst email_subject = ec.reply_subject || `Proposal ${proposal_number} — ${client.company || 'Client'}`;\n\n// The resolved chapter set for THIS request. It arrives from the orchestrator (or from this\n// workflow's own 'Build Proposal Config' fallback when Module 4 runs standalone) and decides\n// which chapters exist, what they are called and which of the client's clauses apply. Without\n// it the context is still total — it simply has no chapters, which is the honest outcome for a\n// run with no configuration rather than a guessed structure.\nconst proposalConfig = $json.proposal_config || data.proposal_config || null;\n\nconst built = buildRenderContext({ rfq, content: data.content, pricing: data.pricing, proposalConfig, proposalNumber: proposal_number, fecha });\n\nconst doc_name = `Proposal ${proposal_number} - ${client.company || 'Client'}`;\n\nreturn [{ json: {\n  client_id: $json.client_id,\n  language: built.language,\n  proposal_number,\n  fecha,\n  template_id,\n  proposals_folder_id: cfg.proposals_folder_id,\n  recipient_email,\n  from_alias,\n  send_mode,\n  thread_id,\n  email_subject,\n  notification_chat_id: cfg.notification_chat_id,\n  client_status: cfg.status || '',\n  doc_name,\n  docx_file_name: `${doc_name}.docx`,\n  pdf_file_name: `${doc_name}.pdf`,\n  // Which template this came out of, and any required client field the RFQ never supplied. Both\n  // go into the Telegram alert: they are the first two questions asked when a document looks\n  // wrong, and neither is answerable from the finished PDF.\n  template_variant: (chosenTemplate && chosenTemplate.variant) || 'registry',\n  template_reason: (chosenTemplate && chosenTemplate.reason) || 'registry_fallback',\n  fields_missing: built.fields_missing,\n  // Set by the orchestrator's 'Resolve Route' when the delivered route differs from what the\n  // email asked for. Absent on a standalone Module 4 run, which is the honest state there.\n  route_note: $json.route_note || (data && data.route_note) || null,\n  sections_rendered: built.sections_rendered,\n  clauses_applied: built.clauses_applied,\n  document_tier: (proposalConfig && proposalConfig.tier) || '',\n  config_source: (proposalConfig && proposalConfig.source) || 'none',\n  config_warnings: (proposalConfig && proposalConfig.warnings) || [],\n  render_context: built.context,\n  company: client.company || '',\n  project_type: (rfq.project && rfq.project.type) || ''\n} }];"
       },
-      "id": "7aef85fa-caff-4042-96ed-9418b4188c04",
+      "id": "a55775c8-e6c6-423b-9c30-59e72538256e",
       "name": "Compute Proposal Fields",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        64,
-        80
+        2752,
+        880
       ]
     },
     {
@@ -113,21 +114,21 @@
           "binaryPropertyName": "template"
         }
       },
-      "id": "9c95c55f-6d9a-46e5-81c3-69125815fa46",
+      "id": "de40f162-77f6-41cb-9337-8e2faebac1ff",
       "name": "Download Template",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        304,
-        80
+        2992,
+        880
       ],
+      "notes": "template_id now points at a .docx FILE in Drive, not a Google Doc. No conversion option: we want the raw .docx bytes so the client's styles, headers and logos survive untouched.",
       "credentials": {
         "googleDriveOAuth2Api": {
           "id": "WS9EBgYyvCBSDXo8",
           "name": "Google Drive Cifral"
         }
-      },
-      "notes": "template_id now points at a .docx FILE in Drive, not a Google Doc. No conversion option: we want the raw .docx bytes so the client's styles, headers and logos survive untouched."
+      }
     },
     {
       "parameters": {
@@ -140,13 +141,13 @@
           "linebreaks": true
         }
       },
-      "id": "bfb39f8f-bbfb-4b10-9051-62938e795bf0",
+      "id": "fb597f67-3273-462e-9f27-4f0d75edaaf4",
       "name": "Render Docx",
       "type": "n8n-nodes-docxtemplater.docxTemplater",
       "typeVersion": 1,
       "position": [
-        480,
-        80
+        3168,
+        880
       ],
       "notes": "Community node n8n-nodes-docxtemplater (install via Settings > Community Nodes). Paragraph Loop MUST stay on — it is what lets {#has_x} on its own line delete the whole chapter, heading included, and what turns a loop into real list items instead of one run-on paragraph. Caveats: the node exposes no nullGetter, so a tag with no key renders the literal \"undefined\" (Compute Proposal Fields therefore emits every key, always); and it parses tags with Jexl, so key names must avoid \"-\" and loops must iterate objects, not bare strings. NOTE: this node outputs a fresh item (json: {}, only its own binary) — nothing upstream survives it."
     },
@@ -166,13 +167,13 @@
         },
         "options": {}
       },
-      "id": "936feda5-d708-475e-bdc0-b3ed5260c780",
+      "id": "9acb6f29-2962-45ad-be48-b234227b16ca",
       "name": "Upload Docx To Drive",
       "type": "n8n-nodes-base.googleDrive",
       "typeVersion": 3,
       "position": [
-        784,
-        80
+        3472,
+        880
       ],
       "credentials": {
         "googleDriveOAuth2Api": {
@@ -185,19 +186,28 @@
       "parameters": {
         "jsCode": "// The docxtemplater node returns a fresh item — `json: {}` and ONLY its own output binary — so\n// nothing upstream survives it, and the Drive upload downstream replaces the item with file\n// metadata. Rather than depend on each node's binary-passthrough behaviour, rebuild the item\n// explicitly from the node that owns the bytes. Same reason 'Collect Artifacts' exists.\nconst rendered = $('Render Docx').first();\nconst fields = $('Compute Proposal Fields').first().json;\nreturn [{ json: fields, binary: { docx: rendered.binary.docx } }];"
       },
-      "id": "d3d1676f-7a88-44d3-a4fc-5c92a2145c84",
+      "id": "db2a7fa6-13a3-4a56-a04c-95dbcfefa381",
       "name": "Prepare PDF Input",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1024,
-        80
+        3712,
+        880
       ]
     },
     {
       "parameters": {
         "method": "POST",
         "url": "http://gotenberg:3000/forms/libreoffice/convert",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Gotenberg-Output-Filename",
+              "value": "={{ $('Compute Proposal Fields').item.json.doc_name }}"
+            }
+          ]
+        },
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
@@ -216,24 +226,15 @@
               "outputPropertyName": "pdf"
             }
           }
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Gotenberg-Output-Filename",
-              "value": "={{ $('Compute Proposal Fields').item.json.doc_name }}"
-            }
-          ]
         }
       },
-      "id": "4bdb56d2-b872-42f5-9533-6871b3cb00d7",
+      "id": "94628f35-6c69-42a3-8684-48aa23586c15",
       "name": "Convert To PDF",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        1264,
-        80
+        3952,
+        880
       ],
       "notes": "Gotenberg (LibreOffice) renders the .docx to PDF with the layout intact. The URL is the docker-compose service name — change it here if yours differs (see docs/DEPLOYMENT.md). The multipart field MUST be named \"files\", and Gotenberg picks the converter from the uploaded file's extension, which is why Render Docx names the output *.docx."
     },
@@ -241,13 +242,13 @@
       "parameters": {
         "jsCode": "// Reassemble both attachments onto one item: the editable .docx (what the reseller tweaks before\n// forwarding) and the PDF (what they forward as-is). Pulled straight from the two nodes that\n// produced them, so no intermediate node's binary handling can drop one.\nconst fields = $('Compute Proposal Fields').first().json;\nconst docx = $('Render Docx').first().binary.docx;\nconst pdf = $('Convert To PDF').first().binary.pdf;\nconst uploaded = $('Upload Docx To Drive').first().json;\n\n// Force both attachment names explicitly. The upstream nodes usually get this right\n// (Render Docx sets docx via outputFileName; Gotenberg now gets a Gotenberg-Output-Filename\n// header), but Gmail attaches whatever the binary object's OWN fileName property says — so this\n// is the one place that guarantees a professional attachment name no matter what an\n// intermediate service does.\ndocx.fileName = fields.docx_file_name;\ndocx.mimeType = docx.mimeType || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';\npdf.fileName = fields.pdf_file_name;\npdf.mimeType = pdf.mimeType || 'application/pdf';\nreturn [{\n  json: { ...fields, document_id: uploaded.id || null, document_url: uploaded.webViewLink || null },\n  binary: { docx, pdf }\n}];"
       },
-      "id": "6bd3f7ba-3a94-4c87-bdb1-894e7a414fba",
+      "id": "4bce6876-28e1-4636-94df-0ca9e9c30ba1",
       "name": "Collect Artifacts",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1504,
-        80
+        4192,
+        880
       ]
     },
     {
@@ -272,13 +273,13 @@
           "sendTo": "={{ $('Compute Proposal Fields').item.json.recipient_email }}"
         }
       },
-      "id": "2340003e-f691-4c40-99e7-c7930406d692",
+      "id": "730275f3-2831-447c-beb3-082133af7815",
       "name": "Create Draft",
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2.2,
       "position": [
-        1744,
-        80
+        4432,
+        880
       ],
       "webhookId": "ce6fa1bb-2b52-4bc6-b978-f40e0e6ddd4f",
       "credentials": {
@@ -311,13 +312,13 @@
         },
         "options": {}
       },
-      "id": "61b39bbd-146b-4832-a9a8-6ae7a2ed5ea1",
+      "id": "6e384142-0978-4781-9826-cddea5469a9f",
       "name": "Send Mode?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        1984,
-        80
+        4672,
+        880
       ]
     },
     {
@@ -331,21 +332,21 @@
         "jsonBody": "={{ JSON.stringify({ id: $('Create Draft').item.json.id }) }}",
         "options": {}
       },
-      "id": "ed79ae60-5350-4a81-8080-53730737a830",
+      "id": "8ba3e50c-0193-41ed-ac5d-19411b685fa9",
       "name": "Send Draft",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        2192,
-        -64
+        4880,
+        736
       ],
+      "notes": "The Gmail node cannot send an existing draft, and its Send operation overwrites From with the authenticated address — so the alias only survives via draft + drafts.send. Returns the sent Message { id, threadId }.",
       "credentials": {
         "gmailOAuth2": {
           "id": "hFMjvzufVBoFxyF2",
           "name": "Gmail account_Cifral"
         }
-      },
-      "notes": "The Gmail node cannot send an existing draft, and its Send operation overwrites From with the authenticated address — so the alias only survives via draft + drafts.send. Returns the sent Message { id, threadId }."
+      }
     },
     {
       "parameters": {
@@ -356,13 +357,13 @@
           "parse_mode": "HTML"
         }
       },
-      "id": "25f6bf6a-9108-417e-92b0-42655dc026fe",
+      "id": "c1a0edaa-9198-45f2-b74e-517abbd0f12a",
       "name": "Telegram Notify",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2432,
-        80
+        5120,
+        880
       ],
       "webhookId": "bf7bec43-7a47-4dfd-8986-c8e749782c3d",
       "credentials": {
@@ -376,13 +377,13 @@
       "parameters": {
         "jsCode": "// Assemble the Module 4 output envelope (schema: proposal-assembly.schema.json).\nconst cf = $('Compute Proposal Fields').first().json;\nconst art = $('Collect Artifacts').first().json;\nlet draftId = null;\ntry { draftId = $('Create Draft').first().json.id || $('Create Draft').first().json.message?.id || null; } catch (e) {}\n// 'Send Draft' only runs on the send branch; referencing an unexecuted node throws, so the catch\n// means 'send_mode was draft'. A genuine send failure fails that node and the run never reaches\n// here — so 'sent:false' always means 'deliberately not sent', never 'silently lost'.\nlet sent_message_id = null;\ntry { sent_message_id = $('Send Draft').first().json.id || null; } catch (e) {}\nreturn [{ json: {\n  client_id: cf.client_id,\n  status: 'ok',\n  errors: [],\n  data: {\n    proposal_number: cf.proposal_number,\n    document_id: art.document_id,\n    document_url: art.document_url,\n    docx_file_name: cf.docx_file_name,\n    pdf_file_name: cf.pdf_file_name,\n    draft_id: draftId,\n    draft_recipient: cf.recipient_email,\n    sent: cf.send_mode === 'send' && !!sent_message_id,\n    sent_message_id,\n    from_alias: cf.from_alias,\n    thread_id: cf.thread_id || null,\n    language: cf.language,\n    template_id_used: cf.template_id,\n    notified_chat_id: cf.notification_chat_id,\n    sections_rendered: cf.sections_rendered || []\n  }\n} }];"
       },
-      "id": "6b9bc81a-676b-4029-b13b-295d4de5c803",
+      "id": "11ca6a65-cb36-4bab-996e-04793983ec4a",
       "name": "Build Output",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2656,
-        80
+        5344,
+        880
       ]
     },
     {
@@ -391,13 +392,13 @@
         "height": 340,
         "width": 1180
       },
-      "id": "0d0b0c0e-f28e-46f1-9432-0b7755de0ae5",
+      "id": "cfd4e2cd-5302-4a60-80cf-284da5883ae8",
       "name": "Note — Module 4",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        32,
-        -352
+        464,
+        -64
       ]
     },
     {
@@ -429,10 +430,10 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -160,
-        500
+        1568,
+        608
       ],
-      "id": null,
+      "id": "aaf144f1-20bf-41fb-a7c2-1d8d725ede8e",
       "name": "Has Config Sheet?"
     },
     {
@@ -452,13 +453,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        64,
-        420
+        2016,
+        -432
       ],
-      "id": null,
+      "id": "d3c3b147-228c-461c-a3fc-f78bd180c27a",
       "name": "Read Chapters Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -477,13 +484,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        272,
-        420
+        2016,
+        -240
       ],
-      "id": null,
+      "id": "6edfba90-efee-460e-b57b-3f0a1673505d",
       "name": "Read Content Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -502,13 +515,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        480,
-        420
+        2016,
+        -48
       ],
-      "id": null,
+      "id": "d70a4f20-fe38-449d-a3d1-d905b4188bb3",
       "name": "Read Rules Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -517,25 +536,23 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        704,
-        500
+        2528,
+        880
       ],
-      "id": null,
+      "id": "1b033197-3ed0-42f5-b264-971f8d45c334",
       "name": "Build Proposal Config"
     },
     {
       "parameters": {
-        "mode": "append",
-        "numberInputs": 6,
-        "options": {}
+        "numberInputs": 6
       },
       "type": "n8n-nodes-base.merge",
       "typeVersion": 3,
       "position": [
-        688,
-        516
+        2336,
+        384
       ],
-      "id": null,
+      "id": "66da2501-894c-4994-82ba-a9d6863829cd",
       "name": "Merge Config Tabs"
     },
     {
@@ -555,13 +572,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        64,
-        990
+        2016,
+        144
       ],
-      "id": null,
+      "id": "476fb6ee-f378-41f1-a20c-dd51421ca517",
       "name": "Read Client Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -580,13 +603,19 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        64,
-        1180
+        2016,
+        336
       ],
-      "id": null,
+      "id": "aa8cc8f4-eb1e-43af-ab90-460c788e36e1",
       "name": "Read Templates Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
     },
     {
       "parameters": {
@@ -605,13 +634,33 @@
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4.5,
       "position": [
-        64,
-        1370
+        2016,
+        528
       ],
-      "id": null,
+      "id": "5e972823-9492-4366-aded-83b87a4f970d",
       "name": "Read Fields Tab",
       "alwaysOutputData": true,
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "QeYpDR8f2M3TTHxR",
+          "name": "Google Sheets account_Cifral"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        672,
+        640
+      ],
+      "id": "07f534fb-f043-4eaf-8114-d056fc62fb16",
+      "name": "When chat message received",
+      "webhookId": "3c3a4a95-63ce-40fe-b04e-6e348931b645"
     }
   ],
   "connections": {
@@ -924,284 +973,24 @@
           }
         ]
       ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Config Provided?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
-  "pinData": {
-    "Execute Workflow Trigger": [
-      {
-        "client_id": "demo_client",
-        "client_config": {
-          "client_id": "demo_client",
-          "client_name": "Demo Client",
-          "status": "trial",
-          "service_tier": "full_pipeline",
-          "commercial_contact_email": "markbmx360@gmail.com",
-          "reply_to": "markbmx360@gmail.com",
-          "templates": {
-            "en": "1szdkO1MVKVsIXizYQd_x-6WJMP8OPK50oSif4Uw5LQA",
-            "es": "1HJPjVMACtEkWSIZzUoG0I9QWLbXYNoo2"
-          },
-          "proposals_folder_id": "1vmm_AQf8FGtc7E_ujJsetwNpuzzVXCxc",
-          "reference_docs_folder_id": "151TIx0qu7LXDWrWPAmKWSVNQK-9DUR9X",
-          "pricing_sheet_id": "1mWyS3Dfvq9yytx3pwtPh_Tiawe3nI9XVcVIW4y11MQw",
-          "notification_chat_id": "1748634056",
-          "from_alias": "demo@cifral.io",
-          "send_mode": "draft"
-        },
-        "email_context": {
-          "thread_id": "19f9e683dbe346fd",
-          "message_id": "Message-ID: <CAF9WxGNuwKHxa0ZZTbe7MkoHf6fZxGhV9obwUYKrqn097R5i+A@mail.gmail.com>",
-          "reply_subject": "Re: RFQ — Sistemas de Bombeo Skid dúplex de agua de refrigeración"
-        },
-        "status": "ok",
-        "errors": [],
-        "data": {
-          "rfq": {
-            "client": {
-              "company": "Sistemas de Bombeo del Golfo, S.L.",
-              "contact_name": "Javier",
-              "contact_last_name": "Ortega",
-              "email": "javier.ortega@sistemasbombeo.es"
-            },
-            "project": {
-              "type": "Skid dúplex de bombeo de agua de refrigeración de proceso",
-              "location": "Planta industrial de Tarragona, España",
-              "desired_deadline": "21 de agosto de 2026"
-            },
-            "technical_requirements": [
-              {
-                "item": "Skid dúplex de bombeo de agua de refrigeración",
-                "quantity": "1",
-                "spec": "Dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100% de la capacidad del sistema"
-              },
-              {
-                "item": "Caudal de diseño",
-                "quantity": "1",
-                "spec": "100 m³/h"
-              },
-              {
-                "item": "Altura manométrica requerida",
-                "quantity": "1",
-                "spec": "Aproximadamente 34 m"
-              },
-              {
-                "item": "Fluido",
-                "quantity": "1",
-                "spec": "Agua tratada de refrigeración de proceso"
-              },
-              {
-                "item": "Temperatura de operación",
-                "quantity": "1",
-                "spec": "Aproximadamente 7–35 °C"
-              },
-              {
-                "item": "Presión de diseño",
-                "quantity": "1",
-                "spec": "10 bar(g)"
-              },
-              {
-                "item": "Tuberías principales de proceso",
-                "quantity": "1",
-                "spec": "Acero al carbono, con conexiones de aspiración e impulsión de aproximadamente DN100"
-              },
-              {
-                "item": "Motores de las bombas",
-                "quantity": "2",
-                "spec": "400 VCA, trifásicos, 50 Hz, protección IP55"
-              },
-              {
-                "item": "Cuadro de control",
-                "quantity": "1",
-                "spec": "Cuadro apto para instalación exterior con PLC, HMI y un variador de frecuencia independiente para cada bomba"
-              },
-              {
-                "item": "Funciones de control",
-                "quantity": "1",
-                "spec": "Alternancia automática entre bomba principal y reserva, arranque de la bomba de reserva en caso de fallo, control local de marcha y paro y señal de alarma general"
-              },
-              {
-                "item": "Instrumentación",
-                "quantity": "1",
-                "spec": "Indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas"
-              },
-              {
-                "item": "Bastidor del skid",
-                "quantity": "1",
-                "spec": "Estructura soldada de acero al carbono con puntos de elevación y accesos para carretilla elevadora"
-              }
-            ],
-            "notes": "El conjunto deberá entregarse montado, cableado y probado en taller antes del envío. Incluid en la propuesta un plano preliminar de disposición general y un P&ID. Las conexiones mecánicas y eléctricas externas deberán estar agrupadas y claramente identificadas para simplificar la instalación en planta. Indicad claramente las hipótesis de cálculo, desviaciones, recomendaciones técnicas y cualquier información pendiente de confirmar. La selección final de las bombas, el diámetro definitivo de las tuberías, la potencia de los motores y las dimensiones del skid podrán confirmarse durante la fase de ingeniería de detalle. Presentad el precio desglosado, como mínimo, en ingeniería, equipos principales, fabricación, controles, pruebas, transporte y servicios de puesta en marcha. Entrega requerida: Segundo trimestre de 2027.",
-            "language": "es",
-            "request_type": "full_pipeline",
-            "scope_of_supply": {
-              "materials": true,
-              "engineering": true,
-              "installation": true,
-              "commissioning": true,
-              "project_management": true,
-              "spare_parts": false,
-              "shipping": true,
-              "training": false,
-              "warranty": true
-            },
-            "status": "complete",
-            "missing_fields": []
-          },
-          "content": {
-            "sections": {
-              "solucion_tecnica_arquitectura": "El presente alcance comprende el diseño, fabricación, montaje, cableado y prueba en taller de un skid dúplex de bombeo de agua de refrigeración de proceso, destinado a la planta industrial de Tarragona. El conjunto se entregará como una unidad completamente integrada, lista para su conexión mecánica y eléctrica en planta, reduciendo al mínimo los trabajos de montaje en campo.\n\nEl skid incorpora dos bombas centrífugas horizontales en configuración servicio/reserva, cada una dimensionada para el 100 % de la capacidad del sistema: caudal de diseño de 100 m³/h y altura manométrica aproximada de 34 m, trabajando con agua tratada de refrigeración de proceso en el rango de temperatura de 7 a 35 °C y presión de diseño de 10 bar(g). Cada bomba va accionada por un motor eléctrico trifásico de 400 VCA / 50 Hz con grado de protección IP55. La selección definitiva de las bombas, la potencia nominal de los motores y el diámetro exacto de las tuberías se confirmarán durante la fase de ingeniería de detalle.\n\nLa red de tuberías del skid se ejecuta en acero al carbono, con colectores de aspiración e impulsión de diámetro aproximado DN100. El bastidor estructural es una estructura soldada de acero al carbono, provista de puntos de elevación certificados y accesos para carretilla elevadora, que sirve de soporte rígido para todos los equipos, tuberías e instrumentación.\n\nEl cuadro de control, apto para instalación exterior, integra un PLC, una pantalla HMI y un variador de frecuencia independiente por bomba. Las funciones de control incluyen alternancia automática entre bomba principal y reserva, arranque automático de la bomba de reserva ante fallo de la activa, control local de marcha/paro y señal de alarma general. La instrumentación de proceso cubre indicación de presión en aspiración e impulsión, medición de caudal en la descarga y supervisión básica de alarmas. Todas las conexiones mecánicas y eléctricas externas quedan agrupadas y claramente identificadas para facilitar la integración en planta.\n\nLa documentación técnica incluye, como mínimo, un plano preliminar de disposición general (General Arrangement), un P&ID del conjunto, las hipótesis de cálculo, las desviaciones respecto a especificación y las recomendaciones técnicas aplicables. Cualquier dato pendiente de confirmación por parte del cliente quedará explícitamente registrado en la documentación de ingeniería.",
-              "ejecucion_fases": "A continuación se indican las fases previstas para la ejecución del proyecto, con plazos orientativos sujetos a confirmación tras la firma del pedido y la recepción de los datos de proceso definitivos.\n\n•  Ingeniería de detalle — semanas 1 a 6: revisión de especificaciones, selección definitiva de equipos, elaboración de P&ID, plano de disposición general, hojas de datos y documentación de ingeniería para aprobación del cliente.\n\n•  Aprovisionamiento y fabricación — semanas 5 a 22: emisión de órdenes de compra de equipos principales (bombas, motores, variadores, instrumentación), fabricación del bastidor, montaje mecánico, cableado del cuadro de control e integración del skid en taller.\n\n•  Pruebas en taller (FAT) — semanas 22 a 25: prueba funcional del conjunto montado, verificación de lógicas de control, comprobación de estanqueidad y revisión de documentación as-built. Se invita al cliente a presenciar las pruebas.\n\n•  Transporte y entrega en planta — semanas 25 a 27: preparación para expedición, carga, transporte hasta la planta de Tarragona y descarga en el punto de entrega acordado.\n\n•  Instalación en campo — semanas 27 a 30: conexión mecánica y eléctrica de las acometidas externas, verificación de alineaciones y comprobaciones previas a la puesta en marcha.\n\n•  Puesta en marcha y arranque — semanas 30 a 32: verificación de parámetros de proceso, ajuste de lazos de control, pruebas de alternancia y alarmas, y entrega formal del sistema al cliente.\n\nEl plazo global orientativo sitúa la puesta en marcha en el segundo trimestre de 2027, en línea con el requerimiento del cliente. El cronograma detallado se acordará y formalizará durante la fase de ingeniería de detalle.",
-              "ejecucion_transporte": "El transporte del skid desde las instalaciones de fabricación hasta la planta de Tarragona se gestionará de acuerdo con las condiciones de entrega acordadas en el contrato. A continuación se indican los aspectos logísticos principales:\n\n•  El skid se expedirá completamente montado, cableado y probado, protegido con los medios de embalaje y sujeción adecuados para transporte por carretera.\n•  Se realizará una inspección de carga previa a la expedición para verificar el estado del conjunto y la correcta fijación de todos los componentes.\n•  El transporte se efectuará mediante vehículo de plataforma de las dimensiones adecuadas a las medidas y peso del skid, determinados durante la fase de ingeniería de detalle.\n•  Las condiciones de entrega (Incoterm aplicable, punto de entrega, responsabilidad de descarga en destino) se definirán y formalizarán en el contrato.\n•  Se facilitará documentación de expedición completa: albarán de entrega, lista de embalaje, certificados de prueba y documentación técnica asociada.\n•  Cualquier requisito especial de transporte (permisos de transporte especial, escolta, restricciones horarias en planta) deberá ser comunicado por el cliente con antelación suficiente para su gestión.",
-              "garantia_soporte_alcance": "El suministro objeto de la presente propuesta queda cubierto por una garantía estándar frente a defectos de materiales y mano de obra, contada a partir de la fecha de puesta en marcha o, en su defecto, desde la fecha de entrega en planta, conforme a los plazos y condiciones que se establezcan en el contrato. Durante el período de garantía, el suministrador atenderá, sin coste adicional para el cliente, la reparación o sustitución de aquellos componentes que presenten defectos imputables a la fabricación o al montaje realizado en taller.\n\nQuedan expresamente excluidos de la garantía los daños derivados de un uso incorrecto del equipo, modificaciones no autorizadas, desgaste normal de consumibles y piezas de desgaste, condiciones de operación fuera de los parámetros de diseño acordados, o intervenciones realizadas por personal ajeno al suministrador sin su consentimiento previo. Las condiciones detalladas de garantía, incluyendo el procedimiento de notificación de incidencias y los tiempos de respuesta comprometidos, se recogerán en el contrato de suministro.",
-              "resumen_ejecutivo_solucion": "La presente propuesta recoge las condiciones comerciales aplicables al suministro del skid dúplex de bombeo de agua de refrigeración de proceso para la planta de Tarragona, sobre la base de los requisitos técnicos facilitados por Sistemas de Bombeo del Golfo, S.L.\n\n•  Validez de la oferta: la presente propuesta tiene una validez de 60 días naturales a partir de la fecha de emisión.\n•  Plazo de entrega indicativo: puesta en marcha prevista en el segundo trimestre de 2027, condicionada a la firma del pedido y recepción de datos de proceso definitivos antes del 30 de septiembre de 2026.\n•  Condiciones de pago: estructura de hitos vinculada al avance del proyecto (anticipo a la firma del pedido, hito intermedio a la aprobación de ingeniería, hito a la FAT y saldo a la entrega); condiciones exactas a negociar y formalizar en el contrato.\n•  Precio desglosado: la oferta económica detalla, como mínimo, los capítulos de ingeniería, equipos principales, fabricación y montaje en taller, controles y cuadro eléctrico, pruebas en taller (FAT), transporte y servicios de puesta en marcha en campo.\n•  Exclusiones principales: obra civil, cimentaciones y anclajes, acometidas eléctricas externas al cuadro de control, tuberías de proceso externas al skid, permisos y licencias, y cualquier trabajo no descrito explícitamente en el alcance técnico.\n•  Hipótesis y pendientes: la selección definitiva de bombas, potencia de motores y dimensiones del skid se confirmarán en ingeniería de detalle; cualquier desviación que afecte al precio será comunicada y acordada con el cliente antes de su ejecución.\n•  Próximo paso: para proceder con la adjudicación, se solicita la emisión de la orden de compra o carta de intención, junto con la confirmación de los datos de proceso definitivos."
-            },
-            "tables": {
-              "tabla_fases": [
-                {
-                  "fase": "Ingeniería de detalle",
-                  "descripcion": "Revisión de especificaciones y selección de equipos",
-                  "duracion": "6 semanas",
-                  "entregable": "P&ID y plano de disposición general"
-                },
-                {
-                  "fase": "Aprovisionamiento y fabricación",
-                  "descripcion": "Compra de equipos principales y montaje en taller",
-                  "duracion": "18 semanas",
-                  "entregable": "Skid montado y cableado"
-                },
-                {
-                  "fase": "Pruebas en taller (FAT)",
-                  "descripcion": "Prueba funcional y verificación de lógicas de control",
-                  "duracion": "3 semanas",
-                  "entregable": "Protocolo FAT firmado"
-                },
-                {
-                  "fase": "Transporte y entrega",
-                  "descripcion": "Expedición y descarga en planta",
-                  "duracion": "2 semanas",
-                  "entregable": "Albarán de entrega"
-                },
-                {
-                  "fase": "Instalación y puesta en marcha",
-                  "descripcion": "Conexionado, ajuste de lazos y arranque",
-                  "duracion": "5 semanas",
-                  "entregable": "Acta de recepción"
-                }
-              ],
-              "tabla_materiales": [
-                {
-                  "posicion": "1",
-                  "descripcion": "Bomba centrífuga horizontal 100 m³/h · 34 m",
-                  "cantidad": "2",
-                  "observaciones": "Configuración servicio/reserva, 100 % capacidad cada una"
-                },
-                {
-                  "posicion": "2",
-                  "descripcion": "Motor eléctrico trifásico 400 VCA / 50 Hz",
-                  "cantidad": "2",
-                  "observaciones": "IP55"
-                },
-                {
-                  "posicion": "3",
-                  "descripcion": "Variador de frecuencia",
-                  "cantidad": "2",
-                  "observaciones": "Uno por bomba"
-                },
-                {
-                  "posicion": "4",
-                  "descripcion": "Cuadro de control con PLC y HMI",
-                  "cantidad": "1",
-                  "observaciones": "Apto para instalación exterior"
-                },
-                {
-                  "posicion": "5",
-                  "descripcion": "Bastidor estructural de acero al carbono",
-                  "cantidad": "1",
-                  "observaciones": "Puntos de elevación certificados"
-                }
-              ]
-            },
-            "sections_generated": [
-              "solucion_tecnica_arquitectura",
-              "ejecucion_fases",
-              "ejecucion_transporte",
-              "garantia_soporte_alcance",
-              "resumen_ejecutivo_solucion"
-            ],
-            "agents_run": [
-              "A5",
-              "A1",
-              "A2",
-              "A3",
-              "A4"
-            ],
-            "clauses_applied": [],
-            "qa": {
-              "reviewed": true,
-              "findings": [],
-              "patches_applied": 0,
-              "blockers": 0
-            },
-            "grounded_on": []
-          },
-          "pricing": {
-            "subtotal": 14525,
-            "margin_pct": 0.2,
-            "risk_pct": 0.08,
-            "discount_pct": 0,
-            "total": 18824.4,
-            "payment_terms": "30% advance / 40% on delivery / 30% on commissioning",
-            "lines": [
-              {
-                "category": "materials",
-                "hours": null,
-                "rate": null,
-                "amount": 5000,
-                "sell_amount": 6480
-              },
-              {
-                "category": "engineering",
-                "hours": 40,
-                "rate": 85,
-                "amount": 3400,
-                "sell_amount": 4406.4
-              },
-              {
-                "category": "assembly",
-                "hours": 60,
-                "rate": 55,
-                "amount": 3300,
-                "sell_amount": 4276.8
-              },
-              {
-                "category": "commissioning",
-                "hours": 20,
-                "rate": 70,
-                "amount": 1400,
-                "sell_amount": 1814.4
-              },
-              {
-                "category": "project_management",
-                "hours": 15,
-                "rate": 95,
-                "amount": 1425,
-                "sell_amount": 1846.8
-              }
-            ],
-            "currency": "EUR",
-            "priced_categories": [
-              "engineering",
-              "assembly",
-              "commissioning",
-              "project_management"
-            ]
-          }
-        }
-      }
-    ]
-  },
-  "meta": {
-    "templateCredsSetupCompleted": true,
-    "instanceId": "6cf691ae4b818c0fa5987ac19eaf2f8dd5a147702425d4e31b1029a1cf278c82"
+  "settings": {
+    "executionOrder": "v1",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": "OKIZQXKaYLlsdZaV"
   }
 }

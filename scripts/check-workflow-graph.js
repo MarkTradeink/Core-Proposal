@@ -55,6 +55,26 @@ for (const file of glob) {
   // rows geometrically instead of just running each read once off a shared trigger item.
   ok(file, `${wf.nodes.filter((n) => n.parameters && n.parameters.jsCode).length} Code node(s) parse`);
 
+  // RECIPIENT SAFETY, statically. Legacy gap G1: the demo shipped a draft addressed to the
+  // EXTRACTED END CUSTOMER instead of the reseller who sent the RFQ — a proposal, with the
+  // reseller's margin in it, one click from the wrong inbox. Every outbound Gmail node must take
+  // its address from client_config (reply_to / commercial_contact_email), never from the extracted
+  // data. docs/TESTING-MANUAL.md Scenario 10 checks this by hand; this catches it on every commit.
+  const CUSTOMER_FIELDS = /\b(?:data\.)?(?:rfq\.)?client\.email\b|extracted\.client\.email/;
+  for (const node of wf.nodes) {
+    if (node.type !== 'n8n-nodes-base.gmail') continue;
+    const sendTo = ((node.parameters || {}).options || {}).sendTo || (node.parameters || {}).sendTo || '';
+    if (CUSTOMER_FIELDS.test(String(sendTo))) {
+      fail(file, `Gmail node '${node.name}' addresses the EXTRACTED end customer (${sendTo}) — outbound mail must go to the sender, via client_config.reply_to / commercial_contact_email.`);
+    }
+    // The address has to come from somewhere the envelope controls, not from a literal.
+    if (sendTo && !/\{\{/.test(String(sendTo))) {
+      fail(file, `Gmail node '${node.name}' has a hard-coded recipient (${sendTo}).`);
+    }
+  }
+  const gmailNodes = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.gmail');
+  if (gmailNodes.length) ok(file, `${gmailNodes.length} Gmail node(s) address the sender, not the extracted customer`);
+
   const readTypes = new Set(['n8n-nodes-base.googleSheets', 'n8n-nodes-base.notion']);
   const readNodes = wf.nodes.filter((n) => readTypes.has(n.type)).map((n) => n.name);
   for (const name of readNodes) {
