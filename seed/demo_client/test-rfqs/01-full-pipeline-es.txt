@@ -1,0 +1,42 @@
+Subject: RFQ — Modernización de los convertidores del sorter de expediciones
+
+Oferta nº: 905149921    Att. Marta Iglesias    Asset: A-4471
+
+Buenos días,
+
+Les escribo desde Talleres Industriales del Ebro S.L. para pedirles oferta técnica
+y económica para la modernización de los variadores del sorter de expediciones de
+nuestra planta de Zaragoza.
+
+Contacto: Javier Solana — j.solana@talleres-ebro.example — +34 976 000 111
+Cliente final: Talleres Industriales del Ebro S.L.
+Emplazamiento: planta de Zaragoza, nave 3
+Plazo: puesta en marcha antes de final del segundo trimestre
+
+Situación actual: el sorter lleva en servicio desde 2009 con 42 variadores de la
+serie original. El fabricante declaró la serie obsoleta hace dos años y ya no hay
+repuestos nuevos; los últimos tres fallos se han resuelto con equipos reparados y
+uno de ellos nos costó una parada de 11 horas en plena campaña.
+
+Lo que necesitamos:
+  - Variadores de frecuencia — 42 ud — sustitución 1:1, 4 kW, comunicación por
+    bus de campo con el PLC existente
+  - Adaptación del programa del PLC — 1 ud — mantener la lógica actual, sólo la
+    capa de comunicaciones
+  - Armario de control — 2 ud — reaprovechando la envolvente existente
+  - Formación al personal de mantenimiento — 8 personas
+
+Alcance solicitado: suministro, ingeniería de adaptación, instalación, puesta en
+marcha, repuestos y formación. La obra civil no aplica.
+
+Condiciones de operación: la planta no puede parar más de 6 horas seguidas y sólo
+en las ventanas de fin de semana. Trabajamos a dos turnos de lunes a viernes.
+
+Lo que nos importa: recuperar la disponibilidad de repuestos y no volver a tener
+una parada como la de la campaña pasada.
+
+Quedo a la espera de su propuesta con precios.
+
+Un saludo,
+Javier Solana
+Responsable de Mantenimiento

@@ -267,6 +267,12 @@ The address anyone may write to, and the one that answers by itself. Background 
 [`DEMO-INTAKE.md`](DEMO-INTAKE.md). **Everything here delivers a real email** — send from a mailbox
 you can read.
 
+> Seven RFQs written for this are in [`seed/demo_client/test-rfqs/`](../seed/demo_client/test-rfqs/),
+> one per scenario, with a table of what each should produce. Dry-run one first —
+> `node scripts/dry-run-rfq.js <file>` replays the real routing, the real guards and the real
+> cover-variable capture offline, which matters because the public address only allows **three RFQs
+> per sender per day**: finding out by email that a label did not match costs a third of the budget.
+
 - [ ] **RFQ from an address that is in no registry row, sent to `demo@cifral.io`** → a proposal IS
       produced, against `demo_client`'s demo template, and filed in its proposals folder.
 - [ ] The message **arrives** at that unknown sender, threaded onto their message, **From**

@@ -1,0 +1,15 @@
+Subject: Automatic reply: RFQ — Modernización de los convertidores del sorter
+Header: Auto-Submitted: auto-replied
+Header: X-Autoreply: yes
+
+Estoy fuera de la oficina hasta el 2 de septiembre con acceso limitado al correo.
+
+Para asuntos urgentes, contacte con soporte@talleres-ebro.example.
+
+--
+Javier Solana
+Responsable de Mantenimiento
+
+On Mon, Aug 17, 2026 at 9:14 AM Cifral <demo@cifral.io> wrote:
+> Buenos días, adjuntamos la propuesta de muestra generada automáticamente a
+> partir del RFQ que nos ha enviado.

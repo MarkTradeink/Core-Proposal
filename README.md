@@ -93,8 +93,10 @@ templates/   build-templates.js + the four .docx templates it generates from the
              the neutral seeds (per-client starting points) and the demo pair demo@ sends
 scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check),
              check-intake-routing.js (replays the intake chain against the real node source),
-             client-docs.js (a client's setup guide + RFQ email template, from their own sheet)
-seed/        each client's Proposal Config CSVs (six tabs) — demo_client's are the starting point
+             client-docs.js (a client's setup guide + RFQ email template, from their own sheet),
+             dry-run-rfq.js (one RFQ through the real guards and capture, without sending it)
+seed/        each client's Proposal Config CSVs (six tabs) — demo_client's are the starting point,
+             plus demo_client/test-rfqs/: seven RFQs to send to demo@cifral.io and what each proves
 reference/   the legacy DEMO-01-RFQ export (do not modify) + written gap analysis
 docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEMO-INTAKE, DEPLOYMENT,
              ONBOARDING, PRICING-SHEET-TEMPLATE, TEMPLATE-GUIDE, RESELLER-EMAIL-GUIDE,

@@ -4,6 +4,47 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Feature — seven RFQs to send at the demo, and a dry run so they are not wasted (2026-08-18)
+
+There were no test RFQs anywhere in the repo. The only ones that existed were fixtures buried
+inside `check-intake-routing.js` and `render-sample.js`, written to make an assertion rather than to
+be sent, and the generated `demo_client-rfq-template.md` is a blank form pointed at
+`proposal@cifral.io`. So the first real exercise of the public address would have been improvised
+prose, which tests whatever the author happened to think of.
+
+`seed/demo_client/test-rfqs/` now holds seven, each picked because its *failure* looks like success:
+a full pipeline in Spanish, a proposal-only in English (the price chapter must be **gone**, not
+empty), a pricing-only that declares no cover variables at all (empty boxes, never `undefined`), an
+incomplete one that should come back asking for what is missing, a tier-C tender with eight numbered
+clauses, a supply-only one that says installation and engineering are excluded in as many words, and
+an autoresponder that must be swallowed in silence. The README says what each should produce and
+what to check.
+
+**`scripts/dry-run-rfq.js`** replays one through the real routing, the real guards and the real
+cover-variable capture, offline, against the actual node source. The demo allows three RFQs per
+sender per UTC day, so learning by email that a label did not match costs a third of the day's
+budget and four minutes of waiting — and it is precisely the deterministic half that fails
+*silently*: a junk-filter drop leaves no alert at all, and a label the sheet does not declare leaves
+a blank box on a cover. What the script cannot know it prints as such rather than guessing: request
+type, scope, tier and the missing-field check are a model call inside n8n.
+
+### Docs — a Proposal Config sheet older than the tabs it is missing (2026-08-18)
+
+`Client`, `Templates` and `Fields` were added on 2026-08-12, and a sheet created before then simply
+does not have them. The pipeline treats that as valid — all three are optional by design, so a
+client onboarded earlier keeps working — which is correct and is also why nothing tells you.
+
+Two of the three cost almost nothing. The third reaches the customer: with no `Fields` tab, `campos`
+is empty and **every `{campos.*}` tag in the template prints the literal word `undefined`**. The
+totality rule that keeps every other key present-but-empty cannot cover it, because with no tab
+there is nothing to enumerate. Verified by rendering the demo template against a config with the tab
+removed: `render-sample.js` fails on the word, exactly as it would appear on paper.
+
+That is now a section in `docs/CLIENT-DRIVE-SETUP.md` — what each absent tab costs, how to add the
+missing ones from the CSVs the repo already holds, and `check-template.js` as the tool that catches
+this specific failure before a document does.
+
+
 ### Feature — the demo answers by itself, from a template that says it is one (2026-08-18)
 
 `demo@cifral.io` has been open to any sender since 2026-08-11, but its answer stopped in Mark's
