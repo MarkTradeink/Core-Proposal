@@ -13,7 +13,7 @@
 Oferta nº: <opcional>
 Asset: <opcional>
 Project number: <opcional>
-Att.: <opcional>
+Att. <opcional>
 
 Cliente final: <razón social>
 Proyecto: <título del proyecto>
@@ -42,10 +42,10 @@ Requisitos:
 | `Oferta nº` | `Offer no` | no |
 | `Asset` | `Activo` | no |
 | `Project number` | `Nº proyecto` | no |
-| `Att.` | `Atn.`, `Attn` | no |
+| `Att.` | `Attn`, `Atn.` | no |
 
 No hace falta escribir estas, salen solas:
 
-- **razon_social** — fijo en la configuración: (sin valor todavía)
+- **razon_social** — fijo en la configuración: Cifral Automatización S.L.
 - **n_documento** — el número de propuesta que genera Cifral
 

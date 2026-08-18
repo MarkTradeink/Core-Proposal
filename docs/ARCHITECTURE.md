@@ -261,9 +261,13 @@ a finding — the client's contract text is not an agent's to rewrite.
   original RFQ. Mechanically this is *create draft → `drafts.send`*: the Gmail node's Send operation
   rebuilds `From` from the authenticated mailbox and would discard the alias, while its Create Draft
   operation honours both `fromAlias` and `threadId`. `client_config.send_mode = 'draft'` skips the
-  send step — the per-client rollback. **Except for public traffic:** anything that came in through
-  `demo@cifral.io` (`client_config.open_intake`), and the `demo_client` tenant generally, is forced
-  to `draft` here regardless of what the registry says — a stranger never gets an autonomous reply.
+  send step — the per-client rollback. **Public traffic answers to a different switch:** the
+  `demo_client` tenant's mode comes from `DEMO_SEND_MODE` in `modules/intake/intake_core.js`
+  (currently `send`), resolved once in `Map Client Config` and merely *read* here. This gate
+  normalises and fails closed — anything that is not the literal `send` becomes a draft.
+- **The covering email is composed in `Compute Proposal Fields`**, in the RFQ's language, with a
+  distinct version for the demo tenant that names itself a demonstration. The Gmail node renders
+  that string rather than carrying prose of its own.
 - Schema: `schemas/proposal-assembly.schema.json`.
 
 ## How the orchestrator composes them (`00-orchestrator-end-to-end.json`)
@@ -320,9 +324,11 @@ degrade to a new message with a synthetic subject rather than failing.
 Which address a message was **delivered to** decides how the client is resolved — full detail in
 `docs/DEMO-INTAKE.md`.
 
-- **`demo@cifral.io` is public.** It resolves to `demo_client` whoever wrote in, and its replies are
-  forced to `draft` in code (not read from the registry, whose failure mode defaults to *send*). This
-  is what makes the "send me an RFQ and I'll send back a sample proposal" CTA literal.
+- **`demo@cifral.io` is public.** It resolves to `demo_client` whoever wrote in, and its delivery
+  mode is decided in code by `DEMO_SEND_MODE` — never read from the registry, whose failure mode is
+  a value nobody chose. It ships as `send`, which is what makes "email your RFQ to demo@cifral.io
+  and try it yourself" literal. The document and the covering mail both say they are a
+  demonstration.
 - **`proposal@cifral.io` is private.** The sender's address must match a registry row's
   `commercial_contact_email`, exactly as before; an unknown sender is rejected.
 

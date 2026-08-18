@@ -19,7 +19,7 @@ Estas son las etiquetas que **puedes usar en la plantilla `.docx`**. Cualquier o
 |---|---|---|
 | `{campos.n_oferta}` | del correo, buscando `Oferta nº` o `Offer no` o `Oferta no` | sí |
 | `{campos.version_doc}` | del correo, buscando `Versión` o `Version` | no |
-| `{campos.atencion}` | del correo, buscando `Att.` o `Atn.` o `Attn` | no |
+| `{campos.atencion}` | del correo, buscando `Att.` o `Attn` o `Atn.` | no |
 | `{campos.n_activo}` | del correo, buscando `Asset` o `Activo` | no |
 | `{campos.n_proyecto}` | del correo, buscando `Project number` o `Nº proyecto` | no |
 | `{campos.razon_social}` | valor fijo en la hoja: `BEUMER Group Technology Iberia S.L.` | sí |

@@ -4,6 +4,85 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Feature — the demo answers by itself, from a template that says it is one (2026-08-18)
+
+`demo@cifral.io` has been open to any sender since 2026-08-11, but its answer stopped in Mark's
+drafts. That was the right default for an address nobody had been told about, and the wrong one for
+an address about to appear in outbound copy: the CTA is *"send your RFQ to demo@cifral.io and try
+it yourself"*, and a demo that replies when somebody gets round to it is not a demo. The reply is
+now delivered — in the sender's own thread, with the `.docx` and the PDF attached.
+
+**One switch, and every gate reads it.** `DEMO_SEND_MODE` in `modules/intake/intake_core.js` rides
+out on the envelope from `resolveIntake` and is resolved once, in the orchestrator's
+`Map Client Config`. The four gates downstream — Module 4's `Compute Proposal Fields`, the
+orchestrator's `Build Quote Draft` and `Build Missing Info Reply` — used to re-derive `'draft'` from
+`open_intake` each for themselves, which made a rollback a four-node edit and made "are they all
+still agreeing?" a question nobody could answer by reading one file. They now read the resolved
+value and **normalise** it: anything that is not the literal `send` becomes a draft. So a value lost
+in some future refactor costs a delivery rather than buying one, and the rollback is one line plus
+`npm run mirror`.
+
+What did *not* change is the thing worth keeping: the demo tenant's mode is still decided in code
+and never read from Notion. The reasoning in `docs/DEMO-INTAKE.md` §3 was never "draft is safe" — it
+was that a property which can be renamed, blanked or mistyped resolves to whatever the default
+happens to be, and a public address must not have its behaviour decided by an accident **in either
+direction**. Only the answer changed.
+
+**Sending made the wording load-bearing.** A human reading a draft supplies the missing context; a
+prospect opening an attachment does not.
+
+- The covering email was one hard-coded English paragraph on the Gmail node, addressed to a reseller
+  reviewing a proposal *"before it goes to the customer"* — wrong on both counts once the reader is
+  the prospect, and wrong again for the Spanish and German senders it answered in English. It is
+  composed in `Compute Proposal Fields` now, in the RFQ's own language, with a demo version that
+  says plainly what the document is and what gets adapted per client.
+- The `pricing_only` answer has a demo version too, and it prints **no subtotal**. The reseller
+  version does, because a reseller is entitled to their own cost basis; on the public route the
+  reader is the customer. The document itself never carried a subtotal tag at all.
+- `templates/build-templates.js` now emits four files: the two neutral seeds plus
+  `demo-proposal-template-{es,en}.docx`, marked as a demonstration on the cover, in the running
+  header, in the footer of every page and on an "About this document" notice page — which also
+  explains, to a reader who has never heard of any of this, which parts of what they are holding
+  are real and which are sample content.
+
+`scripts/check-intake-routing.js` carries the assertions, and they got sharper rather than weaker:
+every gate must agree with `DEMO_SEND_MODE`; the registry row is set to the *opposite* value and
+must still lose; Module 4's standalone copy of the constant must not have drifted from the core;
+four kinds of broken `send_mode` must all park the message while `'  Send '` must still normalise;
+and the demo mail must name itself a demonstration and answer a Spanish RFQ in Spanish.
+
+### Feature — the seed templates caught up with the catalog they are generated from (2026-08-18)
+
+Three gaps between what `render_context.js` emits and what `build-templates.js` puts on paper, all
+of them dating from the client-fields work below and all of them silent:
+
+**The cover printed `{proyecto.tipo}` and not `{proyecto.titulo}`.** The context has emitted the
+project's own title — as the sender words it, falling back to the type — since that work landed;
+the generated cover never used it, so every seed-derived template threw the better string away.
+
+**No `{campos.*}` anywhere.** The whole point of the `Fields` tab is that a client's ERP offer
+number reaches their cover, and the generated template had nowhere for it to land. It could not
+simply be added, either: a `{campos.*}` key the client's sheet does not declare prints the literal
+word `undefined`, so those tags can only be generated *per client*. The generator now reads
+`seed/<client_id>/proposal-config/fields.csv` through the same `parseFieldDefinitions()` the
+pipeline uses, and lays the cover out from it — a `request` field becomes a labelled line, the first
+`static` field becomes the issuer line above the title, and `auto` fields are deliberately left off
+because each one duplicates something the cover already prints under its own tag.
+
+**Which word to print was unanswerable.** `capture_label` holds comma-separated alternatives and the
+capture looks for all of them in any language, which is correct and unchanged. But nothing said
+which one a cover should *print*, and position cannot say it: `Oferta nº, Offer no` puts Spanish
+first while `Asset, Activo` puts English first, so the first English demo cover came out reading
+"Activo" and "Nº proyecto". An alternative may now carry an optional `es:` / `en:` tag, stripped
+before matching and used only for display. Untagged rows behave exactly as before, so no existing
+sheet has to change; `demo_client` and `beumer_marcos` are tagged.
+
+`npm run check` renders six documents now instead of four — the two demo templates included, since
+those are the ones that reach strangers with nobody in between. `scripts/render-sample.js` grew an
+`--out` flag so two templates at the same tier and language stop overwriting each other's output,
+which would otherwise have left a check quietly examining a document nobody meant to check.
+
+
 ### Change — workflow JSON now mirrors the live n8n layout (2026-08-14)
 
 Re-importing had become a chore: the repo carried its own node positions, so every import needed the

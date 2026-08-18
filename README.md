@@ -89,7 +89,8 @@ modules/proposal/  chapter_catalog.js   — resolves the catalog against a reque
                    field_capture.js     — the client's own cover variables, read from the RFQ by
                                           label (deterministic: no model ever touches an identifier)
                    render_context.js    — how proposal data is shaped for the .docx template
-templates/   build-templates.js + the seed .docx templates it generates from the catalog
+templates/   build-templates.js + the four .docx templates it generates from the catalog:
+             the neutral seeds (per-client starting points) and the demo pair demo@ sends
 scripts/     mirror-cores.js (repo -> n8n Code nodes), render-sample.js (offline render check),
              check-intake-routing.js (replays the intake chain against the real node source),
              client-docs.js (a client's setup guide + RFQ email template, from their own sheet)
@@ -100,9 +101,10 @@ docs/        ARCHITECTURE, CLIENT-DRIVE-SETUP, CLIENT-REGISTRY-SCHEMA, DEMO-INTA
              TESTING-MANUAL
 ```
 
-**Two intakes.** `demo@cifral.io` is public — it serves any sender as `demo_client` and can only
-ever produce a draft. `proposal@cifral.io` is for registered clients, matched by sender address.
-See [`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md).
+**Two intakes.** `demo@cifral.io` is public — it serves any sender as `demo_client`, metered by the
+intake guards, and **answers automatically** from a template that says on every page that it is a
+demonstration. `proposal@cifral.io` is for registered clients, matched by sender address. See
+[`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md).
 
 **The repo owns structure; Drive owns content.** Pricing numbers, chapter selection, clause libraries
 and the actual `.docx` templates live in each client's Google Drive folder so they change without a
@@ -129,8 +131,10 @@ pruning, incomplete-RFQ handling, recipient safety, sending alias, in-thread rep
 
 > ⚠️ Proposals and quotes are **sent**, not parked as drafts. Set a client's `send_mode` to `draft`
 > in the Notion registry to hold delivery while you test — see
-> [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md). The exception is public
-> traffic: anything arriving at `demo@cifral.io` is forced to draft in code and cannot send.
+> [`docs/CLIENT-REGISTRY-SCHEMA.md`](docs/CLIENT-REGISTRY-SCHEMA.md). Public traffic is not covered
+> by that switch: the demo tenant's mode is decided in code by `DEMO_SEND_MODE`
+> ([`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md) §3), which is currently `send` — a prospect emailing
+> `demo@cifral.io` gets the proposal back without anyone reading it first.
 
 Most of what can break is checkable offline in a few seconds:
 
@@ -141,10 +145,10 @@ npm run check
 
 That runs the five core self-checks, verifies the n8n Code nodes have not drifted from the repo,
 replays the intake chain end to end against the real node source
-([`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md)), and performs four real docxtemplater renders (tiers
-A/B/C in Spanish, tier B in English) against the real templates and the real seed config — failing
-on the two things that reach a customer silently, the literal word `undefined` and unrendered
-braces.
+([`docs/DEMO-INTAKE.md`](docs/DEMO-INTAKE.md)), and performs six real docxtemplater renders — tiers
+A/B/C in Spanish and tier B in English against the seeds, plus both demo templates, the ones that
+actually reach strangers — failing on the two things that reach a customer silently, the literal
+word `undefined` and unrendered braces.
 
 ## Deploying to n8n
 

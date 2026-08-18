@@ -13,14 +13,20 @@ Record the file id in the registry's `template_id_en` / `template_id_es` (see
 `CLIENT-REGISTRY-SCHEMA.md`). If `template_id_es` is empty, Spanish RFQs fall back to the English
 template.
 
-## Start from the seed, do not start from scratch
-
-`templates/proposal-template-es.docx` and `-en.docx` already contain all 105 conditional blocks and
-24 table loops, correctly tagged and correctly ordered. **Copy one, restyle it, upload it.**
+## Four generated files
 
 ```bash
-npm install && npm run templates     # regenerate the seeds from the catalog
+npm install && npm run templates     # regenerate all four from the catalog
 ```
+
+| File | What it is |
+|---|---|
+| `templates/proposal-template-es.docx` · `-en.docx` | The neutral **seeds**. All 105 conditional blocks and 24 table loops, correctly tagged and ordered, no branding and no client variables. The starting point for a new client. |
+| `templates/demo-proposal-template-es.docx` · `-en.docx` | What **`demo@cifral.io` actually sends**. The same blocks plus `demo_client`'s own cover variables, and marked as a demonstration on the cover, in the header, in the footer of every page and on a notice page of its own. |
+
+### Start from the seed, do not start from scratch
+
+**Copy a seed, restyle it, upload it.**
 
 What you should change: fonts, colours, the cover page, the header and footer, the logo, page setup,
 paragraph spacing, table borders. Word styles are yours.
@@ -29,6 +35,22 @@ What you should not change: the tags, and the rule that loop tags sit alone on t
 need a chapter the seed does not have, that is a catalog change (`schemas/chapter-catalog.json`) plus
 `npm run templates` — not a hand edit, because a tag the render context does not know about renders
 the literal word `undefined` into a customer's document.
+
+### The demo pair is a finished document, not a starting point
+
+It goes straight out to strangers who emailed an RFQ to `demo@cifral.io`
+([`DEMO-INTAKE.md`](DEMO-INTAKE.md)), with nobody reading it in between. Two things follow:
+
+- **The demo marking is load-bearing. Do not remove it when restyling.** A prospect must not be able
+  to mistake generic seed content for a quotation. The strings live in `UI.<lang>.demo*` in
+  `templates/build-templates.js`, and the notice page is `demoNotice()`.
+- **It carries `{campos.*}` tags and the seeds do not**, because those are generated from
+  `seed/demo_client/proposal-config/fields.csv`. A `{campos.*}` key nobody declares prints the
+  literal word `undefined`, so the generator can only emit them for a client whose `Fields` tab it
+  can read — which is precisely the mechanism the demo exists to show.
+
+`npm run check` renders both demo templates against `demo_client`'s real configuration, alongside
+the four seed renders.
 
 Word autocorrect is the most common cause of a broken template: it turns straight quotes into curly
 ones and can split a tag across two internal text runs. If a tag does not render, retype it in one go
@@ -185,7 +207,7 @@ Proposal Config sheet (`docs/CLIENT-DRIVE-SETUP.md`) and land here under `campos
 {campos.atencion}          Att.
 ```
 
-Three things to know before you type one into a template:
+Four things to know before you type one into a template:
 
 - **Only declared keys exist.** Every key the sheet declares is always present, empty rather than
   absent — the same totality rule as the rest of the context. A key the sheet does *not* declare
@@ -195,6 +217,31 @@ Three things to know before you type one into a template:
   their cover.
 - **Values captured from the email are verbatim.** No model touches them. What the sender typed
   after `Oferta nº:` is what prints.
+- **The generator can lay them out for you.** `templates/build-templates.js` reads
+  `seed/<client_id>/proposal-config/fields.csv` and writes the cover block itself — that is how the
+  demo pair gets its variables. A `request` field becomes a labelled line; the first `static` field
+  becomes the issuer line above the title; `auto` fields are left off, because each one duplicates
+  something the cover already prints under its own tag.
+
+### Which word gets printed: `es:` / `en:` tags
+
+`capture_label` holds comma-separated alternatives, and the capture looks for **all** of them on
+every message whatever the language — that has not changed. What was missing was which one to
+*print* on a cover.
+
+Position could not answer it, because position carries no language: `Oferta nº, Offer no` puts
+Spanish first and `Asset, Activo` puts English first, so an English cover generated from the same
+sheet came out reading "Activo". Tag them instead:
+
+```
+n_oferta      es:Oferta nº, en:Offer no
+n_activo      en:Asset, es:Activo
+atencion      es:Att., en:Attn, Atn.
+```
+
+The tag is stripped before matching, so all three alternatives still capture in any language.
+Untagged rows behave exactly as before — the first alternative prints — so no existing sheet has to
+change.
 
 Removing a header tag you do not want — `{proyecto.ubicacion}`, `{proyecto.plazo}` — is just a
 delete. The context still emits the key; nothing has to know the template stopped using it.

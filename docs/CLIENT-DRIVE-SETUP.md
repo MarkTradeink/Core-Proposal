@@ -130,7 +130,7 @@ Each row becomes a template tag: `{campos.<key>}`.
 | `key` | The tag name. Lowercase letters, digits and `_` only — tags are Jexl expressions, so a `-` reads as subtraction and an accent breaks the tag |
 | `source` | `static`, `request` or `auto` — see below |
 | `value` | For `static`, the literal text. For `auto`, which computed value to use |
-| `capture_label` | For `request`: the label(s) to look for, comma-separated alternatives |
+| `capture_label` | For `request`: the label(s) to look for, comma-separated alternatives. Prefix an alternative with `es:` or `en:` to say which one a cover in that language should **print** — every alternative is still matched in every language |
 | `required` | `yes` stops the proposal when the value is missing |
 | `notes` | For humans |
 

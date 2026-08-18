@@ -1,17 +1,23 @@
 # The public intake — `demo@cifral.io`
 
 `demo@cifral.io` accepts an RFQ from **anyone**, resolves it to the `demo_client` tenant, and
-answers with a proposal **that is never sent** — it stops as a Gmail draft for a human to read.
+**answers it — automatically, in the sender's own thread, with the `.docx` and the PDF attached.**
 `proposal@cifral.io` is unchanged: registered clients only, matched by sender.
 
-This is what makes the Demo Reflex CTA literal. The offer in every outbound message is *"send me a
-real RFQ, even an old one, and I'll send back a sample proposal"*, and until now that could not be
-taken at face value — a prospect writing in from their own address matched no registry row and was
-rejected. The documented workaround (`docs/14` §2.1 in the Vegapunk repo) was for Mark to forward
-the prospect's RFQ from his own address. That workaround still works and is still safe; it is now
-a convenience rather than a requirement.
+This is what makes the Demo Reflex CTA literal. The offer in every outbound message is *"send your
+RFQ to demo@cifral.io and try it yourself"*, and that only means anything if the answer arrives
+without Mark being awake. Two decisions got it there:
 
-Decision: Mark, 2026-08-11.
+- **2026-08-11** — the address was opened. Any sender resolves to `demo_client`; before that, a
+  prospect writing in from their own address matched no registry row and was rejected. The reply
+  was held as a draft.
+- **2026-08-18** — the reply is **sent**. The draft was the right default for an address nobody had
+  been told about; it is the wrong one for an address printed in outbound copy, because a demo that
+  answers when someone gets round to it is not a demo. The one switch that decides this is
+  `DEMO_SEND_MODE` in `modules/intake/intake_core.js` (§3).
+
+Nothing about the guards was relaxed to get there. The rate limits, the junk filter, the size caps
+and the tenant isolation backstop all still run, and all still run **before** the spend.
 
 ---
 
@@ -21,10 +27,10 @@ Decision: Mark, 2026-08-11.
 
 | Delivered to | Client | Sender must be known? | Replies |
 |---|---|---|---|
-| `demo@cifral.io` | always `demo_client` | **no** — anyone | **draft only** |
+| `demo@cifral.io` | always `demo_client` | **no** — anyone | per `DEMO_SEND_MODE` (currently **sent**) |
 | `proposal@cifral.io` | whichever registry row's `commercial_contact_email` matches the sender | **yes** — unknown senders rejected | per `send_mode` |
 | anything else | same as `proposal@` | yes | per `send_mode` |
-| chat trigger (no sender, no destination) | `demo_client` | n/a | draft only |
+| chat trigger (no sender, no destination) | `demo_client` | n/a | per `DEMO_SEND_MODE` |
 
 Three details that are load-bearing:
 
@@ -32,9 +38,11 @@ Three details that are load-bearing:
   delivered to; `To` is only what the sender typed. Alias delivery routinely puts the alias in `To`
   and the underlying mailbox in `Delivered-To`, so both are scanned, along with `Cc`,
   `X-Original-To` and `Envelope-To`.
-- **If both intake addresses appear, `demo@` wins.** It is the strictly safer of the two — demo
-  tenant, forced draft — so an ambiguous recipient list can never be the thing that buys live
-  sending to a stranger.
+- **If both intake addresses appear, `demo@` wins.** It is the containing route: the demo tenant,
+  the demo Drive folder, the demo rate card and the intake guards. An ambiguous recipient list can
+  therefore never be the thing that serves a *registered client's* material to a stranger — which
+  is the loss that would actually matter. What it does buy is a demo document; that is the address
+  doing its job.
 - **Opening `demo@` opened nothing else.** Any address that is not one of the two named constants
   keeps the registry route, so a future alias is private until someone deliberately adds it.
 
@@ -66,7 +74,7 @@ late to save the money.
 
 | # | Guard | Limit | On trip |
 |---|---|---|---|
-| 1 | **Draft mode** | `demo_client` never sends | — (see below) |
+| 1 | **Delivery mode** | one constant decides, in code, for the whole demo tenant | — (see below) |
 | 2 | **Rate limit** | 3 RFQs per sender per UTC day; 25 per day for the address overall | refused + Telegram |
 | 3 | **Junk filter** | autoresponders, bounces, mailing lists, no-reply senders, empty bodies | dropped **silently** |
 | 4 | **Size cap** | 10 MB per email, 10 attachments | refused + Telegram |
@@ -103,34 +111,76 @@ Both are acceptable for a cap whose job is to bound a bill. **It is not a securi
 `demo@` ever needs one, the counter belongs in a store with atomic increments, not in workflow
 static data.
 
-## 3. Guard 1 — why draft is forced in code, not read from Notion
+## 3. Guard 1 — one switch, in code, never read from Notion
 
-`docs/14` §2.3 flagged the risk before this was built: the registry property is named `send mode`
-(with a space), the docs call it `send_mode`, and *"a key that does not match does not raise, it
-yields `undefined`, and `undefined` is interpreted as the permissive option."*
+```js
+// modules/intake/intake_core.js
+const DEMO_SEND_MODE = 'send';   // or 'draft'
+```
 
-Checked, and worth recording precisely, because the conclusion is not the one that was feared:
+That constant is the whole of it. Flip it, run `npm run mirror`, re-import
+`workflows/00-orchestrator-end-to-end.json`, and the public address stops answering by itself —
+without editing a gate, a registry row or an IF node.
+
+**Why it is in code and not in the registry.** `docs/14` §2.3 flagged the risk before any of this
+was built: the registry property is named `send mode` (with a space), the docs call it `send_mode`,
+and *"a key that does not match does not raise, it yields `undefined`, and `undefined` is
+interpreted as the permissive option."* Checked, and the conclusion was not quite the one feared:
 
 - **The read is fine.** n8n's Notion node snake_cases property names, so `send mode` does arrive as
   `property_send_mode`. Renaming the Notion property is not necessary.
-- **The default was not fine.** `String(raw || 'send')` resolves *any* miss — property renamed,
-  select blanked, Notion hiccup — to **`send`**. That is a permissive failure mode, and a public
-  address cannot have one.
+- **The default was not.** `String(raw || 'send')` resolves *any* miss — property renamed, select
+  blanked, Notion hiccup — to a value nobody chose. A public address must not have its behaviour
+  decided by an accident, in **either** direction.
 
-So the demo tenant's `send_mode` is now **forced to `draft` in code** and the registry value is not
-consulted for it. Setting `send mode = draft` in Notion is still good hygiene, and now nothing
-depends on it.
+So the demo tenant's mode is decided here and the registry value is not consulted for it. That was
+true when the answer was `draft` and it is still true now the answer is `send`; only the answer
+changed. Whatever `send mode` says on `demo_client`'s row has no effect.
 
-It is asserted at all three gates that stand between a rendered proposal and Gmail's `drafts.send`,
-because any single one of them is one refactor away from being wrong:
+### How the value travels
 
-1. the orchestrator's **Map Client Config** (`intake.open || client_id === 'demo_client'`);
-2. Module 4's **Compute Proposal Fields** and its standalone **Map Client Config**
-   (`client_config.open_intake === true`, or the demo tenant by id);
-3. the orchestrator's **Build Quote Draft**, for the `pricing_only` branch.
+One decision point, and then everybody reads it:
 
-`Send Mode?` and `Send Quote?` fire only on `send_mode === 'send'` exactly, so anything unexpected
-lands on the draft branch rather than the send branch.
+1. `resolveIntake()` puts `demo_send_mode` on the envelope, on **every** route — the demo tenant is
+   also reachable through the registry route when Mark forwards a prospect's RFQ from his own
+   address, and both paths have to reach the same answer.
+2. The orchestrator's **Map Client Config** resolves `client_config.send_mode` once: from
+   `DEMO_SEND_MODE` for the demo tenant, from the registry row for everyone else. It also sets
+   `demo_tenant`, which is what makes the document and the covering email label themselves.
+3. Every gate after that — Module 4's **Compute Proposal Fields**, the orchestrator's **Build Quote
+   Draft** and **Build Missing Info Reply** — *reads* that value instead of re-deriving one.
+
+Those gates used to re-derive `'draft'` from `open_intake`, which is what made a rollback a
+four-node edit. They now normalise instead, and they **fail closed**: anything that is not the
+literal string `send` (missing, empty, an unexpected Notion object shape, a typo) becomes a draft.
+A value lost in a future refactor therefore costs a delivery, never buys one.
+`Send Mode?` and `Send Quote?` are plain equality tests against `'send'` for the same reason.
+
+The same rule covers a **partial re-import**: an envelope built by a `Build Envelope` older than
+this change carries no `demo_send_mode`, and `Map Client Config` reads that as `draft`. Of the two
+ways to be wrong, a demo that has gone quiet announces itself in Telegram; a demo that sends when it
+should not announces itself in a stranger's inbox.
+
+`scripts/check-intake-routing.js` asserts all of it against the real node source: that every gate
+agrees with `DEMO_SEND_MODE`, that the registry row saying the opposite changes nothing, that
+Module 4's standalone copy of the constant has not drifted, and that four kinds of broken
+`send_mode` all park the message.
+
+### What a stranger receives
+
+Sending to a stranger made the *wording* load-bearing, in a way a draft never did — a human reading
+a draft supplies the context; a prospect opening an attachment does not. So:
+
+- **The covering email says it is a demonstration**, in the language the RFQ was written in. It used
+  to be one hard-coded English paragraph on the Gmail node, addressed to a reseller reviewing a
+  proposal "before it goes to the customer" — wrong on both counts once the reader is the prospect.
+  It is composed in **Compute Proposal Fields** now, and asserted by the checks.
+- **The document says it too** — on the cover, in the running header, in the footer of every page,
+  and in a notice page of its own. See `templates/demo-proposal-template-{es,en}.docx` and
+  [`TEMPLATE-GUIDE.md`](TEMPLATE-GUIDE.md).
+- **The `pricing_only` answer prints no subtotal.** The reseller version does, because a reseller is
+  entitled to their own cost basis; on the public route the reader is the customer, so only sell
+  prices go out. The document itself never carried a subtotal tag at all.
 
 ## 4. Guard 5 — what a stranger can and cannot see
 
@@ -158,12 +208,18 @@ Nothing in code can enforce that; it is a property of what is in the folder. It 
 re-check before pointing outbound traffic at `demo@`, and again whenever anything is added to that
 folder. Onboarding a real client means a **new registry row**, never reusing the demo tenant's.
 
+This rule was already the load-bearing one when the reply was a draft; sending makes it the *only*
+one. A human no longer reads the document before the prospect does, so anything in that folder is
+one RFQ away from a stranger's inbox.
+
 Two lesser notes:
 
-- The draft's recipient is the actual sender, and the reply threads into their original message.
-  That is the intent, and draft mode is what makes it safe.
+- The recipient is the actual sender, and the reply threads into their original message. It is
+  addressed from `demo@cifral.io`, which must be a **verified 'Send mail as' alias** on the Gmail
+  account that owns the credential — an unverified alias survives draft creation and fails at
+  `drafts.send`, which is exactly the step that used not to run.
 - The document prints sell prices only; the internal `subtotal` is deliberately not in the render
-  context. That predates this change and still holds for public traffic.
+  context, and the public quote email drops it too.
 
 ## 5. Testing it
 
@@ -173,39 +229,63 @@ Two lesser notes:
 npm run check
 ```
 
-Two of its steps cover this change:
+Three of its steps cover this:
 
-- `node modules/intake/intake_core.js` — routing and the guards in isolation.
+- `node modules/intake/intake_core.js` — routing, the guards and the demo switch in isolation.
 - `node scripts/check-intake-routing.js` — the end-to-end check. It pulls the `jsCode` **straight
   out of the workflow JSON** and executes it through a small n8n shim in graph order —
   Gmail item → Build Envelope → Intake Guard → Notion rows → Map Client Config → Module 4's
   Compute Proposal Fields — so it tests what actually ships, not a copy. It asserts a stranger's
   RFQ to `demo@` produces a proposal addressed to that stranger, from the demo template, with
-  `send_mode = draft` at every gate; that `proposal@` still rejects the same stranger and still
-  serves a registered client their own template with `send_mode = send`; and that no path from any
-  trigger reaches the registry read or a module without passing the guard.
+  every gate resolving to `DEMO_SEND_MODE` while the registry row says the opposite; that a
+  garbled `send_mode` still parks the message; that the covering email names itself a
+  demonstration and answers a Spanish RFQ in Spanish; that `proposal@` still rejects the same
+  stranger and still serves a registered client their own template and their own kill switch; and
+  that no path from any trigger reaches the registry read or a module without passing the guard.
+- `npm run render` — six real docxtemplater renders, two of them against the **demo templates**
+  that go out to strangers.
 
-### Live — the check `docs/14` §2.3 calls blocking
+### Live — do this before publishing the address anywhere
 
 Offline checks prove the logic; only a live run proves the alias, the credential and Gmail's
-threading. Before pointing any outbound traffic at `demo@`:
+threading. **Sending raises the stakes of step 1: there is no longer a human between the render and
+the prospect.**
 
-1. Confirm `demo_client`'s registry row is `Client Status = trial`, and that its Drive folders hold
-   only generic material (§4).
-2. From an address that is **not** in the registry, email `demo@cifral.io` with a real RFQ.
-3. Expect, within a few minutes: a Telegram "draft ready" alert, a `.docx` + PDF in the demo
-   proposals folder, and **a draft in the mailbox that has not been sent**.
-4. Verify in Gmail that the message sits in **Drafts**, not in **Sent**, addressed to the sender's
-   address, threaded onto their message, from `demo@cifral.io`.
-5. Send a fourth RFQ from the same address the same day and confirm the rate-limit Telegram alert
+1. Confirm `demo_client`'s registry row is `Client Status = trial`, and — the load-bearing one —
+   that its Drive folders hold **only generic material** (§4). Read the reference-docs folder, the
+   Proposal Config sheet and the pricing sheet, not just their names.
+2. Confirm `demo@cifral.io` is a **verified 'Send mail as' alias** on the Gmail account that owns
+   the n8n credential. An unverified alias creates the draft happily and fails on `drafts.send`,
+   which is the step that never used to run.
+3. From an address that is **not** in the registry — and that you can read — email
+   `demo@cifral.io` with a real RFQ. Do this once with a Spanish RFQ and once with an English one.
+4. Expect, within a few minutes: a Telegram `🆕 Demo used` lead alert, a second alert reading
+   **`proposal SENT ✅`**, a `.docx` + PDF in the demo proposals folder, and **the mail in that
+   inbox** — threaded onto your message, from `demo@cifral.io`, with both files attached.
+5. Open it as the prospect would. The covering mail must be in the RFQ's language and must say it
+   is a demonstration; the PDF's cover, header and footer must carry the demo marking; the contents
+   list must have real page numbers.
+6. Send a fourth RFQ from the same address the same day and confirm the rate-limit Telegram alert
    fires and nothing is generated.
 
-If anything is *sent* at step 4, stop and do not publish the address — that means a send gate was
-reached, which the offline checks say is impossible, so something differs between the repo JSON and
-what is running in n8n. Re-import `workflows/00-orchestrator-end-to-end.json` and
-`workflows/04-proposal-assembly.json`.
+If nothing arrives at step 4 but Telegram says `SENT ✅`, the alias is the first thing to check. If
+the Telegram says `drafted 📝`, the running n8n is behind the repo — re-import
+`workflows/00-orchestrator-end-to-end.json` and `workflows/04-proposal-assembly.json`.
+
+### The rollback
+
+One line, and it does not need a decision from anyone else:
+
+```bash
+# modules/intake/intake_core.js -> const DEMO_SEND_MODE = 'draft';
+npm run check && npm run mirror
+```
+
+then re-import the orchestrator. Every gate follows, because every gate reads that one value.
 
 ## 6. What changed in the repo
+
+### 2026-08-11 — the address was opened
 
 | File | Change |
 |---|---|
@@ -216,4 +296,15 @@ what is running in n8n. Re-import `workflows/00-orchestrator-end-to-end.json` an
 | `scripts/mirror-cores.js` | mirrors the intake core into the two orchestrator nodes |
 | `package.json` | both new checks run in `npm run check` |
 
-No change to Modules 1, 2 or 3: they receive the same envelope they always did.
+### 2026-08-18 — the demo answers by itself
+
+| File | Change |
+|---|---|
+| `modules/intake/intake_core.js` | **new** `DEMO_SEND_MODE` — the one switch; `resolveIntake` carries it on every route |
+| `workflows/00-orchestrator-end-to-end.json` | `Map Client Config` resolves the mode once from that switch and flags `demo_tenant`; `Build Quote Draft` and `Build Missing Info Reply` read it instead of re-deriving `draft`, and fail closed; the quote email has a demo version with no subtotal; `RFQ Needs Review` reports what actually happened |
+| `workflows/04-proposal-assembly.json` | `Compute Proposal Fields` reads the resolved mode and **composes the covering email** per language and per tenant; the Gmail node renders it instead of its own hard-coded English |
+| `scripts/check-intake-routing.js` | asserts every gate against `DEMO_SEND_MODE`, that the registry cannot override it, that Module 4's standalone copy has not drifted, that four broken values all park the message, and that the demo mail says what it is |
+| `templates/build-templates.js` | generates `demo-proposal-template-{es,en}.docx` alongside the seeds |
+| `package.json` | the two demo templates are rendered by `npm run check` too |
+
+No change to Modules 1, 2 or 3 in either round: they receive the same envelope they always did.

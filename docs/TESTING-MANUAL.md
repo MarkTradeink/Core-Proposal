@@ -15,11 +15,15 @@ change a workflow.
       `pricing_sheet_id`, `notification_chat_id`. (`reference_docs_folder_id` optional.)
 - [ ] **`send_mode` = `draft`** on every registry row. Scenarios 1–12 are written for draft mode, so
       nothing leaves the mailbox while you work through them. Scenario 15 is where you flip it —
-      and it needs a **second, non-demo** row, because `demo_client` is now pinned to draft in code.
+      and it needs a **second, non-demo** row, because the demo tenant does not read that column.
+- [ ] ⚠️ **`demo_client` is the exception, and it now SENDS.** Its mode comes from `DEMO_SEND_MODE`
+      in `modules/intake/intake_core.js`, not from Notion, and it ships as `send`. Every scenario
+      addressed to `demo@cifral.io` therefore delivers a real email to whoever sent the RFQ. Use a
+      mailbox you control, or set the constant to `draft` and `npm run mirror` before you start.
 - [ ] Chase the intake scenarios (12b) from a mailbox that is **not** in the registry, and expect
       the rate limit to bite on the fourth message of the day from any one address.
-- [ ] Both aliases verified as "Send mail as" on the Gmail account (see `DEPLOYMENT.md`) — needed
-      from Scenario 15 onwards, and harmless before.
+- [ ] Both aliases verified as "Send mail as" on the Gmail account (see `DEPLOYMENT.md`) — `demo@`
+      is needed from Scenario 5b onwards now that the demo delivers, not only from Scenario 15.
 - [ ] Pricing Google Sheet created and shared (see `PRICING-SHEET-TEMPLATE.md`).
 - [ ] Community node `n8n-nodes-docxtemplater` installed and Gotenberg reachable (see `DEPLOYMENT.md`).
 - [ ] Master **`.docx`** template uploaded to Drive with the tags from `TEMPLATE-GUIDE.md`, and
@@ -119,9 +123,13 @@ Check:
 **Send** an incomplete RFQ to `demo@cifral.io` from an address that is not in the registry.
 
 Check:
-- [ ] The reply is composed and left as a **draft** — `open_intake` forces draft at the last gate
-      regardless of any registry value. Nothing is sent to a stranger autonomously.
-- [ ] The Telegram alert says the reply is waiting as a draft.
+- [ ] The reply **arrives in that mailbox**, in the original thread, from `demo@cifral.io`, listing
+      the missing items in the RFQ's language. Asking the prospect for the one field they left out
+      is the most useful message this system sends; holding it as a draft is what made the demo
+      feel dead.
+- [ ] The Telegram alert says the reply was sent, not that it is waiting.
+- [ ] Set `DEMO_SEND_MODE = 'draft'`, `npm run mirror`, re-import the orchestrator, re-run → the
+      same reply is composed and **stays in Drafts**, and the Telegram says so. Put it back.
 
 ## Scenario 5c — The demo was used (lead capture)
 
@@ -255,24 +263,31 @@ its normal case (Scenario 12b).
 
 ## Scenario 12b — The public intake (`demo@cifral.io`)
 
-The address anyone may write to. Background and rationale: [`DEMO-INTAKE.md`](DEMO-INTAKE.md).
-Everything here is expected to stay in Drafts — that is the point of the scenario.
+The address anyone may write to, and the one that answers by itself. Background and rationale:
+[`DEMO-INTAKE.md`](DEMO-INTAKE.md). **Everything here delivers a real email** — send from a mailbox
+you can read.
 
 - [ ] **RFQ from an address that is in no registry row, sent to `demo@cifral.io`** → a proposal IS
-      produced, against `demo_client`'s template, and filed in its proposals folder.
-- [ ] The draft's **To:** is that unknown sender, threaded onto their message, **From**
-      `demo@cifral.io`.
-- [ ] It is in **Drafts**. Check **Sent** and confirm it is not there. `Send Draft` shows as skipped
-      in the execution.
+      produced, against `demo_client`'s demo template, and filed in its proposals folder.
+- [ ] The message **arrives** at that unknown sender, threaded onto their message, **From**
+      `demo@cifral.io`, with the `.docx` and the PDF attached. Telegram reads `SENT ✅`.
+- [ ] Read the covering email as the prospect would: it is in the **RFQ's language**, it says it is
+      a demonstration, and it says the template is adapted per client. It must not read as a
+      reseller reviewing something "before it goes to the customer".
+- [ ] Open the PDF: **DEMO** in the running header, the demo badge in the footer of every page, the
+      demonstration line on the cover, and the "About this document" notice page after it.
 - [ ] The same address emailing **`proposal@cifral.io`** is still rejected ("sender is not in the
       client registry"). Only the destination changed.
 - [ ] A **registered** client emailing `demo@cifral.io` gets `demo_client`'s template, not their own
-      — the destination decides, and it drafts rather than sends.
-- [ ] Set `demo_client`'s `send mode` to `send` in Notion and re-run the first case → it **still
-      drafts**. The registry value is not consulted for the demo tenant; draft is forced in code.
-      (Put it back to `draft` afterwards anyway.)
+      — the destination decides.
+- [ ] Set `demo_client`'s `send mode` to `draft` in Notion and re-run the first case → it **still
+      sends**. The registry value is not consulted for the demo tenant. (Put it back afterwards.)
+- [ ] Set `DEMO_SEND_MODE = 'draft'`, `npm run mirror`, re-import, re-run → it **drafts** at every
+      branch: proposal, quote and missing-info reply. That is the rollback, and it is one line.
 - [ ] Forward an RFQ to `demo@` from Mark's own address (the pre-change workaround) → still works,
-      still drafts.
+      and now also sends.
+- [ ] A `pricing_only` RFQ to `demo@` → the quote email quotes the **total only**. Confirm no
+      `Subtotal:` line: that is the pre-margin cost basis and the reader here is the customer.
 
 ### The guards
 
@@ -312,14 +327,14 @@ Send an RFQ with a distinctive subject (e.g. `RFQ - conveyor line for Zaragoza p
 - [ ] Now run the same RFQ through the **chat trigger** → `thread_id` is `null` and the subject falls
       back to `Proposal PROP-… — Company`. (Confirms the no-thread path doesn't emit a bare `Re: RFQ`.)
 
-## Scenario 15 — Live sending and the rollback switch
+## Scenario 15 — Live sending and the per-client rollback switch
 
-The first scenario that actually delivers mail. Do it with `commercial_contact_email` pointing at a
-mailbox you control.
+This is the `send_mode` **column** — the per-client kill switch on `proposal@`. Do it with
+`commercial_contact_email` pointing at a mailbox you control.
 
-> **`demo_client` cannot be used for this scenario any more.** The demo tenant is public and is
-> pinned to `draft` in code, so setting `send mode = send` on it changes nothing (that is Scenario
-> 12b's sixth check). Use a **second registry row** — `acme_client` from Scenario 11 — with
+> **`demo_client` cannot be used for this scenario.** The demo tenant does not read that column at
+> all: its mode comes from `DEMO_SEND_MODE` in code, which is a different switch with a different
+> rollback (Scenario 12b). Use a **second registry row** — `acme_client` from Scenario 11 — with
 > `Client Status = active`, and send to `proposal@cifral.io`.
 
 - [ ] Verify both aliases first (`DEPLOYMENT.md`) — otherwise this scenario is expected to fail at
