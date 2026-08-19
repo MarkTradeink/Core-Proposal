@@ -118,7 +118,26 @@ function parseFieldDefinitions(rows, warnings) {
     // Comma-separated alternatives, so 'Oferta nº, Offer no' captures one field in either
     // language without needing two rows. A label containing a comma is the one thing this
     // cannot express.
-    const labels = normText(r.capture_label).split(',').map((x) => x.trim()).filter(Boolean);
+    //
+    // An alternative may carry an OPTIONAL language tag — 'es:Oferta nº, en:Offer no'. The tag is
+    // stripped for capture, which still looks for every alternative on every message: a Spanish
+    // sender who writes 'Offer no' is understood, and always was. What the tag adds is which one
+    // to PRINT, on a cover rendered in that language.
+    //
+    // Without it the printed label had to be guessed from position, and position carries no
+    // language: 'Asset, Activo' and 'Oferta nº, Offer no' put opposite languages first, so an
+    // English cover came out reading 'Activo'. Untagged rows keep the old behaviour exactly —
+    // the first alternative prints — so nothing that exists today has to change.
+    const rawLabels = normText(r.capture_label).split(',').map((x) => x.trim()).filter(Boolean);
+    const labelByLang = {};
+    const labels = rawLabels.map((raw) => {
+      const m = raw.match(/^(es|en)\s*:\s*(.+)$/i);
+      if (!m) return raw;
+      const lang = m[1].toLowerCase();
+      const text = m[2].trim();
+      if (text && !labelByLang[lang]) labelByLang[lang] = text;
+      return text;
+    }).filter(Boolean);
     const required = TRUTHY.includes(normText(r.required).toLowerCase());
 
     if (source === 'request' && !labels.length) { warn(`key '${key}' has source 'request' but no capture_label — nothing to look for, row ignored`); continue; }
@@ -126,7 +145,10 @@ function parseFieldDefinitions(rows, warnings) {
     if (source === 'static' && !value && required) warn(`key '${key}' is required but its static value is empty`);
 
     seen.add(key);
-    out.push({ key, source, value, labels, required, notes: normText(r.notes) });
+    // `labels` is what the capture looks for; `label_by_lang` is only ever what a template
+    // PRINTS. Keeping them apart is what lets the two lists differ without either one surprising
+    // the other.
+    out.push({ key, source, value, labels, label_by_lang: labelByLang, required, notes: normText(r.notes) });
   }
   return out;
 }
@@ -229,6 +251,8 @@ if (require.main === module) {
   const defs = parseFieldDefinitions([
     { key: 'offer_no', source: 'request', value: '', capture_label: 'Oferta nº, Offer no', required: 'yes' },
     { key: 'asset_no', source: 'request', value: '', capture_label: 'Asset', required: '' },
+    // Language-tagged alternatives: captured on either word, printed in the reader's own.
+    { key: 'tagged', source: 'request', value: '', capture_label: 'es:Nº activo, en:Asset no', required: '' },
     { key: 'project_no', source: 'request', value: '', capture_label: 'Project number', required: 'yes' },
     { key: 'att', source: 'request', value: '', capture_label: 'Att.', required: '' },
     { key: 'issuer_name', source: 'static', value: 'BEUMER Group Technology Iberia S.L.', capture_label: '', required: 'yes' },
@@ -241,7 +265,15 @@ if (require.main === module) {
     { key: 'badauto', source: 'auto', value: 'not_a_thing', capture_label: '', required: '' },
   ], warnings);
 
-  if (defs.length !== 6) problems.push(`expected 6 valid definitions, got ${defs.length}`);
+  if (defs.length !== 7) problems.push(`expected 7 valid definitions, got ${defs.length}`);
+
+  const tagged = defs.find((d) => d.key === 'tagged');
+  if (tagged.labels.join('|') !== 'Nº activo|Asset no') problems.push(`the language tag must be stripped for capture: ${tagged.labels.join('|')}`);
+  if (tagged.label_by_lang.es !== 'Nº activo' || tagged.label_by_lang.en !== 'Asset no') problems.push('a tagged label must be printable per language');
+  const untagged = defs.find((d) => d.key === 'offer_no');
+  if (Object.keys(untagged.label_by_lang).length) problems.push('an untagged row must declare no printable label, so the first alternative keeps printing');
+  if (captureFields('Nº activo: A-991', defs).values.tagged !== 'A-991') problems.push('a tagged label must still capture');
+  if (captureFields('Asset no: A-991', defs).values.tagged !== 'A-991') problems.push('the other language of a tagged label must capture too');
   if (warnings.length !== 5) problems.push(`expected 5 warnings, got ${warnings.length}: ${warnings.join(' | ')}`);
 
   const body = [

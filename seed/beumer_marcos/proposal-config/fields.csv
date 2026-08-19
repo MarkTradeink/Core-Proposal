@@ -1,8 +1,8 @@
 key,source,value,capture_label,required,notes
-n_oferta,request,,"Oferta nº, Offer no, Oferta no",yes,"Número de oferta del CRM de SAP. Se genera allí y viaja en el correo; el sistema lo lee tal cual."
-version_doc,request,,"Versión, Version",,"Versión de la oferta. Si no viene, usa document_version de la pestaña Client."
-atencion,request,,"Att., Atn., Attn",,"Persona del cliente a cuya atención va la oferta. Va en portada bajo la razón social."
-n_activo,request,,"Asset, Activo",,"Número de activo de la instalación, cuando aplique."
-n_proyecto,request,,"Project number, Nº proyecto",,"Código de proyecto, cuando aplique."
+n_oferta,request,,"es:Oferta nº, en:Offer no, Oferta no",yes,"Número de oferta del CRM de SAP. Se genera allí y viaja en el correo; el sistema lo lee tal cual."
+version_doc,request,,"es:Versión, en:Version",,"Versión de la oferta. Si no viene, usa document_version de la pestaña Client."
+atencion,request,,"es:Att., en:Attn, Atn.",,"Persona del cliente a cuya atención va la oferta. Va en portada bajo la razón social."
+n_activo,request,,"en:Asset, es:Activo",,"Número de activo de la instalación, cuando aplique."
+n_proyecto,request,,"en:Project number, es:Nº proyecto",,"Código de proyecto, cuando aplique."
 razon_social,static,BEUMER Group Technology Iberia S.L.,,yes,"Razón social emisora. Va en la primera línea de la portada."
 copyright,static,© BEUMER Group 2026,,,"Línea de copyright del pie. Actualízala cada año."

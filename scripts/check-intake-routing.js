@@ -12,8 +12,13 @@
 //               -> (Client OK?) -> ... -> Module 4 'Compute Proposal Fields'
 //
 // So a wrapper that stops passing the truncated body along, a rewiring that reads the envelope
-// from the wrong node, or anything that lets `send_mode` come back as 'send' for a stranger,
-// fails here rather than in someone's inbox.
+// from the wrong node, or a gate that disagrees with the others about whether the demo answers by
+// itself, fails here rather than in someone's inbox.
+//
+// The demo now DELIVERS its proposal (DEMO_SEND_MODE in modules/intake/intake_core.js). That
+// makes the assertion sharper rather than weaker: every gate has to reach the SAME verdict as
+// that one constant, the registry must still have no say over the demo tenant, and proposal@
+// must still refuse a stranger outright.
 //
 // The registry it runs against deliberately holds TWO clients — the demo tenant and a paying one
 // with its own template, clause sheet, rate card and Drive folders — because "M4 must not leak
@@ -24,6 +29,10 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
+// The source of truth for what the public intake does with a finished document. Every gate is
+// asserted against THIS, so flipping it in the core is all a rollback takes.
+const { DEMO_SEND_MODE } = require(path.join(ROOT, 'modules/intake/intake_core.js'));
+const OTHER_MODE = DEMO_SEND_MODE === 'send' ? 'draft' : 'send';
 const ORCH = JSON.parse(fs.readFileSync(path.join(ROOT, 'workflows/00-orchestrator-end-to-end.json'), 'utf8'));
 const M4 = JSON.parse(fs.readFileSync(path.join(ROOT, 'workflows/04-proposal-assembly.json'), 'utf8'));
 
@@ -115,7 +124,10 @@ const DEMO_ROW = {
   property_client_id: 'demo_client',
   property_client_name: 'Cifral Demo',
   property_client_status: 'trial',
-  property_send_mode: 'send', // deliberately the DANGEROUS value — code must override it
+  // Deliberately the OPPOSITE of DEMO_SEND_MODE. The demo tenant's delivery mode is decided in
+  // code, never read from Notion, so this value must never be the one that comes out — whichever
+  // way round the switch is set.
+  property_send_mode: OTHER_MODE,
   property_service_tier: 'full_pipeline',
   property_commercial_contact_email: 'mark@cifral.io',
   property_template_id_en: 'demo-template-en',
@@ -177,8 +189,10 @@ check('is NOT rejected as an unknown sender', stranger.mapped.reason === undefin
 check('the reply is addressed to the stranger, not to a registry contact',
   stranger.mapped.client_config.reply_to === 'jamie@machine-building.example');
 check('sends from the demo alias', stranger.mapped.client_config.from_alias === 'demo@cifral.io');
-check('send_mode is draft even though the registry row says send',
-  stranger.mapped.client_config.send_mode === 'draft', `got '${stranger.mapped.client_config.send_mode}'`);
+check(`send_mode is '${DEMO_SEND_MODE}' from the code, ignoring the registry row's '${OTHER_MODE}'`,
+  stranger.mapped.client_config.send_mode === DEMO_SEND_MODE, `got '${stranger.mapped.client_config.send_mode}'`);
+check('the demo tenant is flagged as such, so the document and the mail can say so',
+  stranger.mapped.client_config.demo_tenant === true);
 check('the envelope is marked as public intake', stranger.mapped.client_config.open_intake === true);
 check('the RFQ body reaches Module 1 intact',
   stranger.mapped.data.text.includes('palletiser cell') && stranger.mapped.data.text.includes('Zaragoza'));
@@ -212,10 +226,10 @@ check('a registered client is not flagged as public intake', clientAtProposal.ma
 console.log('\ndestination beats sender in both directions');
 const clientAtDemo = intake(gmailItem({ to: 'demo@cifral.io', from: 'Acme Sales <sales@acme-intralogistics.example>' }));
 check('a registered client writing to demo@ gets the DEMO tenant, not their own',
-  clientAtDemo.mapped.client_id === 'demo_client' && clientAtDemo.mapped.client_config.send_mode === 'draft');
+  clientAtDemo.mapped.client_id === 'demo_client' && clientAtDemo.mapped.client_config.send_mode === DEMO_SEND_MODE);
 const bothAddressed = intake(gmailItem({ to: 'proposal@cifral.io', extraHeaders: { Cc: 'demo@cifral.io' } }));
-check('demo@ wins when both are addressed, so ambiguity never buys live sending',
-  bothAddressed.mapped.client_id === 'demo_client' && bothAddressed.mapped.client_config.send_mode === 'draft');
+check('demo@ wins when both are addressed, so ambiguity always lands on the demo tenant',
+  bothAddressed.mapped.client_id === 'demo_client' && bothAddressed.mapped.client_config.send_mode === DEMO_SEND_MODE);
 
 // --- 4. the guards, through the real nodes --------------------------------
 console.log('\nthe guards, as wired');
@@ -260,40 +274,38 @@ console.log('\nthe chat trigger (no sender, no destination) is unchanged');
   check('has no thread to reply into and says so', chat.mapped.email_context.thread_id === null);
 }
 
-// --- 6. nothing goes out: the send gates, evaluated ------------------------
-console.log('\nnothing is sent — the gates that decide it');
-const proposalFields = runNode({
-  code: CODE.computeProposalFields,
-  json: {
-    client_id: stranger.mapped.client_id,
-    client_config: stranger.mapped.client_config,
-    email_context: stranger.mapped.email_context,
-    proposal_config: { language: 'en', tier: 'B', all_keys: [], chapters: [], clauses: [], table_columns: {} },
-    data: {
-      rfq: {
-        language: 'en',
-        client: { company: 'Machine Building Systems Ltd', contact_name: 'Jamie', email: 'jamie@machine-building.example' },
-        project: { type: 'palletiser cell' },
-        technical_requirements: [{ item: 'robotic palletiser', quantity: 1 }],
-        scope_of_supply: { materials: true, installation: true },
-      },
-      content: { sections: {}, tables: {} },
-      pricing: null,
+// --- 6. the send gates, evaluated ------------------------------------------
+console.log(`\nthe gates that decide delivery — all of them must say '${DEMO_SEND_MODE}'`);
+const PROPOSAL_INPUT = {
+  client_id: stranger.mapped.client_id,
+  client_config: stranger.mapped.client_config,
+  email_context: stranger.mapped.email_context,
+  proposal_config: { language: 'en', tier: 'B', all_keys: [], chapters: [], clauses: [], table_columns: {} },
+  data: {
+    rfq: {
+      language: 'en',
+      client: { company: 'Machine Building Systems Ltd', contact_name: 'Jamie', email: 'jamie@machine-building.example' },
+      project: { type: 'palletiser cell' },
+      technical_requirements: [{ item: 'robotic palletiser', quantity: 1 }],
+      scope_of_supply: { materials: true, installation: true },
     },
+    content: { sections: {}, tables: {} },
+    pricing: null,
   },
-  items: [],
-})[0].json;
+};
+const proposalFields = runNode({ code: CODE.computeProposalFields, json: PROPOSAL_INPUT, items: [] })[0].json;
 
 check('Module 4 computes a proposal for the stranger', /^PROP-\d{8}-[A-Z0-9]{6}$/.test(proposalFields.proposal_number));
 check('it renders from the demo template', proposalFields.template_id === 'demo-template-en');
 check('it files into the demo tenant\'s Drive folder', proposalFields.proposals_folder_id === 'demo-proposals-folder');
-check('the draft is addressed to the stranger', proposalFields.recipient_email === 'jamie@machine-building.example');
-check('Module 4 resolves send_mode = draft', proposalFields.send_mode === 'draft', `got '${proposalFields.send_mode}'`);
+check('the reply is addressed to the stranger', proposalFields.recipient_email === 'jamie@machine-building.example');
+check(`Module 4 resolves send_mode = ${DEMO_SEND_MODE}`, proposalFields.send_mode === DEMO_SEND_MODE, `got '${proposalFields.send_mode}'`);
 check('no field of the paying client reached the render',
   ACME_SECRETS.every((s) => !JSON.stringify(proposalFields).includes(s)));
 
 // The IF nodes that stand between the draft and Gmail's drafts.send. Both must be a plain
-// equality against 'send', or the assertion above stops meaning anything.
+// equality against 'send', or the assertions above stop meaning anything: a looser operator
+// would let an unexpected value fall on the sending side instead of the parked one.
 for (const [wf, nodeName, source] of [['00-orchestrator', 'Send Quote?', ORCH], ['04-proposal-assembly', 'Send Mode?', M4]]) {
   const cond = source.nodes.find((n) => n.name === nodeName).parameters.conditions.conditions[0];
   check(`${wf} :: '${nodeName}' fires only on send_mode === 'send'`,
@@ -311,8 +323,91 @@ const quote = runNode({
     'Call Module 1': [{ data: { client: { company: 'Machine Building Systems Ltd' } } }],
   },
 })[0].json;
-check('the pricing_only branch also resolves send_mode = draft', quote.send_mode === 'draft', `got '${quote.send_mode}'`);
+check(`the pricing_only branch also resolves send_mode = ${DEMO_SEND_MODE}`, quote.send_mode === DEMO_SEND_MODE, `got '${quote.send_mode}'`);
 check('the quote is addressed to the stranger', quote.recipient === 'jamie@machine-building.example');
+
+// What the stranger actually reads. The covering mail is the only part of this a prospect sees
+// before they open the attachment, so it has to name itself a demonstration there — and it has to
+// be in the language they wrote in, which the old hard-coded Gmail body never was.
+check('the covering email says it is a demonstration', /demonstration/i.test(proposalFields.email_html));
+check('it does not claim to be a commercial offer', /not a commercial offer/i.test(proposalFields.email_html));
+check('it says the template is adapted per client', /your own template/i.test(proposalFields.email_html));
+check('the run is flagged as the demo tenant', proposalFields.demo_tenant === true);
+{
+  const spanish = JSON.parse(JSON.stringify(PROPOSAL_INPUT));
+  spanish.data.rfq.language = 'es';
+  spanish.proposal_config.language = 'es';
+  const es = runNode({ code: CODE.computeProposalFields, json: spanish, items: [] })[0].json;
+  check('a Spanish RFQ is answered in Spanish', /Esto es una demostración/.test(es.email_html) && !/Hello,/.test(es.email_html));
+}
+check('the demo quote email quotes no internal subtotal', !/Subtotal/i.test(quote.html) && /demostración|demonstration/i.test(quote.html));
+
+// Every downstream gate must FAIL CLOSED. The demo switch decides delivery once, in
+// 'Map Client Config'; if that value is ever lost or garbled on the way here, the cost has to be
+// an undelivered message, never an unintended one. Feed each gate a broken config and check.
+// `{name:'send'}` is the Notion property shape that has already defeated a string comparison in
+// this system once — the failure it caused was silent, and here it must simply not deliver.
+for (const [name, bad] of [['missing', undefined], ['empty', ''], ['object-shaped', { name: 'send' }], ['nonsense', 'yes']]) {
+  const cfg = Object.assign({}, stranger.mapped.client_config, { send_mode: bad });
+  const m4 = runNode({
+    code: CODE.computeProposalFields,
+    json: Object.assign({}, PROPOSAL_INPUT, { client_config: cfg }),
+    items: [],
+  })[0].json;
+  const q = runNode({
+    code: CODE.buildQuoteDraft,
+    json: { client_id: 'demo_client', client_config: cfg, data: { subtotal: 1000, total: 1400, payment_terms: '30/40/30', priced_categories: ['materials'], currency: 'EUR' } },
+    items: [],
+    nodes: { 'Map Client Config': [stranger.mapped], 'Build Envelope': [stranger.env], 'Call Module 1': [{ data: { client: { company: 'Machine Building Systems Ltd' } } }] },
+  })[0].json;
+  check(`send_mode ${name} parks the proposal and the quote rather than sending them`,
+    m4.send_mode === 'draft' && q.send_mode === 'draft', `${m4.send_mode} / ${q.send_mode}`);
+}
+
+// Whitespace and case ARE normalised, deliberately — a human typing 'Send' into the registry
+// means send, and treating that as a failure would be a different kind of surprise.
+{
+  const tidy = Object.assign({}, stranger.mapped.client_config, { send_mode: '  Send ' });
+  const m4 = runNode({ code: CODE.computeProposalFields, json: Object.assign({}, PROPOSAL_INPUT, { client_config: tidy }), items: [] })[0].json;
+  check("'  Send ' is normalised rather than rejected", m4.send_mode === 'send');
+}
+
+// A registered client's own kill switch is untouched by any of this.
+{
+  const held = Object.assign({}, clientAtProposal.mapped.client_config, { send_mode: 'draft' });
+  const m4 = runNode({ code: CODE.computeProposalFields, json: Object.assign({}, PROPOSAL_INPUT, { client_id: 'paying_client', client_config: held }), items: [] })[0].json;
+  check("a registered client on send_mode = draft is still held", m4.send_mode === 'draft');
+}
+
+// A 'Build Envelope' older than this change carries no answer on the envelope. That is a partial
+// re-import, and it has to resolve the quiet way round: a demo that has gone silent says so in
+// Telegram, a demo that sends when it should not says so in a stranger's inbox.
+{
+  // 'Map Client Config' prefers the guard's copy of the intake and falls back to the envelope's,
+  // so an honest 'older Build Envelope' has to be missing from both.
+  const staleEnv = JSON.parse(JSON.stringify(stranger.env));
+  const staleGuard = JSON.parse(JSON.stringify(stranger.guard));
+  delete staleEnv.intake.demo_send_mode;
+  if (staleGuard.intake) delete staleGuard.intake.demo_send_mode;
+  const mapped = runNode({
+    code: CODE.mapClientConfig,
+    items: REGISTRY,
+    nodes: { 'Build Envelope': [staleEnv], 'Intake Guard': [staleGuard] },
+  })[0].json;
+  check('an envelope with no demo switch on it parks the reply rather than sending it',
+    mapped.client_config.send_mode === 'draft', `got '${mapped.client_config.send_mode}'`);
+}
+
+// Module 4's standalone fallback has its own copy of the constant — it runs with no
+// 'Build Envelope' to carry the value across. A copy that drifts is a demo that behaves one way
+// through the orchestrator and the other way when Module 4 is invoked on its own.
+{
+  const src = codeOf(M4, 'Map Client Config');
+  const m = src.match(/const DEMO_SEND_MODE = '(send|draft)';/);
+  check("Module 4's standalone Map Client Config declares the demo switch", !!m, 'constant not found');
+  check("Module 4's copy of the demo switch matches the core",
+    !!m && m[1] === DEMO_SEND_MODE, m ? `node says '${m[1]}', core says '${DEMO_SEND_MODE}'` : '');
+}
 
 // --- 7. graph wiring: the guards cannot be bypassed ------------------------
 console.log('\nthe guards sit where they have to sit');
@@ -354,4 +449,4 @@ if (failures) {
   console.error(`\n${failures} check(s) failed.`);
   process.exit(1);
 }
-console.log('\nOK — demo@ serves any sender as demo_client in draft mode, proposal@ is unchanged, and no send gate opens.');
+console.log(`\nOK — demo@ serves any sender as demo_client with send_mode='${DEMO_SEND_MODE}' decided in code, every gate agrees, a lost value still fails closed, and proposal@ is unchanged.`);

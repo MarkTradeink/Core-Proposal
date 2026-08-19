@@ -2,7 +2,7 @@
 // Render a seed template against a synthetic proposal, the same way Module 4 does.
 //
 //   npm install --no-save docxtemplater pizzip jexl
-//   node scripts/render-sample.js [es|en] [A|B|C] [client_id] [--template <file.docx>]
+//   node scripts/render-sample.js [es|en] [A|B|C] [client_id] [--template <file.docx>] [--out <file.docx>]
 //
 // This is the offline half of the end-to-end check: it exercises the real chain
 // catalog -> resolveProposalConfig -> buildRenderContext -> docxtemplater against the real
@@ -34,6 +34,11 @@ const clientId = (process.argv[4] && !process.argv[4].startsWith('--')) ? proces
 // before a customer does, whether their template survives a real chapter set.
 const tplIdx = process.argv.indexOf('--template');
 const templateOverride = tplIdx !== -1 ? process.argv[tplIdx + 1] : null;
+// Two templates rendered at the same tier and language would otherwise write to the same file,
+// and the second would quietly replace the first — which is how a check ends up examining a
+// document nobody meant to check.
+const outIdx = process.argv.indexOf('--out');
+const outOverride = outIdx !== -1 ? process.argv[outIdx + 1] : null;
 
 // The n8n node swaps docxtemplater's parser for Jexl, so a tag is an expression, not a lookup.
 // Reproducing that here is the point — it is why key names may not contain '-' and why loops must
@@ -173,7 +178,9 @@ try {
 }
 if (failed) process.exit(1);
 
-const out = path.join(ROOT, `templates/sample-${clientId === 'demo_client' ? '' : `${clientId}-`}${lang}-tier${tier}.docx`);
+const out = outOverride
+  ? path.resolve(ROOT, outOverride)
+  : path.join(ROOT, `templates/sample-${clientId === 'demo_client' ? '' : `${clientId}-`}${lang}-tier${tier}.docx`);
 fs.writeFileSync(out, doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' }));
 
 // The two failure modes that reach a customer silently.

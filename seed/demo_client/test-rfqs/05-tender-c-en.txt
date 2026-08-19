@@ -1,0 +1,60 @@
+Subject: RFQ — Tender ITT-2027-0431, baggage handling controls upgrade
+
+Offer no: ITT-2027-0431    Attn Aoife Brennan    Asset: BHS-T2-04
+
+Dear Sir or Madam,
+
+Please find below our invitation to tender for the controls upgrade of the T2
+baggage handling system. Your response must address every clause below and will
+be scored clause by clause.
+
+Contact: Aoife Brennan — a.brennan@airport-authority.example — +353 1 000 0000
+End customer: Regional Airport Authority
+Site: Terminal 2, baggage hall level -1
+Deadline: tender submission closes in six weeks; works must complete before Q4
+
+Reference documents:
+  - ITT-2027-0431 rev C, dated 12 January 2027 — Invitation to tender
+  - DWG-BHS-T2-100 rev F — Baggage hall general arrangement
+  - SPEC-CTL-0012 rev B — Control system technical specification
+
+Current situation: the T2 baggage handling controls were commissioned in 2011 on
+a control platform whose vendor withdrew support in 2025. Sortation accuracy has
+degraded to 97.1% against a contractual 99.5%, and the mean time to repair has
+doubled over two years because diagnostics are no longer available.
+
+Tender requirements:
+  - 3.1 The Contractor shall replace all sortation controllers with a currently
+    supported platform, retaining the existing field wiring.
+  - 3.2 The Contractor shall demonstrate 99.5% sortation accuracy over a 72-hour
+    continuous acceptance test.
+  - 3.4 The system shall remain operational throughout the works. No more than one
+    sortation line may be out of service at any time.
+  - 4.2 The Contractor shall supply a full FAT and SAT protocol for approval prior
+    to any works on site.
+  - 5.1 The Contractor shall provide a compliance matrix against this
+    specification, clause by clause.
+  - 6.3 The Contractor shall provide a complete bill of materials and a detailed
+    programme.
+  - 7.1 Cyber security shall comply with IEC 62443-3-3 SL2.
+  - 8.2 A twelve-month warranty with a four-hour on-site response is required.
+
+Technical requirements:
+  - Sortation controllers — 24 ud — currently supported platform, retaining
+    existing field wiring
+  - Network switches, managed — 12 ud — IEC 62443 compliant, redundant ring
+  - Operator workstations — 4 ud — with diagnostics and reporting
+  - Spare parts package — 1 ud — to cover twelve months of operation
+
+Scope: equipment supply, engineering, installation, commissioning, project
+management, spare parts, training and warranty. Shipping to site is included.
+
+Constraints: the terminal operates 05:00 to 01:00 daily. Work is restricted to the
+night window and no more than one sortation line may be isolated at a time.
+
+Risks we expect you to address: interfacing with the legacy check-in conveyors,
+which are out of scope but must keep running throughout.
+
+Yours faithfully,
+Aoife Brennan
+Head of Terminal Engineering

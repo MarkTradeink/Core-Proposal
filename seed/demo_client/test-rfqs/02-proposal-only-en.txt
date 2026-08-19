@@ -1,0 +1,39 @@
+Subject: Technical proposal requested — palletiser cell for line 4
+
+Offer no: 41-2027-556    Attn Peter Håkansson    Project number: PRJ-2027-014
+
+Hello,
+
+Nordic Handling Systems AB is preparing an internal business case and we need a
+written technical proposal only — no prices at this stage, please. We will come
+back for a quotation once the case is approved internally.
+
+Contact: Peter Håkansson — p.hakansson@nordic-handling.example — +46 8 000 0000
+End customer: Nordic Handling Systems AB
+Site: Västerås plant, building 2
+Deadline: proposal needed within three weeks
+
+Current situation: line 4 is palletised by hand, two operators per shift across
+three shifts. Throughput peaks at 640 cases per hour and the manual station is now
+the bottleneck for the whole line. We have floor space of roughly 9 x 6 m next to
+the existing case erector.
+
+What we need described:
+  - Robotic palletiser cell — 1 ud — 900 cases/hour sustained, mixed pallet
+    patterns, 1200 x 800 EUR pallets
+  - Safety fencing and light curtains — 1 ud — to the current machinery directive
+  - Pallet infeed and outfeed conveyor — 18 m — integrated with the existing line
+  - Layout drawing and cycle time calculation
+
+Scope: equipment supply, engineering and commissioning. Installation will be done
+by our own team, so please exclude it. Spare parts are not required at this stage.
+
+Objectives: remove the manual palletising bottleneck, reach 900 cases/hour, and
+free the two operators per shift for quality control.
+
+Constraints: the cell must be installed during the August shutdown, which is the
+only two-week window available.
+
+Kind regards,
+Peter Håkansson
+Project Engineer

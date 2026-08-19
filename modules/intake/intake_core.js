@@ -10,7 +10,9 @@
 //   1. ROUTING (`resolveIntake`) — decide the client from the address the mail was DELIVERED TO,
 //      not from who sent it. `demo@cifral.io` is a public intake open to any sender and always
 //      resolves to `demo_client`; `proposal@cifral.io` keeps the strict sender match against the
-//      registry's `commercial_contact_email`, so an unknown sender is still rejected there.
+//      registry's `commercial_contact_email`, so an unknown sender is still rejected there. It
+//      also carries `demo_send_mode` — the one switch that decides whether the demo answers by
+//      itself or parks its answer as a draft.
 //
 //   2. GUARDING (`classifyIntake`) — everything that reaches Module 1 through the public address
 //      costs LLM + Drive work on a stranger's say-so, so the junk filter, the size caps and the
@@ -30,6 +32,25 @@ const PROPOSAL_INTAKE_ADDRESS = 'proposal@cifral.io';
 // The tenant every public RFQ is served by. Its Drive folder holds ONLY generic seed material —
 // see docs/DEMO-INTAKE.md, "What a stranger can see".
 const DEMO_CLIENT_ID = 'demo_client';
+
+// THE DEMO SWITCH. What the public intake does with the finished document:
+//
+//   'send'  — it is delivered to whoever asked for it, in their own thread. This is what makes
+//             "email your RFQ to demo@cifral.io and see it for yourself" literally true: the
+//             prospect gets the sample proposal back without Mark being awake.
+//   'draft' — it stops in the mailbox for a human to read and send by hand. The pre-launch
+//             behaviour, and the rollback: flip this one line, `npm run mirror`, re-import the
+//             orchestrator, and the public address goes quiet again without touching a gate.
+//
+// Every gate between here and Gmail reads the resolved `send_mode` off client_config rather than
+// re-deciding for itself, so this constant and the demo tenant's registry row are the only two
+// places the answer exists — and the registry is not consulted for the demo tenant (§3 of
+// docs/DEMO-INTAKE.md explains why a public address cannot have a permissive default).
+//
+// What did NOT change when this became 'send': the junk filter, the rate limits, the size caps
+// and the tenant isolation backstop all still run, and they run BEFORE the spend. Sending makes
+// them matter more, not less.
+const DEMO_SEND_MODE = 'send';
 
 const INTAKE_LIMITS = {
   // Per sender per UTC day, on the open route only. Registered clients on proposal@ are not
@@ -138,13 +159,16 @@ function resolveIntake(headers) {
   const recipients = [];
   for (const name of pools) recipients.push(...addressesIn(h[name]));
 
+  // `demo_send_mode` rides on every route, not just the open one, because the demo tenant is also
+  // reachable through the registry route (Mark forwarding a prospect's RFQ from his own address).
+  // Both paths must reach the same answer, and both read it from here.
   if (recipients.includes(DEMO_INTAKE_ADDRESS)) {
-    return { route: 'open', address: DEMO_INTAKE_ADDRESS, client_id: DEMO_CLIENT_ID, open: true, recipients };
+    return { route: 'open', address: DEMO_INTAKE_ADDRESS, client_id: DEMO_CLIENT_ID, open: true, demo_send_mode: DEMO_SEND_MODE, recipients };
   }
   if (recipients.includes(PROPOSAL_INTAKE_ADDRESS)) {
-    return { route: 'registry', address: PROPOSAL_INTAKE_ADDRESS, client_id: null, open: false, recipients };
+    return { route: 'registry', address: PROPOSAL_INTAKE_ADDRESS, client_id: null, open: false, demo_send_mode: DEMO_SEND_MODE, recipients };
   }
-  return { route: 'registry', address: null, client_id: null, open: false, recipients };
+  return { route: 'registry', address: null, client_id: null, open: false, demo_send_mode: DEMO_SEND_MODE, recipients };
 }
 
 /**
@@ -359,6 +383,10 @@ if (require.main === module) {
   const noneRoute = resolveIntake(hdr({ To: 'mark@cifral.io' }));
   check('any other address stays on the registry route', noneRoute.open === false && noneRoute.address === null);
   check('no headers at all (chat trigger) stays on the registry route', resolveIntake({}).open === false);
+  check('every route carries the demo switch, so both paths to the demo tenant agree',
+    [openRoute, prodRoute, noneRoute, resolveIntake({})].every((r) => r.demo_send_mode === DEMO_SEND_MODE));
+  check("the demo switch is one of the two values the gates understand",
+    DEMO_SEND_MODE === 'send' || DEMO_SEND_MODE === 'draft', `got '${DEMO_SEND_MODE}'`);
 
   console.log('\nguards — junk filter');
   check('out-of-office is dropped silently', (() => { const r = run({ subject: 'Out of Office: RFQ — conveyor system' }); return r.drop === true && r.notify === false && r.reason === 'automated_subject'; })());
@@ -436,13 +464,14 @@ if (require.main === module) {
     console.error(`\n${failures} check(s) failed.`);
     process.exit(1);
   }
-  console.log('\nOK — routing and all four intake guards behave as documented.');
+  console.log(`\nOK — routing and all four intake guards behave as documented (demo delivery: ${DEMO_SEND_MODE}).`);
 }
 
 module.exports = {
   DEMO_INTAKE_ADDRESS,
   PROPOSAL_INTAKE_ADDRESS,
   DEMO_CLIENT_ID,
+  DEMO_SEND_MODE,
   INTAKE_LIMITS,
   addressesIn,
   normaliseHeaders,

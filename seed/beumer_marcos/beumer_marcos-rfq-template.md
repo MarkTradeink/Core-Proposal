@@ -42,7 +42,7 @@ Requisitos:
 |---|---|---|
 | `Oferta nº` | `Offer no`, `Oferta no` | **sí** |
 | `Versión` | `Version` | no |
-| `Att.` | `Atn.`, `Attn` | no |
+| `Att.` | `Attn`, `Atn.` | no |
 | `Asset` | `Activo` | no |
 | `Project number` | `Nº proyecto` | no |
 

@@ -1,0 +1,33 @@
+Subject: RFQ — suministro de recambios y material para línea de envasado
+
+Oferta nº: 2027-0088    Atn. Rosa Campillo    Nº proyecto: PRJ-2027-031
+
+Buenos días,
+
+Necesitamos oferta de SUMINISTRO ÚNICAMENTE. La instalación, la puesta en marcha y
+la ingeniería las asume nuestro departamento técnico, así que quedan fuera de su
+alcance.
+
+Contacto: Rosa Campillo — r.campillo@envasados-guadalquivir.example — +34 954 000 222
+Cliente final: Envasados del Guadalquivir S.L.
+Emplazamiento: polígono industrial de Alcalá de Guadaíra
+Plazo: material en almacén antes de seis semanas
+
+Situación actual: la línea de envasado 2 sufre paradas por desgaste de los grupos
+de arrastre y no tenemos stock de recambio propio. Queremos crear un stock de
+seguridad y sustituir los tramos más castigados.
+
+Material solicitado:
+  - Rodillos motorizados — 120 ud — Ø50 mm, 24 V DC
+  - Cadena de arrastre — 240 m — paso 12,7 mm, acero inoxidable
+  - Grupos de arrastre completos — 4 ud — recambio directo del modelo instalado
+  - Kit de recambios de desgaste — 1 ud — para doce meses de operación
+
+Alcance: sólo materiales, recambios y transporte a nuestro almacén. Sin
+instalación, sin puesta en marcha, sin ingeniería, sin formación.
+
+Garantía: la estándar del fabricante es suficiente.
+
+Un saludo,
+Rosa Campillo
+Compras técnicas

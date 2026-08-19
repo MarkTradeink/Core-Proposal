@@ -4,6 +4,162 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — the generated client guide resolved with NO scope while claiming the opposite (2026-08-19)
+
+`scripts/client-docs.js` reads the scope catalog to switch every item on, so a client's guide shows
+their full configured surface rather than whatever one request happens to render. It read
+`.scope_items`, and the file declares `items` — an array of `{key, …}`, not a map. The `|| {}`
+fallback turned that miss into an **empty scope**, and the heading two lines below went on saying
+*"con todo el alcance activado"*.
+
+So every guide understated its client. `demo_client`'s said 16 chapters and 34 clauses where the
+truth is 17 and 46; `Solución técnica propuesta` was missing entirely, along with hardware,
+engineering, spare parts, installation, commissioning, shipping and training. Nothing failed — a
+document generated to be read by the person configuring the client quietly described a smaller
+system than they had.
+
+Reading `items` fixes it, and an empty list now throws rather than falling through to a guide that
+is wrong in the same silent direction.
+
+### Feature — the guide explains the three axes, and the eighth RFQ hits the ceiling (2026-08-19)
+
+The chapter list answered *what* comes out and never *why*, which is the question someone actually
+has in front of 89 blocks. Two sections generated per client now:
+
+- **"Cuánto documento sale, y de qué depende"** — the tier × scope × pricing grid resolved for real
+  (A: 39 blocks, B: 81, C: 89 for `demo_client`), plus a table mapping each of the nine scope items
+  to the subsection it switches on. Two of those three axes arrive with each RFQ; only the third is
+  the sheet.
+- **"Capítulos disponibles pero apagados"** — the ten opt-in annexes and five `custom_*` chapters
+  that carry `default_included: false`. **No RFQ can turn them on**, at any tier, with any wording;
+  only an `include=yes` row can. Unsaid, a tender that returns one annex instead of eleven reads as
+  a bug rather than as the client's own configuration.
+
+`seed/demo_client/test-rfqs/08-alcance-total-es.txt` is the probe for the ceiling: tier C, all nine
+scope items, in the demo's default language, with all four cover variables on one pasted header
+line. `05-tender-c-en.txt` was the same shape in English and is still the English case.
+
+
+### Feature — seven RFQs to send at the demo, and a dry run so they are not wasted (2026-08-18)
+
+There were no test RFQs anywhere in the repo. The only ones that existed were fixtures buried
+inside `check-intake-routing.js` and `render-sample.js`, written to make an assertion rather than to
+be sent, and the generated `demo_client-rfq-template.md` is a blank form pointed at
+`proposal@cifral.io`. So the first real exercise of the public address would have been improvised
+prose, which tests whatever the author happened to think of.
+
+`seed/demo_client/test-rfqs/` now holds seven, each picked because its *failure* looks like success:
+a full pipeline in Spanish, a proposal-only in English (the price chapter must be **gone**, not
+empty), a pricing-only that declares no cover variables at all (empty boxes, never `undefined`), an
+incomplete one that should come back asking for what is missing, a tier-C tender with eight numbered
+clauses, a supply-only one that says installation and engineering are excluded in as many words, and
+an autoresponder that must be swallowed in silence. The README says what each should produce and
+what to check.
+
+**`scripts/dry-run-rfq.js`** replays one through the real routing, the real guards and the real
+cover-variable capture, offline, against the actual node source. The demo allows three RFQs per
+sender per UTC day, so learning by email that a label did not match costs a third of the day's
+budget and four minutes of waiting — and it is precisely the deterministic half that fails
+*silently*: a junk-filter drop leaves no alert at all, and a label the sheet does not declare leaves
+a blank box on a cover. What the script cannot know it prints as such rather than guessing: request
+type, scope, tier and the missing-field check are a model call inside n8n.
+
+### Docs — a Proposal Config sheet older than the tabs it is missing (2026-08-18)
+
+`Client`, `Templates` and `Fields` were added on 2026-08-12, and a sheet created before then simply
+does not have them. The pipeline treats that as valid — all three are optional by design, so a
+client onboarded earlier keeps working — which is correct and is also why nothing tells you.
+
+Two of the three cost almost nothing. The third reaches the customer: with no `Fields` tab, `campos`
+is empty and **every `{campos.*}` tag in the template prints the literal word `undefined`**. The
+totality rule that keeps every other key present-but-empty cannot cover it, because with no tab
+there is nothing to enumerate. Verified by rendering the demo template against a config with the tab
+removed: `render-sample.js` fails on the word, exactly as it would appear on paper.
+
+That is now a section in `docs/CLIENT-DRIVE-SETUP.md` — what each absent tab costs, how to add the
+missing ones from the CSVs the repo already holds, and `check-template.js` as the tool that catches
+this specific failure before a document does.
+
+
+### Feature — the demo answers by itself, from a template that says it is one (2026-08-18)
+
+`demo@cifral.io` has been open to any sender since 2026-08-11, but its answer stopped in Mark's
+drafts. That was the right default for an address nobody had been told about, and the wrong one for
+an address about to appear in outbound copy: the CTA is *"send your RFQ to demo@cifral.io and try
+it yourself"*, and a demo that replies when somebody gets round to it is not a demo. The reply is
+now delivered — in the sender's own thread, with the `.docx` and the PDF attached.
+
+**One switch, and every gate reads it.** `DEMO_SEND_MODE` in `modules/intake/intake_core.js` rides
+out on the envelope from `resolveIntake` and is resolved once, in the orchestrator's
+`Map Client Config`. The four gates downstream — Module 4's `Compute Proposal Fields`, the
+orchestrator's `Build Quote Draft` and `Build Missing Info Reply` — used to re-derive `'draft'` from
+`open_intake` each for themselves, which made a rollback a four-node edit and made "are they all
+still agreeing?" a question nobody could answer by reading one file. They now read the resolved
+value and **normalise** it: anything that is not the literal `send` becomes a draft. So a value lost
+in some future refactor costs a delivery rather than buying one, and the rollback is one line plus
+`npm run mirror`.
+
+What did *not* change is the thing worth keeping: the demo tenant's mode is still decided in code
+and never read from Notion. The reasoning in `docs/DEMO-INTAKE.md` §3 was never "draft is safe" — it
+was that a property which can be renamed, blanked or mistyped resolves to whatever the default
+happens to be, and a public address must not have its behaviour decided by an accident **in either
+direction**. Only the answer changed.
+
+**Sending made the wording load-bearing.** A human reading a draft supplies the missing context; a
+prospect opening an attachment does not.
+
+- The covering email was one hard-coded English paragraph on the Gmail node, addressed to a reseller
+  reviewing a proposal *"before it goes to the customer"* — wrong on both counts once the reader is
+  the prospect, and wrong again for the Spanish and German senders it answered in English. It is
+  composed in `Compute Proposal Fields` now, in the RFQ's own language, with a demo version that
+  says plainly what the document is and what gets adapted per client.
+- The `pricing_only` answer has a demo version too, and it prints **no subtotal**. The reseller
+  version does, because a reseller is entitled to their own cost basis; on the public route the
+  reader is the customer. The document itself never carried a subtotal tag at all.
+- `templates/build-templates.js` now emits four files: the two neutral seeds plus
+  `demo-proposal-template-{es,en}.docx`, marked as a demonstration on the cover, in the running
+  header, in the footer of every page and on an "About this document" notice page — which also
+  explains, to a reader who has never heard of any of this, which parts of what they are holding
+  are real and which are sample content.
+
+`scripts/check-intake-routing.js` carries the assertions, and they got sharper rather than weaker:
+every gate must agree with `DEMO_SEND_MODE`; the registry row is set to the *opposite* value and
+must still lose; Module 4's standalone copy of the constant must not have drifted from the core;
+four kinds of broken `send_mode` must all park the message while `'  Send '` must still normalise;
+and the demo mail must name itself a demonstration and answer a Spanish RFQ in Spanish.
+
+### Feature — the seed templates caught up with the catalog they are generated from (2026-08-18)
+
+Three gaps between what `render_context.js` emits and what `build-templates.js` puts on paper, all
+of them dating from the client-fields work below and all of them silent:
+
+**The cover printed `{proyecto.tipo}` and not `{proyecto.titulo}`.** The context has emitted the
+project's own title — as the sender words it, falling back to the type — since that work landed;
+the generated cover never used it, so every seed-derived template threw the better string away.
+
+**No `{campos.*}` anywhere.** The whole point of the `Fields` tab is that a client's ERP offer
+number reaches their cover, and the generated template had nowhere for it to land. It could not
+simply be added, either: a `{campos.*}` key the client's sheet does not declare prints the literal
+word `undefined`, so those tags can only be generated *per client*. The generator now reads
+`seed/<client_id>/proposal-config/fields.csv` through the same `parseFieldDefinitions()` the
+pipeline uses, and lays the cover out from it — a `request` field becomes a labelled line, the first
+`static` field becomes the issuer line above the title, and `auto` fields are deliberately left off
+because each one duplicates something the cover already prints under its own tag.
+
+**Which word to print was unanswerable.** `capture_label` holds comma-separated alternatives and the
+capture looks for all of them in any language, which is correct and unchanged. But nothing said
+which one a cover should *print*, and position cannot say it: `Oferta nº, Offer no` puts Spanish
+first while `Asset, Activo` puts English first, so the first English demo cover came out reading
+"Activo" and "Nº proyecto". An alternative may now carry an optional `es:` / `en:` tag, stripped
+before matching and used only for display. Untagged rows behave exactly as before, so no existing
+sheet has to change; `demo_client` and `beumer_marcos` are tagged.
+
+`npm run check` renders six documents now instead of four — the two demo templates included, since
+those are the ones that reach strangers with nobody in between. `scripts/render-sample.js` grew an
+`--out` flag so two templates at the same tier and language stop overwriting each other's output,
+which would otherwise have left a check quietly examining a document nobody meant to check.
+
+
 ### Change — workflow JSON now mirrors the live n8n layout (2026-08-14)
 
 Re-importing had become a chore: the repo carried its own node positions, so every import needed the

@@ -1,0 +1,60 @@
+Subject: RFQ — Licitación LIC-2027-114, modernización integral del almacén automático
+
+Oferta nº: LIC-2027-114    Att. Beatriz Olmo    Asset: AS/RS-01    Nº proyecto: PRJ-2027-114
+
+Estimados señores,
+
+Adjuntamos las bases para la modernización integral del almacén automático de la planta de
+Valladolid. La oferta se valorará punto por punto contra los requisitos numerados más abajo.
+
+Contacto: Beatriz Olmo — b.olmo@logistica-castilla.example — +34 983 000 444
+Cliente final: Logística de Castilla S.A.
+Emplazamiento: planta de Valladolid, almacén automático AS/RS
+Plazo: puesta en servicio antes del cuarto trimestre
+
+Documentos de referencia:
+  - LIC-2027-114 rev B, de 3 de febrero de 2027 — Pliego de condiciones técnicas
+  - PL-ASRS-220 rev D — Implantación general del almacén
+  - ESP-CTRL-0044 rev A — Especificación del sistema de control
+
+Situación actual: el almacén se puso en servicio en 2008 con dos transelevadores y un sistema de
+control cuyo fabricante retiró el soporte en 2024. La disponibilidad ha caído del 98,5% contratado
+al 94,2%, y el tiempo medio de reparación se ha duplicado en dos años porque ya no hay diagnóstico
+ni recambios originales.
+
+Requisitos del pliego:
+  - 2.1 El adjudicatario sustituirá el sistema de control de ambos transelevadores por una
+    plataforma con soporte vigente, reutilizando el cableado de campo existente.
+  - 2.4 Se acreditará una disponibilidad del 98,5% en una prueba continua de 72 horas.
+  - 3.2 El almacén permanecerá operativo durante los trabajos. No podrá pararse más de un pasillo
+    de forma simultánea.
+  - 4.1 Se entregarán los protocolos FAT y SAT para su aprobación antes de intervenir en planta.
+  - 5.3 Se aportará matriz de cumplimiento del pliego, apartado por apartado.
+  - 6.2 Se aportará lista de materiales completa y cronograma detallado.
+  - 7.4 La ciberseguridad cumplirá IEC 62443-3-3 nivel SL2.
+  - 8.1 Garantía de 24 meses con respuesta en 4 horas en el emplazamiento.
+
+Requisitos técnicos:
+  - Armarios de control de transelevador — 2 ud — plataforma con soporte vigente, reutilizando
+    el cableado de campo
+  - Variadores de traslación y elevación — 8 ud — con realimentación absoluta
+  - Switches industriales gestionados — 10 ud — anillo redundante, conformes IEC 62443
+  - Puestos de operación — 3 ud — con diagnóstico e informes
+  - Lote de recambios — 1 ud — para cubrir doce meses de operación
+
+Alcance solicitado: suministro de equipos, ingeniería de detalle, transporte a planta,
+instalación y montaje, puesta en marcha, gestión de proyecto, recambios, formación del personal
+de mantenimiento y garantía. Todo dentro de su alcance; no subcontratamos nada por nuestra parte.
+
+Condiciones de operación: la planta trabaja de 06:00 a 22:00 de lunes a sábado. Los trabajos se
+ejecutan en ventana nocturna y no puede aislarse más de un pasillo a la vez.
+
+Riesgos que esperamos ver tratados: la interfaz con el sistema de transporte de entrada, que
+queda fuera del alcance pero debe seguir operando durante toda la obra.
+
+Lo que más nos preocupa: no volver a quedarnos sin recambios, y que la obra no nos cueste
+producción.
+
+Atentamente,
+Beatriz Olmo
+Directora de Operaciones
