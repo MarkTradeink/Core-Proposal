@@ -69,7 +69,16 @@ const sheet = {
 const lang = (sheet.client.find((r) => r.key === 'default_language') || {}).value === 'en' ? 'en' : 'es';
 // Every scope item on, so the guide shows the client's FULL configured surface rather than the
 // subset one particular request would happen to render.
-const scope = Object.fromEntries(Object.keys(require(path.join(ROOT, 'schemas/scope-catalog.json')).scope_items || {}).map((k) => [k, true]));
+//
+// The keys live under `items` — an ARRAY of {key, ...} — not under a `scope_items` map. Reading
+// the wrong property fell through to `|| {}` and produced an EMPTY scope, so the guide resolved
+// with every scope-gated chapter off while its own heading promised the opposite: no hardware, no
+// engineering, no spare parts, no installation, no commissioning, no shipping, no training, and no
+// `solucion_tecnica` at all. It understated what the client had configured, silently, which is the
+// one thing a generated document must not do.
+const SCOPE_KEYS = (require(path.join(ROOT, 'schemas/scope-catalog.json')).items || []).map((i) => i.key);
+if (!SCOPE_KEYS.length) throw new Error('scope-catalog.json declared no items — the guide would understate every client');
+const scope = Object.fromEntries(SCOPE_KEYS.map((k) => [k, true]));
 const cfg = resolveProposalConfig({ catalog, sheet, language: lang, scope, has_pricing: true, sheet_id: '(this sheet)' });
 
 const AUTO_LABEL = {
@@ -138,6 +147,51 @@ if (!cfg.templates.length) {
 }
 guide.push('');
 
+// Three axes decide what a given RFQ renders, and they are easy to confuse with each other:
+// the document WEIGHT (tier), the SCOPE the sender asked for, and whether there is a price.
+// Resolving all of them here turns the guide from a list into something that explains itself.
+const weigh = (tier, sc, pricing) => resolveProposalConfig({ catalog, sheet, language: lang, scope: sc, has_pricing: pricing, sheet_id: '(this sheet)' , tier });
+const blocks = (c) => c.chapters.reduce((n, ch) => n + 1 + ch.sections.length, 0);
+const noScope = Object.fromEntries(SCOPE_KEYS.map((k) => [k, false]));
+
+guide.push('## Cuánto documento sale, y de qué depende');
+guide.push('');
+guide.push('Tres cosas deciden qué capítulos aparecen. Las dos primeras las trae **cada RFQ**; la tercera es esta hoja.');
+guide.push('');
+guide.push('| Peso | Con todo el alcance | Sólo lo mínimo | Sin precio |');
+guide.push('|---|---|---|---|');
+for (const t of ['A', 'B', 'C']) {
+  const full = weigh(t, scope, true);
+  guide.push(`| **${t}** — ${{ A: 'presupuesto', B: 'propuesta', C: 'licitación' }[t]}${t === cfg.tier ? ' _(por defecto)_' : ''} | ${blocks(full)} bloques, ${full.clauses.length} cláusulas | ${blocks(weigh(t, noScope, true))} bloques | ${blocks(weigh(t, scope, false))} bloques |`);
+}
+guide.push('');
+guide.push('Un «bloque» es un capítulo o un apartado. El peso lo decide el extractor leyendo el RFQ (una licitación con pliego es `C`); si no lo tiene claro usa el `default_tier` de esta hoja.');
+guide.push('');
+guide.push('Y el **alcance de suministro** que pida el RFQ enciende o apaga apartados concretos:');
+guide.push('');
+guide.push('| Si el RFQ pide… | aparece |');
+guide.push('|---|---|');
+{
+  const maxCfg = weigh('C', scope, true);
+  const allIds = new Set();
+  for (const ch of maxCfg.chapters) { allIds.add(ch.id); for (const s of ch.sections) allIds.add(s.id); }
+  const titleOf = {};
+  for (const ch of maxCfg.chapters) { titleOf[ch.id] = ch.title; for (const s of ch.sections) titleOf[s.id] = s.title; }
+  for (const k of SCOPE_KEYS) {
+    const off = weigh('C', Object.assign({}, scope, { [k]: false }), true);
+    const got = new Set();
+    for (const ch of off.chapters) { got.add(ch.id); for (const s of ch.sections) got.add(s.id); }
+    const lost = [...allIds].filter((i) => !got.has(i)).map((i) => titleOf[i]);
+    if (lost.length) guide.push(`| \`${k}\` | ${lost.join(' · ')} |`);
+  }
+  const noPrice = weigh('C', scope, false);
+  const gotP = new Set();
+  for (const ch of noPrice.chapters) { gotP.add(ch.id); for (const s of ch.sections) gotP.add(s.id); }
+  const lostP = [...allIds].filter((i) => !gotP.has(i));
+  if (lostP.length) guide.push(`| un precio (\`pricing_only\` / \`full_pipeline\`) | ${titleOf[lostP[0]]} y sus ${lostP.length - 1} apartados |`);
+}
+guide.push('');
+
 guide.push('## Capítulos');
 guide.push('');
 guide.push('Los que salen hoy, en orden, con todo el alcance activado:');
@@ -147,6 +201,31 @@ for (const ch of cfg.chapters) {
   for (const s of ch.sections) guide.push(`  - ${s.numero || '—'} ${s.title}`);
 }
 guide.push('');
+
+// The opt-in half of the catalog. A chapter with `default_included: false` NEVER appears because
+// of anything in an RFQ — no tier, no scope, no wording turns it on. Only an `include=yes` row in
+// the Chapters tab does. Left unsaid, that reads as a bug the first time someone sends a tender
+// and gets one annex instead of eleven.
+{
+  const live = new Set(cfg.chapters.map((c) => c.id));
+  const optIn = [];
+  for (const [group, entries] of [['body', catalog.chapters || []], ['annex', catalog.annexes || []]]) {
+    for (const e of entries) {
+      if (e.default_included !== false || live.has(e.id)) continue;
+      optIn.push({ id: e.id, group, title: (e.title && (e.title[lang] || e.title.es)) || e.id, tiers: (e.tiers || []).join('') });
+    }
+  }
+  if (optIn.length) {
+    guide.push('## Capítulos disponibles pero apagados');
+    guide.push('');
+    guide.push('Existen en el catálogo y **ningún RFQ puede encenderlos**: no dependen del peso ni del alcance, sólo de una fila `include=yes` en la pestaña `Chapters` de esta hoja. Es la diferencia entre lo que el sistema sabe hacer y lo que este cliente ha decidido ofrecer.');
+    guide.push('');
+    guide.push('| `chapter_id` | Qué es | Peso mínimo |');
+    guide.push('|---|---|---|');
+    for (const o of optIn) guide.push(`| \`${o.id}\` | ${o.title} | ${o.tiers || '—'} |`);
+    guide.push('');
+  }
+}
 
 guide.push('## Estilo de redacción');
 guide.push('');

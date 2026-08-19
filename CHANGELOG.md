@@ -4,6 +4,42 @@ All notable changes to this repo are recorded here. Dates are ISO-8601.
 
 ## [Unreleased]
 
+### Fix — the generated client guide resolved with NO scope while claiming the opposite (2026-08-19)
+
+`scripts/client-docs.js` reads the scope catalog to switch every item on, so a client's guide shows
+their full configured surface rather than whatever one request happens to render. It read
+`.scope_items`, and the file declares `items` — an array of `{key, …}`, not a map. The `|| {}`
+fallback turned that miss into an **empty scope**, and the heading two lines below went on saying
+*"con todo el alcance activado"*.
+
+So every guide understated its client. `demo_client`'s said 16 chapters and 34 clauses where the
+truth is 17 and 46; `Solución técnica propuesta` was missing entirely, along with hardware,
+engineering, spare parts, installation, commissioning, shipping and training. Nothing failed — a
+document generated to be read by the person configuring the client quietly described a smaller
+system than they had.
+
+Reading `items` fixes it, and an empty list now throws rather than falling through to a guide that
+is wrong in the same silent direction.
+
+### Feature — the guide explains the three axes, and the eighth RFQ hits the ceiling (2026-08-19)
+
+The chapter list answered *what* comes out and never *why*, which is the question someone actually
+has in front of 89 blocks. Two sections generated per client now:
+
+- **"Cuánto documento sale, y de qué depende"** — the tier × scope × pricing grid resolved for real
+  (A: 39 blocks, B: 81, C: 89 for `demo_client`), plus a table mapping each of the nine scope items
+  to the subsection it switches on. Two of those three axes arrive with each RFQ; only the third is
+  the sheet.
+- **"Capítulos disponibles pero apagados"** — the ten opt-in annexes and five `custom_*` chapters
+  that carry `default_included: false`. **No RFQ can turn them on**, at any tier, with any wording;
+  only an `include=yes` row can. Unsaid, a tender that returns one annex instead of eleven reads as
+  a bug rather than as the client's own configuration.
+
+`seed/demo_client/test-rfqs/08-alcance-total-es.txt` is the probe for the ceiling: tier C, all nine
+scope items, in the demo's default language, with all four cover variables on one pasted header
+line. `05-tender-c-en.txt` was the same shape in English and is still the English case.
+
+
 ### Feature — seven RFQs to send at the demo, and a dry run so they are not wasted (2026-08-18)
 
 There were no test RFQs anywhere in the repo. The only ones that existed were fixtures buried

@@ -9,7 +9,7 @@
 - **Peso del documento por defecto:** B — propuesta estándar (15-25 pág.)
 - **Versión del documento:** 1.0
 - **Capítulos configurados:** 16
-- **Cláusulas propias:** 60
+- **Cláusulas propias:** 68
 
 ## Variables propias de este cliente
 
@@ -30,6 +30,23 @@ Estas son las etiquetas que **puedes usar en la plantilla `.docx`**. Cualquier o
 ## Plantillas
 
 La pestaña `Templates` está vacía, así que se usan los ids `template_id_es` / `template_id_en` de la ficha de Notion.
+
+## Cuánto documento sale, y de qué depende
+
+Tres cosas deciden qué capítulos aparecen. Las dos primeras las trae **cada RFQ**; la tercera es esta hoja.
+
+| Peso | Con todo el alcance | Sólo lo mínimo | Sin precio |
+|---|---|---|---|
+| **A** — presupuesto | 52 bloques, 68 cláusulas | 52 bloques | 52 bloques |
+| **B** — propuesta _(por defecto)_ | 52 bloques, 68 cláusulas | 52 bloques | 52 bloques |
+| **C** — licitación | 53 bloques, 68 cláusulas | 53 bloques | 53 bloques |
+
+Un «bloque» es un capítulo o un apartado. El peso lo decide el extractor leyendo el RFQ (una licitación con pliego es `C`); si no lo tiene claro usa el `default_tier` de esta hoja.
+
+Y el **alcance de suministro** que pida el RFQ enciende o apaga apartados concretos:
+
+| Si el RFQ pide… | aparece |
+|---|---|
 
 ## Capítulos
 
@@ -87,6 +104,26 @@ Los que salen hoy, en orden, con todo el alcance activado:
 **12.** Condiciones generales y reservas
   - 12.1 Condiciones generales de contratación
 **13.** Cierre
+
+## Capítulos disponibles pero apagados
+
+Existen en el catálogo y **ningún RFQ puede encenderlos**: no dependen del peso ni del alcance, sólo de una fila `include=yes` en la pestaña `Chapters` de esta hoja. Es la diferencia entre lo que el sistema sabe hacer y lo que este cliente ha decidido ofrecer.
+
+| `chapter_id` | Qué es | Peso mínimo |
+|---|---|---|
+| `custom_3` | Capítulo personalizado 3 | ABC |
+| `custom_4` | Capítulo personalizado 4 | ABC |
+| `custom_5` | Capítulo personalizado 5 | ABC |
+| `anexo_cronograma` | Cronograma detallado | C |
+| `anexo_bom` | Lista de materiales | C |
+| `anexo_pruebas` | Protocolos de prueba FAT/SAT | C |
+| `anexo_planos` | Planos y esquemas | C |
+| `anexo_fichas` | Fichas técnicas de equipos | C |
+| `anexo_riesgos` | Registro de riesgos completo | C |
+| `anexo_referencias` | Referencias de proyectos similares | BC |
+| `anexo_cvs` | CVs del equipo asignado | C |
+| `anexo_condiciones` | Condiciones generales de venta | BC |
+| `anexo_certificados` | Certificados y homologaciones | C |
 
 ## Estilo de redacción
 
